@@ -1,0 +1,220 @@
+{
+  "schemaVersion": "1.0.0",
+  "planId": "0193b2a0-0000-7000-8000-000000000501",
+  "version": 13,
+  "parentVersion": 12,
+  "status": "PROPOSED",
+  "supersededReason": null,
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "goalId": "0193b2a0-0000-7000-8000-000000000601",
+  "generatedAt": "2026-10-25T20:00:00Z",
+  "activationReason": null,
+  "generator": {
+    "kind": "AI_ASSISTED",
+    "engineVersion": "1.0.0",
+    "promptVersion": "1.0.0",
+    "modelId": null,
+    "decisionId": "0193b2a0-0000-7000-8000-000000000701"
+  },
+  "provisional": true,
+  "assumptions": ["No recovery history yet: recovery-based adaptation rules use subjective check-ins only."],
+  "contentHash": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+  "startDate": "2026-10-26",
+  "endDate": "2026-11-01",
+  "phases": [
+    {
+      "phase": "BASE",
+      "startDate": "2026-10-26",
+      "endDate": "2026-11-01",
+      "focus": "Aerobic base, strength maintenance, recreational tennis"
+    }
+  ],
+  "weeks": [
+    {
+      "weekIndex": 1,
+      "startDate": "2026-10-26",
+      "phase": "BASE",
+      "primaryGoal": "Consistent aerobic volume with one quality session",
+      "estimatedLoad": {
+        "sessionRpeLoad": 1450,
+        "bySport": {
+          "RUNNING": { "durationSeconds": 7200, "distanceMeters": null },
+          "STRENGTH": { "durationSeconds": 2700, "distanceMeters": null },
+          "TENNIS": { "durationSeconds": 5400, "distanceMeters": null }
+        }
+      },
+      "days": {
+        "monday": [
+          {
+            "schemaVersion": "1.0.0",
+            "id": "0193b2a0-0000-7000-8000-000000000410",
+            "type": "REST",
+            "trainingDay": "2026-10-26",
+            "order": 0,
+            "isKeyWorkout": false,
+            "objective": "Rest",
+            "explanation": {
+              "what": "Full rest day.",
+              "why": "Preferred rest day declared by the athlete."
+            }
+          }
+        ],
+        "tuesday": [
+          {
+            "schemaVersion": "1.0.0",
+            "id": "0193b2a0-0000-7000-8000-000000000411",
+            "type": "STRENGTH",
+            "trainingDay": "2026-10-27",
+            "order": 0,
+            "isKeyWorkout": false,
+            "objective": "Lower-body strength maintenance",
+            "explanation": {
+              "what": "Goblet squat 3 x 8-10 at RPE 7.",
+              "why": "Strength is planned in every week (FR-STR-001) and placed 48 hours before intervals."
+            },
+            "strength": {
+              "purpose": "Maintain lower-body strength",
+              "estimatedDurationSeconds": 2700,
+              "warmup": ["Hip and ankle mobility"],
+              "exercises": [
+                {
+                  "exerciseId": "ex.goblet_squat",
+                  "movementPattern": "SQUAT",
+                  "primaryMuscles": ["QUADRICEPS", "GLUTES"],
+                  "secondaryMuscles": ["CORE"],
+                  "sets": 3,
+                  "reps": { "min": 8, "max": 10 },
+                  "load": { "kind": "RPE_BASED", "value": null },
+                  "targetRpe": 7,
+                  "targetRir": 3,
+                  "restSeconds": 90,
+                  "tempo": null,
+                  "alternatives": []
+                }
+              ],
+              "progressionRule": "Add reps to the top of the range before adding load.",
+              "regressionRule": "Reduce load if RPE exceeds target by more than 1.5.",
+              "expectedInterference": {
+                "level": "LOW",
+                "affectedRegions": ["QUADRICEPS"],
+                "notes": "48 hours before intervals."
+              }
+            }
+          }
+        ],
+        "wednesday": [
+          {
+            "schemaVersion": "1.0.0",
+            "id": "0193b2a0-0000-7000-8000-000000000412",
+            "type": "TENNIS",
+            "trainingDay": "2026-10-28",
+            "order": 0,
+            "isKeyWorkout": false,
+            "objective": "Recreational tennis (scheduled)",
+            "explanation": {
+              "what": "Usual 90-minute practice session.",
+              "why": "Recurring tennis counts as training load and is included in the week's load."
+            },
+            "tennis": {
+              "sessionType": "PRACTICE",
+              "durationSeconds": 5400,
+              "expectedRpe": 6,
+              "recreational": true,
+              "countsAsTrainingLoad": true
+            }
+          }
+        ],
+        "thursday": [
+          {
+            "schemaVersion": "1.0.0",
+            "id": "0193b2a0-0000-7000-8000-000000000413",
+            "type": "ENDURANCE",
+            "trainingDay": "2026-10-29",
+            "order": 0,
+            "isKeyWorkout": true,
+            "objective": "Threshold intervals",
+            "explanation": {
+              "what": "4 x 5 minutes at RPE 6 to 7.",
+              "why": "Reduced from 5 to 4 repetitions after Wednesday tennis (interference rule)."
+            },
+            "endurance": {
+              "sport": "RUNNING",
+              "durationSeconds": 3300,
+              "distanceMeters": null,
+              "warmup": [
+                {
+                  "kind": "WARMUP",
+                  "durationSeconds": 900,
+                  "distanceMeters": null,
+                  "target": { "rpe": { "min": 2, "max": 3 } }
+                }
+              ],
+              "mainSet": [
+                {
+                  "kind": "REPEAT",
+                  "count": 4,
+                  "steps": [
+                    {
+                      "kind": "WORK",
+                      "durationSeconds": 300,
+                      "distanceMeters": null,
+                      "target": { "rpe": { "min": 6, "max": 7 } }
+                    },
+                    {
+                      "kind": "RECOVERY",
+                      "durationSeconds": 120,
+                      "distanceMeters": null,
+                      "target": { "rpe": { "min": 2, "max": 3 } }
+                    }
+                  ]
+                }
+              ],
+              "cooldown": [
+                {
+                  "kind": "COOLDOWN",
+                  "durationSeconds": 720,
+                  "distanceMeters": null,
+                  "target": { "rpe": { "min": 1, "max": 2 } }
+                }
+              ],
+              "techniqueFocus": null,
+              "stopConditions": ["Stop immediately on red-flag symptoms or sudden severe pain."],
+              "evaluationMetrics": ["run.interval_degradation"]
+            }
+          }
+        ],
+        "friday": [],
+        "saturday": [
+          {
+            "schemaVersion": "1.0.0",
+            "id": "0193b2a0-0000-7000-8000-000000000414",
+            "type": "RECOVERY",
+            "trainingDay": "2026-10-31",
+            "order": 0,
+            "isKeyWorkout": false,
+            "objective": "Active recovery",
+            "explanation": {
+              "what": "30 minutes easy cycling or walking.",
+              "why": "Promotes recovery before Sunday's long run."
+            },
+            "recovery": {
+              "recoveryType": "ACTIVE_RECOVERY",
+              "sport": null,
+              "durationSeconds": 1800,
+              "description": "Very easy, conversational effort."
+            }
+          }
+        ],
+        "sunday": []
+      },
+      "keyWorkouts": ["0193b2a0-0000-7000-8000-000000000413"],
+      "strengthSessions": ["0193b2a0-0000-7000-8000-000000000411"],
+      "tennisSessions": ["0193b2a0-0000-7000-8000-000000000412"],
+      "recoveryDays": ["2026-10-26", "2026-10-31"],
+      "monitoringMetrics": ["run.hr_drift", "any.srpe_load"],
+      "adaptationRules": [
+        "If Wednesday tennis exceeds 120 minutes or RPE 8, replace Thursday intervals with an easy run."
+      ]
+    }
+  ]
+}

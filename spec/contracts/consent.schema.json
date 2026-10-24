@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:consent:1",
+  "title": "ConsentRecord",
+  "description": "Append-only consent ledger entry (PRIV-CON-001). The current state of a consent type is its latest record. Owner spec: spec/security/privacy.spec.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "consentId",
+    "athleteId",
+    "consentType",
+    "granted",
+    "grantedAt",
+    "revokedAt",
+    "policyVersion",
+    "purpose",
+    "recordedAt"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "consentId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "consentType": {
+      "enum": [
+        "ACTIVITIES",
+        "RECOVERY",
+        "SLEEP",
+        "HRV",
+        "PROVIDER_RECOVERY_METRICS",
+        "LONG_TERM_STORAGE",
+        "AI_PROCESSING",
+        "WOMENS_HEALTH"
+      ]
+    },
+    "granted": { "type": "boolean" },
+    "grantedAt": {
+      "oneOf": [
+        { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        { "type": "null" }
+      ]
+    },
+    "revokedAt": {
+      "oneOf": [
+        { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        { "type": "null" }
+      ]
+    },
+    "policyVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$" },
+    "purpose": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "recordedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" }
+  },
+  "if": { "properties": { "granted": { "const": true } } },
+  "then": {
+    "properties": {
+      "grantedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+      "revokedAt": { "type": "null" }
+    }
+  },
+  "else": {
+    "properties": {
+      "revokedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" }
+    }
+  }
+}

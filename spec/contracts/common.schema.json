@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:common:1",
+  "title": "Common definitions",
+  "description": "Shared value types. Convention: null means UNKNOWN (applicable but not known); an absent property means not applicable.",
+  "$defs": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.[0-9]+\\.[0-9]+$"
+    },
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "utcInstant": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "localDateTime": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$"
+    },
+    "localDate": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "ianaTimezone": {
+      "type": "string",
+      "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+\\-]+)*$",
+      "maxLength": 64
+    },
+    "utcOffset": {
+      "type": "string",
+      "pattern": "^[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sport": {
+      "enum": ["RUNNING", "CYCLING", "SWIMMING", "STRENGTH", "TENNIS", "OTHER"]
+    },
+    "confidence": {
+      "enum": ["HIGH", "MEDIUM", "LOW"]
+    },
+    "uncertaintyReason": {
+      "enum": [
+        "MISSING_DATA",
+        "SENSOR_QUALITY",
+        "NON_COMPARABLE_SESSION",
+        "ENVIRONMENT",
+        "INSUFFICIENT_HISTORY",
+        "ESTIMATED_VALUE"
+      ]
+    },
+    "metricOrigin": {
+      "enum": ["RAW_PROVIDER", "PROVIDER_DERIVED", "STANDARD_CALCULATION", "APPLICATION_DERIVED"]
+    },
+    "sourceOrigin": {
+      "enum": ["FILE_UPLOAD", "GARMIN_PERSONAL_API", "MANUAL_ENTRY"]
+    },
+    "metricId": {
+      "type": "string",
+      "pattern": "^[a-z]+\\.[a-z0-9_]+$"
+    },
+    "rpe": {
+      "description": "Rating of perceived exertion, CR-10 scale.",
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 10
+    },
+    "untrustedText": {
+      "description": "External text. Data only, never instructions (SEC-INJ-001).",
+      "type": ["string", "null"],
+      "maxLength": 4000
+    },
+    "nonNegativeOrUnknown": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "providerMetric": {
+      "type": "object",
+      "required": ["value", "provider", "metricName", "origin"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "type": ["number", "null"] },
+        "provider": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "metricName": { "type": "string", "maxLength": 100 },
+        "origin": { "enum": ["RAW_PROVIDER", "PROVIDER_DERIVED"] }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "RAW_SOURCE",
+            "ACTIVITY",
+            "DERIVED_METRIC",
+            "DAILY_RECOVERY",
+            "DAILY_CHECKIN",
+            "STRENGTH_SET_RESULT",
+            "WORKOUT_EXECUTION",
+            "RECOVERY_ASSESSMENT",
+            "INSIGHT",
+            "PLAN_VERSION"
+          ]
+        },
+        "id": { "$ref": "#/$defs/id" },
+        "field": { "type": "string", "maxLength": 200 },
+        "note": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "anomaly": {
+      "type": "object",
+      "required": ["code", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "field": { "type": "string", "maxLength": 200 },
+        "detail": { "type": "string", "maxLength": 300 }
+      }
+    },
+    "dataQuality": {
+      "type": "object",
+      "required": ["completeness", "reliability", "confidence", "anomalies", "uncertaintyReasons"],
+      "additionalProperties": false,
+      "properties": {
+        "completeness": { "type": "number", "minimum": 0, "maximum": 1 },
+        "reliability": { "enum": ["HIGH", "MEDIUM", "LOW", "UNKNOWN"] },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "anomalies": { "type": "array", "items": { "$ref": "#/$defs/anomaly" } },
+        "uncertaintyReasons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/uncertaintyReason" },
+          "uniqueItems": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 300 }
+        }
+      }
+    },
+    "fieldProvenance": {
+      "type": "object",
+      "required": ["sourceId", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": { "$ref": "#/$defs/id" },
+        "path": { "type": "string", "maxLength": 300 },
+        "rule": { "type": "string", "maxLength": 100 },
+        "overrideId": { "$ref": "#/$defs/id" }
+      }
+    }
+  }
+}

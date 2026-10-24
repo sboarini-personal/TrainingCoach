@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0.0",
+  "consentId": "0193b2a0-0000-7000-8000-000000001002",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "consentType": "HRV",
+  "granted": false,
+  "grantedAt": "2026-10-24T18:00:00Z",
+  "revokedAt": "2026-11-02T09:30:00Z",
+  "policyVersion": "1.0",
+  "purpose": "Use heart-rate variability as a recovery signal.",
+  "recordedAt": "2026-11-02T09:30:00Z"
+}

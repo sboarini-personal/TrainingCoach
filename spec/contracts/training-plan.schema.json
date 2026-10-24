@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:training-plan:1",
+  "title": "TrainingPlan version",
+  "description": "Immutable plan version (FR-PLN-002, ADR-010). contentHash is the SHA-256 of the canonical JSON of the content fields (phases, weeks, assumptions, provisional, startDate, endDate). Owner spec: spec/functional/planning.spec.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "planId",
+    "version",
+    "parentVersion",
+    "status",
+    "athleteId",
+    "goalId",
+    "generatedAt",
+    "activationReason",
+    "generator",
+    "provisional",
+    "assumptions",
+    "contentHash",
+    "startDate",
+    "endDate",
+    "phases",
+    "weeks"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "planId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "parentVersion": { "type": ["integer", "null"], "minimum": 1 },
+    "status": { "enum": ["DRAFT", "PROPOSED", "ACTIVE", "SUPERSEDED", "COMPLETED"] },
+    "supersededReason": {
+      "enum": ["ACTIVATED_NEWER_VERSION", "REJECTED", "REPLACED_BY_NEWER_PROPOSAL", null]
+    },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "goalId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "generatedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "activationReason": { "type": ["string", "null"], "maxLength": 1000 },
+    "generator": {
+      "type": "object",
+      "required": ["kind", "engineVersion", "promptVersion", "modelId", "decisionId"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["ENGINE", "AI_ASSISTED"] },
+        "engineVersion": { "type": "string", "maxLength": 20 },
+        "promptVersion": { "type": ["string", "null"], "maxLength": 20 },
+        "modelId": { "type": ["string", "null"], "maxLength": 100 },
+        "decisionId": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "provisional": {
+      "description": "true when PREFERRED inputs were missing (FR-ONB-004); assumptions must then be non-empty.",
+      "type": "boolean"
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 500 }
+    },
+    "contentHash": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" },
+    "startDate": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "endDate": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["phase", "startDate", "endDate", "focus"],
+        "additionalProperties": false,
+        "properties": {
+          "phase": { "$ref": "#/$defs/phase" },
+          "startDate": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+          "endDate": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+          "focus": { "type": "string", "maxLength": 500 }
+        }
+      }
+    },
+    "weeks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/trainingWeek" }
+    }
+  },
+  "if": { "properties": { "provisional": { "const": true } } },
+  "then": { "properties": { "assumptions": { "minItems": 1 } } },
+  "$defs": {
+    "phase": {
+      "enum": ["ADAPTATION", "BASE", "BUILD", "SPECIFIC", "TAPER", "COMPETITION", "RECOVERY", "TRANSITION"]
+    },
+    "dayWorkouts": {
+      "type": "array",
+      "maxItems": 4,
+      "items": { "$ref": "urn:coach:schema:workout:1" }
+    },
+    "trainingWeek": {
+      "type": "object",
+      "required": [
+        "weekIndex",
+        "startDate",
+        "phase",
+        "primaryGoal",
+        "estimatedLoad",
+        "days",
+        "keyWorkouts",
+        "strengthSessions",
+        "tennisSessions",
+        "recoveryDays",
+        "monitoringMetrics",
+        "adaptationRules"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "weekIndex": { "type": "integer", "minimum": 1 },
+        "startDate": {
+          "description": "Monday of the week, athlete-local date.",
+          "$ref": "urn:coach:schema:common:1#/$defs/localDate"
+        },
+        "phase": { "$ref": "#/$defs/phase" },
+        "primaryGoal": { "type": "string", "maxLength": 500 },
+        "estimatedLoad": {
+          "type": "object",
+          "required": ["sessionRpeLoad", "bySport"],
+          "additionalProperties": false,
+          "properties": {
+            "sessionRpeLoad": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+            "bySport": {
+              "description": "Per-sport external load; distances are never summed across sports (FR-MET-006).",
+              "type": "object",
+              "propertyNames": { "$ref": "urn:coach:schema:common:1#/$defs/sport" },
+              "additionalProperties": {
+                "type": "object",
+                "required": ["durationSeconds", "distanceMeters"],
+                "additionalProperties": false,
+                "properties": {
+                  "durationSeconds": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+                  "distanceMeters": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" }
+                }
+              }
+            }
+          }
+        },
+        "days": {
+          "type": "object",
+          "required": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+          "additionalProperties": false,
+          "properties": {
+            "monday": { "$ref": "#/$defs/dayWorkouts" },
+            "tuesday": { "$ref": "#/$defs/dayWorkouts" },
+            "wednesday": { "$ref": "#/$defs/dayWorkouts" },
+            "thursday": { "$ref": "#/$defs/dayWorkouts" },
+            "friday": { "$ref": "#/$defs/dayWorkouts" },
+            "saturday": { "$ref": "#/$defs/dayWorkouts" },
+            "sunday": { "$ref": "#/$defs/dayWorkouts" }
+          }
+        },
+        "keyWorkouts": { "$ref": "#/$defs/idList" },
+        "strengthSessions": { "$ref": "#/$defs/idList" },
+        "tennisSessions": { "$ref": "#/$defs/idList" },
+        "recoveryDays": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+        },
+        "monitoringMetrics": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "urn:coach:schema:common:1#/$defs/metricId" }
+        },
+        "adaptationRules": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 500 }
+        }
+      }
+    },
+    "idList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/id" }
+    }
+  }
+}

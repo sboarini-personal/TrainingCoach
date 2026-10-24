@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:workout:1",
+  "title": "PlannedWorkout",
+  "description": "A workout inside a training plan version (FR-PLN-004, FR-PLN-005, FR-PLN-008, FR-STR-004, FR-TEN-001). Exactly one detail block matching 'type' is present.",
+  "type": "object",
+  "required": ["schemaVersion", "id", "type", "trainingDay", "order", "isKeyWorkout", "objective", "explanation"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "id": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "type": { "enum": ["ENDURANCE", "STRENGTH", "TENNIS", "RECOVERY", "REST", "EVALUATION"] },
+    "trainingDay": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "order": { "type": "integer", "minimum": 0, "maximum": 9 },
+    "isKeyWorkout": { "type": "boolean" },
+    "objective": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "explanation": {
+      "type": "object",
+      "required": ["what", "why"],
+      "additionalProperties": false,
+      "properties": {
+        "what": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "why": { "type": "string", "minLength": 1, "maxLength": 1000 }
+      }
+    },
+    "endurance": { "$ref": "#/$defs/enduranceWorkout" },
+    "strength": { "$ref": "#/$defs/strengthWorkout" },
+    "tennis": { "$ref": "#/$defs/tennisSession" },
+    "recovery": { "$ref": "#/$defs/recoverySession" },
+    "evaluation": { "$ref": "#/$defs/evaluationSession" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "ENDURANCE" } } },
+      "then": {
+        "required": ["endurance"],
+        "properties": { "strength": false, "tennis": false, "recovery": false, "evaluation": false }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "STRENGTH" } } },
+      "then": {
+        "required": ["strength"],
+        "properties": { "endurance": false, "tennis": false, "recovery": false, "evaluation": false }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "TENNIS" } } },
+      "then": {
+        "required": ["tennis"],
+        "properties": { "endurance": false, "strength": false, "recovery": false, "evaluation": false }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "RECOVERY" } } },
+      "then": {
+        "required": ["recovery"],
+        "properties": { "endurance": false, "strength": false, "tennis": false, "evaluation": false }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "EVALUATION" } } },
+      "then": {
+        "required": ["evaluation"],
+        "properties": { "endurance": false, "strength": false, "tennis": false, "recovery": false }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "REST" } } },
+      "then": {
+        "properties": {
+          "endurance": false,
+          "strength": false,
+          "tennis": false,
+          "recovery": false,
+          "evaluation": false
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "movementPattern": {
+      "enum": [
+        "SQUAT",
+        "HIP_HINGE",
+        "LUNGE",
+        "CALF_RAISE",
+        "HORIZONTAL_PUSH",
+        "VERTICAL_PUSH",
+        "HORIZONTAL_PULL",
+        "VERTICAL_PULL",
+        "CORE_STABILIZATION",
+        "ANTI_ROTATION",
+        "LOADED_CARRY",
+        "SCAPULAR_STABILITY"
+      ]
+    },
+    "muscleGroup": {
+      "enum": [
+        "QUADRICEPS",
+        "HAMSTRINGS",
+        "GLUTES",
+        "CALVES",
+        "SOLEUS",
+        "ADDUCTORS",
+        "ABDUCTORS",
+        "FOOT_ANKLE",
+        "CORE",
+        "ERECTOR_SPINAE",
+        "LATS",
+        "RHOMBOIDS",
+        "TRAPEZIUS",
+        "PECTORALS",
+        "DELTOIDS",
+        "ROTATOR_CUFF",
+        "BICEPS",
+        "TRICEPS",
+        "FOREARMS"
+      ]
+    },
+    "exerciseId": { "type": "string", "pattern": "^ex\\.[a-z0-9_]+$" },
+    "range": {
+      "type": "object",
+      "required": ["min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "min": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 }
+      }
+    },
+    "intensityTarget": {
+      "description": "RPE is always present. Heart rate, pace and power only when supported by reliable athlete data (FR-PLN-005).",
+      "type": "object",
+      "required": ["rpe"],
+      "additionalProperties": false,
+      "properties": {
+        "rpe": {
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "number", "minimum": 0, "maximum": 10 },
+            "max": { "type": "number", "minimum": 0, "maximum": 10 }
+          }
+        },
+        "heartRate": {
+          "type": "object",
+          "required": ["zoneModelId", "minBpm", "maxBpm"],
+          "additionalProperties": false,
+          "properties": {
+            "zoneModelId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+            "minBpm": { "type": "integer", "minimum": 30, "maximum": 230 },
+            "maxBpm": { "type": "integer", "minimum": 30, "maximum": 230 }
+          }
+        },
+        "pace": {
+          "type": "object",
+          "required": ["unit", "min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "unit": { "enum": ["SECONDS_PER_KM", "SECONDS_PER_100M"] },
+            "min": { "type": "number", "exclusiveMinimum": 0 },
+            "max": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "power": {
+          "description": "Only with MEASURED power capability (FR-CYC-002).",
+          "type": "object",
+          "required": ["minWatts", "maxWatts"],
+          "additionalProperties": false,
+          "properties": {
+            "minWatts": { "type": "number", "minimum": 0 },
+            "maxWatts": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["kind", "durationSeconds", "distanceMeters", "target"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["WARMUP", "WORK", "RECOVERY", "COOLDOWN", "STEADY"] },
+        "durationSeconds": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "distanceMeters": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "target": { "$ref": "#/$defs/intensityTarget" },
+        "notes": { "type": "string", "maxLength": 300 }
+      },
+      "anyOf": [
+        { "properties": { "durationSeconds": { "type": "number" } } },
+        { "properties": { "distanceMeters": { "type": "number" } } }
+      ]
+    },
+    "repeat": {
+      "type": "object",
+      "required": ["kind", "count", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "REPEAT" },
+        "count": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } }
+      }
+    },
+    "enduranceWorkout": {
+      "type": "object",
+      "required": [
+        "sport",
+        "durationSeconds",
+        "distanceMeters",
+        "warmup",
+        "mainSet",
+        "cooldown",
+        "techniqueFocus",
+        "stopConditions",
+        "evaluationMetrics"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sport": { "enum": ["RUNNING", "CYCLING", "SWIMMING"] },
+        "durationSeconds": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "distanceMeters": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "warmup": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "mainSet": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "oneOf": [{ "$ref": "#/$defs/step" }, { "$ref": "#/$defs/repeat" }] }
+        },
+        "cooldown": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+        "techniqueFocus": { "type": ["string", "null"], "maxLength": 300 },
+        "stopConditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "maxLength": 300 }
+        },
+        "evaluationMetrics": {
+          "type": "array",
+          "items": { "$ref": "urn:coach:schema:common:1#/$defs/metricId" }
+        }
+      }
+    },
+    "strengthExercise": {
+      "type": "object",
+      "required": [
+        "exerciseId",
+        "movementPattern",
+        "primaryMuscles",
+        "secondaryMuscles",
+        "sets",
+        "reps",
+        "load",
+        "targetRpe",
+        "targetRir",
+        "restSeconds",
+        "tempo",
+        "alternatives"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "exerciseId": { "$ref": "#/$defs/exerciseId" },
+        "movementPattern": { "$ref": "#/$defs/movementPattern" },
+        "primaryMuscles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/muscleGroup" }
+        },
+        "secondaryMuscles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/muscleGroup" }
+        },
+        "sets": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "reps": { "$ref": "#/$defs/range" },
+        "load": {
+          "type": "object",
+          "required": ["kind", "value"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["ABSOLUTE_KG", "PERCENT_1RM", "RPE_BASED", "BODYWEIGHT"] },
+            "value": { "type": ["number", "null"], "minimum": 0 }
+          }
+        },
+        "targetRpe": { "$ref": "urn:coach:schema:common:1#/$defs/rpe" },
+        "targetRir": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+        "restSeconds": { "type": "integer", "minimum": 0, "maximum": 900 },
+        "tempo": { "type": ["string", "null"], "pattern": "^[0-9X]-[0-9X]-[0-9X]-[0-9X]$" },
+        "alternatives": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/exerciseId" }
+        }
+      }
+    },
+    "strengthWorkout": {
+      "type": "object",
+      "required": [
+        "purpose",
+        "estimatedDurationSeconds",
+        "warmup",
+        "exercises",
+        "progressionRule",
+        "regressionRule",
+        "expectedInterference"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "estimatedDurationSeconds": { "type": "integer", "minimum": 60, "maximum": 10800 },
+        "warmup": { "type": "array", "items": { "type": "string", "maxLength": 300 } },
+        "exercises": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/strengthExercise" }
+        },
+        "progressionRule": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "regressionRule": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "expectedInterference": {
+          "type": "object",
+          "required": ["level", "affectedRegions", "notes"],
+          "additionalProperties": false,
+          "properties": {
+            "level": { "enum": ["NONE", "LOW", "MODERATE", "HIGH", "VERY_HIGH"] },
+            "affectedRegions": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/muscleGroup" }
+            },
+            "notes": { "type": "string", "maxLength": 500 }
+          }
+        }
+      }
+    },
+    "tennisSession": {
+      "type": "object",
+      "required": ["sessionType", "durationSeconds", "expectedRpe", "recreational", "countsAsTrainingLoad"],
+      "additionalProperties": false,
+      "properties": {
+        "sessionType": { "enum": ["MATCH", "PRACTICE", "UNKNOWN"] },
+        "durationSeconds": { "type": "integer", "exclusiveMinimum": 0 },
+        "expectedRpe": { "$ref": "urn:coach:schema:common:1#/$defs/rpe" },
+        "recreational": { "const": true },
+        "countsAsTrainingLoad": { "const": true }
+      }
+    },
+    "recoverySession": {
+      "type": "object",
+      "required": ["recoveryType", "durationSeconds", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "recoveryType": { "enum": ["ACTIVE_RECOVERY", "MOBILITY", "EASY_SESSION"] },
+        "sport": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/sport" },
+            { "type": "null" }
+          ]
+        },
+        "durationSeconds": { "type": "integer", "exclusiveMinimum": 0 },
+        "description": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "evaluationSession": {
+      "description": "Assessment session. Non-submaximal tests require explicit athlete opt-in (FR-ONB-005).",
+      "type": "object",
+      "required": ["sport", "protocolId", "description", "submaximal", "requiresOptIn", "safetyNotes"],
+      "additionalProperties": false,
+      "properties": {
+        "sport": { "$ref": "urn:coach:schema:common:1#/$defs/sport" },
+        "protocolId": { "type": "string", "pattern": "^eval\\.[a-z0-9_]+$" },
+        "description": { "type": "string", "maxLength": 1000 },
+        "submaximal": { "type": "boolean" },
+        "requiresOptIn": { "type": "boolean" },
+        "safetyNotes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "maxLength": 300 }
+        }
+      },
+      "if": { "properties": { "submaximal": { "const": false } } },
+      "then": { "properties": { "requiresOptIn": { "const": true } } }
+    }
+  }
+}

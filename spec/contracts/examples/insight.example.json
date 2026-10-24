@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0.0",
+  "insightId": "0193b2a0-0000-7000-8000-000000000801",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "kind": "PATTERN.HR_DRIFT",
+  "observation": "Heart-rate drift in steady runs rose from 3.1% to 6.8% across the last three comparable sessions.",
+  "interpretation": "Aerobic durability in steady runs appears lower than two weeks ago.",
+  "hypothesis": "Possibly related to the higher tennis load this week or warmer conditions; not established.",
+  "recommendation": "Keep Sunday's long run easy and re-check drift next week before progressing volume.",
+  "relationship": "NONE",
+  "evidence": [
+    {
+      "kind": "DERIVED_METRIC",
+      "id": "0193b2a0-0000-7000-8000-000000000901",
+      "note": "run.hr_drift session 1"
+    },
+    {
+      "kind": "DERIVED_METRIC",
+      "id": "0193b2a0-0000-7000-8000-000000000902",
+      "note": "run.hr_drift session 3"
+    }
+  ],
+  "confidence": "MEDIUM",
+  "uncertaintyReasons": ["ENVIRONMENT", "SENSOR_QUALITY"],
+  "generatedAt": "2026-10-25T20:00:00Z",
+  "calculationVersions": { "run.hr_drift": "1.0.0" },
+  "agentVersion": { "promptVersion": "1.0.0", "modelId": null }
+}

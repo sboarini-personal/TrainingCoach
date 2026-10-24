@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "0193b2a0-0000-7000-8000-000000000402",
+  "type": "ENDURANCE",
+  "trainingDay": "2026-10-29",
+  "order": 0,
+  "isKeyWorkout": true,
+  "objective": "Threshold intervals",
+  "explanation": {
+    "what": "15 minutes easy, 5 x 5 minutes at RPE 6 to 7 with 2 minutes easy, 10 minutes cool-down.",
+    "why": "Builds sustainable pace for the 10K goal; heart-rate targets come from the athlete's measured zone model."
+  },
+  "endurance": {
+    "sport": "RUNNING",
+    "durationSeconds": 3600,
+    "distanceMeters": null,
+    "warmup": [
+      {
+        "kind": "WARMUP",
+        "durationSeconds": 900,
+        "distanceMeters": null,
+        "target": { "rpe": { "min": 2, "max": 3 } }
+      }
+    ],
+    "mainSet": [
+      {
+        "kind": "REPEAT",
+        "count": 5,
+        "steps": [
+          {
+            "kind": "WORK",
+            "durationSeconds": 300,
+            "distanceMeters": null,
+            "target": {
+              "rpe": { "min": 6, "max": 7 },
+              "heartRate": {
+                "zoneModelId": "0193b2a0-0000-7000-8000-000000000301",
+                "minBpm": 158,
+                "maxBpm": 166
+              }
+            }
+          },
+          {
+            "kind": "RECOVERY",
+            "durationSeconds": 120,
+            "distanceMeters": null,
+            "target": { "rpe": { "min": 2, "max": 3 } }
+          }
+        ]
+      }
+    ],
+    "cooldown": [
+      {
+        "kind": "COOLDOWN",
+        "durationSeconds": 600,
+        "distanceMeters": null,
+        "target": { "rpe": { "min": 1, "max": 2 } }
+      }
+    ],
+    "techniqueFocus": "Relaxed shoulders, steady cadence",
+    "stopConditions": [
+      "Stop immediately on chest pain, fainting, unusual breathlessness or sudden severe pain.",
+      "End the interval set if the target cannot be held at RPE 7."
+    ],
+    "evaluationMetrics": ["run.interval_degradation", "run.hr_drift"]
+  }
+}

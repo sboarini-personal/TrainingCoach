@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "0193b2a0-0000-7000-8000-000000000101",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 2,
+  "provenance": {
+    "sources": [
+      {
+        "sourceId": "0193b2a0-0000-7000-8000-000000000201",
+        "origin": "GARMIN_PERSONAL_API",
+        "provider": "garmin",
+        "providerActivityId": "synthetic-1001",
+        "fileHash": null,
+        "linkKind": "PRIMARY",
+        "matchScore": null,
+        "dedupRulesVersion": null,
+        "linkedAt": "2026-10-20T22:05:00Z"
+      },
+      {
+        "sourceId": "0193b2a0-0000-7000-8000-000000000202",
+        "origin": "FILE_UPLOAD",
+        "provider": null,
+        "providerActivityId": null,
+        "fileHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "linkKind": "ENRICHMENT",
+        "matchScore": 0.97,
+        "dedupRulesVersion": "1.0.0",
+        "linkedAt": "2026-10-21T08:00:00Z"
+      }
+    ],
+    "importedAt": "2026-10-20T22:05:00Z",
+    "fields": {
+      "distance.meters": {
+        "sourceId": "0193b2a0-0000-7000-8000-000000000202",
+        "path": "session.total_distance",
+        "rule": "TOTALS_PREFER_FIT"
+      },
+      "cardiovascular.averageHr": {
+        "sourceId": "0193b2a0-0000-7000-8000-000000000202",
+        "path": "session.avg_heart_rate",
+        "rule": "HR_PREFER_FIT"
+      }
+    }
+  },
+  "classification": {
+    "sport": "RUNNING",
+    "subtype": "ROAD",
+    "providerType": "running"
+  },
+  "metadata": {
+    "name": "Morning run",
+    "description": null
+  },
+  "timing": {
+    "startTimeUtc": "2026-10-20T21:00:00Z",
+    "originalLocalTime": "2026-10-20T18:00:00",
+    "originalTimezone": "America/Argentina/Buenos_Aires",
+    "utcOffset": "-03:00",
+    "trainingDay": "2026-10-20",
+    "trainingDayBasis": "ACTIVITY_TIMEZONE",
+    "elapsedSeconds": 3720,
+    "movingSeconds": 3650
+  },
+  "distance": { "meters": 10050.5 },
+  "elevation": { "gainMeters": 85, "lossMeters": 83 },
+  "cardiovascular": {
+    "averageHr": 148,
+    "maxHr": 171,
+    "hrZones": {
+      "zoneModelId": "0193b2a0-0000-7000-8000-000000000301",
+      "secondsInZone": [120, 900, 2100, 480, 50]
+    }
+  },
+  "performance": {
+    "averageSpeedMps": 2.753,
+    "maxSpeedMps": 3.9,
+    "averagePaceSecondsPerKm": 363.2,
+    "cadence": { "average": 172, "max": 184, "unit": "STEPS_PER_MIN" },
+    "runningDynamics": {
+      "strideLengthMeters": 0.96,
+      "verticalOscillationMm": null,
+      "groundContactTimeMs": null
+    }
+  },
+  "training": {
+    "aerobicEffect": {
+      "value": 3.4,
+      "provider": "garmin",
+      "metricName": "aerobic training effect",
+      "origin": "PROVIDER_DERIVED"
+    },
+    "anaerobicEffect": null,
+    "load": {
+      "internal": {
+        "sessionRpeLoad": 310,
+        "providerLoad": null
+      }
+    }
+  },
+  "subjective": {
+    "rpe": 5,
+    "soreness": 2,
+    "pain": { "flag": false, "intensity": null, "location": null },
+    "comments": null
+  },
+  "environment": {
+    "temperatureC": 21.5,
+    "humidityPct": null,
+    "windMps": null,
+    "altitudeMeters": 25,
+    "terrain": "ROAD"
+  },
+  "streams": [
+    {
+      "kind": "TIME_SERIES",
+      "blobSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "quality": {
+    "completeness": 0.86,
+    "reliability": "MEDIUM",
+    "confidence": "MEDIUM",
+    "anomalies": [],
+    "uncertaintyReasons": [],
+    "warnings": ["Optical wrist heart rate; no chest strap declared."]
+  }
+}

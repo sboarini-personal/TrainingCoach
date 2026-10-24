@@ -1,0 +1,376 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:activity:1",
+  "title": "Activity",
+  "description": "Canonical, provider-independent logical activity (FR-ACT-001). null = UNKNOWN; absent = not applicable. Owner spec: spec/integration/canonical-model.spec.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "athleteId",
+    "version",
+    "provenance",
+    "classification",
+    "timing",
+    "distance",
+    "quality"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "id": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": {
+      "description": "Optimistic concurrency version (NFR-REL-003).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["sources", "importedAt", "fields"],
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/sourceLink" }
+        },
+        "importedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        "fields": {
+          "description": "Resolved field path (for example 'distance.meters') to its provenance (FR-ACT-005).",
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-zA-Z]+(\\.[a-zA-Z]+)*$" },
+          "additionalProperties": { "$ref": "urn:coach:schema:common:1#/$defs/fieldProvenance" }
+        }
+      }
+    },
+    "classification": {
+      "type": "object",
+      "required": ["sport", "subtype"],
+      "additionalProperties": false,
+      "properties": {
+        "sport": { "$ref": "urn:coach:schema:common:1#/$defs/sport" },
+        "subtype": { "type": ["string", "null"], "pattern": "^[A-Z_]+$" },
+        "providerType": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "sport": { "const": "SWIMMING" } } },
+          "then": { "properties": { "subtype": { "enum": ["POOL", "OPEN_WATER", null] } } }
+        },
+        {
+          "if": { "properties": { "sport": { "const": "TENNIS" } } },
+          "then": { "properties": { "subtype": { "enum": ["MATCH", "PRACTICE", null] } } }
+        }
+      ]
+    },
+    "metadata": {
+      "description": "External text (activity name, description). UNTRUSTED data, never instructions (SEC-INJ-001).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" },
+        "description": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "required": [
+        "startTimeUtc",
+        "originalLocalTime",
+        "originalTimezone",
+        "utcOffset",
+        "trainingDay",
+        "trainingDayBasis",
+        "elapsedSeconds",
+        "movingSeconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "startTimeUtc": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        "originalLocalTime": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/localDateTime" },
+            { "type": "null" }
+          ]
+        },
+        "originalTimezone": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/ianaTimezone" },
+            { "type": "null" }
+          ]
+        },
+        "utcOffset": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/utcOffset" },
+            { "type": "null" }
+          ]
+        },
+        "trainingDay": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+        "trainingDayBasis": {
+          "enum": ["ACTIVITY_TIMEZONE", "ATHLETE_TIMEZONE_ESTIMATED", "CONFIGURED"]
+        },
+        "elapsedSeconds": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "movingSeconds": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" }
+      }
+    },
+    "distance": {
+      "type": "object",
+      "required": ["meters"],
+      "additionalProperties": false,
+      "properties": {
+        "meters": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" }
+      }
+    },
+    "elevation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gainMeters": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "lossMeters": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" }
+      }
+    },
+    "cardiovascular": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "averageHr": { "type": ["integer", "null"], "minimum": 0, "maximum": 260 },
+        "maxHr": { "type": ["integer", "null"], "minimum": 0, "maximum": 260 },
+        "hrZones": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["zoneModelId", "secondsInZone"],
+              "additionalProperties": false,
+              "properties": {
+                "zoneModelId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+                "secondsInZone": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 10,
+                  "items": { "type": "number", "minimum": 0 }
+                }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "averageSpeedMps": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "maxSpeedMps": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "averagePaceSecondsPerKm": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "averagePaceSecondsPer100m": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "cadence": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["average", "max", "unit"],
+              "additionalProperties": false,
+              "properties": {
+                "average": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+                "max": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+                "unit": { "enum": ["STEPS_PER_MIN", "RPM", "STROKES_PER_MIN"] }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "power": {
+          "description": "Present only when power values were reported. MEASURED requires a reliable power source (FR-CYC-002).",
+          "type": "object",
+          "required": ["source", "averageWatts", "maxWatts"],
+          "additionalProperties": false,
+          "properties": {
+            "source": { "enum": ["MEASURED", "ESTIMATED", "UNKNOWN"] },
+            "averageWatts": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+            "maxWatts": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" }
+          }
+        },
+        "runningDynamics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "strideLengthMeters": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+            "verticalOscillationMm": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+            "groundContactTimeMs": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" }
+          }
+        }
+      }
+    },
+    "swimming": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "lengthCount": { "type": ["integer", "null"], "minimum": 0 },
+        "strokeType": {
+          "enum": ["FREESTYLE", "BACKSTROKE", "BREASTSTROKE", "BUTTERFLY", "MIXED", "DRILL", null]
+        },
+        "averageStrokeRate": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "swolf": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["value", "origin"],
+              "additionalProperties": false,
+              "properties": {
+                "value": { "type": "number", "minimum": 0 },
+                "origin": { "$ref": "urn:coach:schema:common:1#/$defs/metricOrigin" }
+              }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "strength": {
+      "type": "object",
+      "required": ["strengthSessionId"],
+      "additionalProperties": false,
+      "properties": {
+        "strengthSessionId": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "training": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "aerobicEffect": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/providerMetric" },
+            { "type": "null" }
+          ]
+        },
+        "anaerobicEffect": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/providerMetric" },
+            { "type": "null" }
+          ]
+        },
+        "load": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "external": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "workKilojoules": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+                "volumeLoadKg": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" }
+              }
+            },
+            "internal": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sessionRpeLoad": {
+                  "description": "RPE (CR-10) x minutes, arbitrary units (metric any.srpe_load).",
+                  "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown"
+                },
+                "providerLoad": {
+                  "oneOf": [
+                    { "$ref": "urn:coach:schema:common:1#/$defs/providerMetric" },
+                    { "type": "null" }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "subjective": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rpe": { "$ref": "urn:coach:schema:common:1#/$defs/rpe" },
+        "soreness": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "pain": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["flag"],
+              "additionalProperties": false,
+              "properties": {
+                "flag": { "type": "boolean" },
+                "intensity": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+                "location": { "type": ["string", "null"], "maxLength": 100 }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "comments": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temperatureC": { "type": ["number", "null"], "minimum": -60, "maximum": 60 },
+        "humidityPct": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "windMps": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
+        "altitudeMeters": { "type": ["number", "null"], "minimum": -500, "maximum": 9000 },
+        "terrain": { "enum": ["ROAD", "TRAIL", "TRACK", "MIXED", "INDOOR", "WATER", "COURT", null] },
+        "surface": { "enum": ["HARD", "CLAY", "GRASS", "CARPET", "OTHER", null] },
+        "poolLengthMeters": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 }
+      }
+    },
+    "streams": {
+      "description": "References to stored stream blobs; streams are never inlined.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "blobSha256"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": ["TIME_SERIES", "LAPS", "LENGTHS", "SETS"]
+          },
+          "blobSha256": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" }
+        }
+      }
+    },
+    "quality": { "$ref": "urn:coach:schema:common:1#/$defs/dataQuality" }
+  },
+  "$defs": {
+    "sourceLink": {
+      "type": "object",
+      "required": [
+        "sourceId",
+        "origin",
+        "provider",
+        "providerActivityId",
+        "fileHash",
+        "linkKind",
+        "linkedAt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+        "origin": { "$ref": "urn:coach:schema:common:1#/$defs/sourceOrigin" },
+        "provider": { "type": ["string", "null"], "pattern": "^[a-z0-9_]+$" },
+        "providerActivityId": { "type": ["string", "null"], "maxLength": 100 },
+        "fileHash": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:common:1#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "linkKind": { "enum": ["PRIMARY", "ENRICHMENT"] },
+        "matchScore": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "dedupRulesVersion": { "type": ["string", "null"], "maxLength": 20 },
+        "linkedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" }
+      }
+    }
+  }
+}

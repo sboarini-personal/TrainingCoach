@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "0193b2a0-0000-7000-8000-000000000401",
+  "type": "STRENGTH",
+  "trainingDay": "2026-10-27",
+  "order": 0,
+  "isKeyWorkout": false,
+  "objective": "Lower-body strength maintenance during the BASE phase",
+  "explanation": {
+    "what": "Goblet squat, Romanian deadlift and standing calf raise, 3 sets each at moderate effort.",
+    "why": "Maintains lower-body force and tendon resilience for running; scheduled 48 hours before Thursday's intervals at moderate RPE to keep interference low."
+  },
+  "strength": {
+    "purpose": "Maintain lower-body strength and calf-Achilles capacity",
+    "estimatedDurationSeconds": 2700,
+    "warmup": ["5 minutes easy cycling", "Hip and ankle mobility, 2 rounds"],
+    "exercises": [
+      {
+        "exerciseId": "ex.goblet_squat",
+        "movementPattern": "SQUAT",
+        "primaryMuscles": ["QUADRICEPS", "GLUTES"],
+        "secondaryMuscles": ["ADDUCTORS", "CORE"],
+        "sets": 3,
+        "reps": { "min": 8, "max": 10 },
+        "load": { "kind": "RPE_BASED", "value": null },
+        "targetRpe": 7,
+        "targetRir": 3,
+        "restSeconds": 90,
+        "tempo": "3-1-1-0",
+        "alternatives": ["ex.leg_press"]
+      },
+      {
+        "exerciseId": "ex.romanian_deadlift",
+        "movementPattern": "HIP_HINGE",
+        "primaryMuscles": ["HAMSTRINGS", "GLUTES"],
+        "secondaryMuscles": ["ERECTOR_SPINAE", "FOREARMS"],
+        "sets": 3,
+        "reps": { "min": 8, "max": 8 },
+        "load": { "kind": "ABSOLUTE_KG", "value": 40 },
+        "targetRpe": 7,
+        "targetRir": 3,
+        "restSeconds": 120,
+        "tempo": "3-0-1-0",
+        "alternatives": ["ex.hip_thrust"]
+      },
+      {
+        "exerciseId": "ex.standing_calf_raise",
+        "movementPattern": "CALF_RAISE",
+        "primaryMuscles": ["CALVES"],
+        "secondaryMuscles": ["SOLEUS", "FOOT_ANKLE"],
+        "sets": 3,
+        "reps": { "min": 12, "max": 15 },
+        "load": { "kind": "BODYWEIGHT", "value": null },
+        "targetRpe": 7,
+        "targetRir": 3,
+        "restSeconds": 60,
+        "tempo": "2-1-2-0",
+        "alternatives": ["ex.seated_calf_raise"]
+      }
+    ],
+    "progressionRule": "Add one or two reps per set until the top of the range is reached at target RPE in two consecutive sessions, then increase load by the smallest available increment.",
+    "regressionRule": "If reps are missed or RPE exceeds the target by more than 1.5 in two sessions, or pain is reported for the region, reduce load or switch to the listed alternative.",
+    "expectedInterference": {
+      "level": "LOW",
+      "affectedRegions": ["QUADRICEPS", "GLUTES", "CALVES"],
+      "notes": "48 hours before intervals at moderate effort."
+    }
+  }
+}
