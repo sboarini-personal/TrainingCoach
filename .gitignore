@@ -1,0 +1,54 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.import_linter_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# --- Secrets and local configuration: never committed (SEC-SEC-003) ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+
+# --- Athlete data: never committed (PRIV-*, threat model R-01) ---
+# Runtime data lives outside the repository (default %LOCALAPPDATA%\CoachDeportivo).
+data/
+*.fit
+*.FIT
+*.tcx
+*.gpx
+*.csv
+*.zip
+*.sqlite
+*.sqlite3
+*.db
+# Synthetic test fixtures are the only allowed exception.
+!tests/fixtures/**
+
+# --- Generated reports ---
+reports/
+
+# --- Claude Code local state ---
+.claude/settings.local.json
+.claude/worktrees/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

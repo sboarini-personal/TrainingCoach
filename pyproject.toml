@@ -1,0 +1,89 @@
+[project]
+name = "multisport-coach"
+version = "0.1.0"
+description = "Personal Multisport Performance Coach: spec-driven, data-driven coaching for running, cycling, swimming, strength and tennis."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3",
+  "jsonschema>=4.23",
+  "ruff>=0.8",
+  "mypy>=1.13",
+  "import-linter>=2.1",
+  "pre-commit>=4.0",
+  "detect-secrets>=1.5",
+  "pip-audit>=2.7",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/coach"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "tools"]
+
+[tool.ruff.lint]
+select = [
+  "E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF",
+  "S",    # bandit security rules
+  "DTZ",  # naive datetimes are forbidden (FR-ACT-003)
+  "PT", "PTH", "T20", "PLE", "PLW",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"tools/**" = ["T20"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests", "tools"]
+mypy_path = ["src", "tools"]
+
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*", "referencing", "referencing.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tools"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+markers = [
+  "req(*ids): requirement IDs from spec/requirements-index.md verified by this test (NFR-TRC-002)",
+  "acceptance(id): acceptance test ID from spec/acceptance verified by this test",
+]
+
+# ---------------------------------------------------------------- import-linter
+# Architectural rules from docs/architecture.md, enforced on every CI run.
+[tool.importlinter]
+root_package = "coach"
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture: outer layers depend inward only (ADR-008, docs/architecture.md)"
+type = "layers"
+layers = [
+  "coach.api | coach.cli | coach.agent",
+  "coach.integrations | coach.infrastructure",
+  "coach.application",
+  "coach.planning | coach.policy",
+  "coach.metrics",
+  "coach.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "AI agent never touches provider adapters, credentials or storage directly (ADR-001, ADR-006)"
+type = "forbidden"
+source_modules = ["coach.agent"]
+forbidden_modules = ["coach.integrations", "coach.infrastructure"]

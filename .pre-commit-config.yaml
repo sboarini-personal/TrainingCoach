@@ -1,0 +1,26 @@
+# Local hooks run through uv so tool versions come from uv.lock (no unpinned remote hooks).
+# Install once per clone:  uv run pre-commit install
+repos:
+  - repo: local
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets (SEC-SEC-006)
+        entry: uv run detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        exclude: ^uv\.lock$
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format --force-exclude --check
+        language: system
+        types_or: [python, pyi]
+      - id: no-athlete-data
+        name: block athlete data files (PRIV, threat model R-01)
+        entry: athlete data files must not be committed; use synthetic fixtures under tests/fixtures
+        language: fail
+        files: \.(fit|FIT|tcx|gpx|zip|sqlite3?|db)$
+        exclude: ^tests/fixtures/
