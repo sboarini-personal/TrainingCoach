@@ -30,6 +30,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     known = load_requirements()
     unknown = sorted({req for ids in _REQUIREMENTS_BY_TEST.values() for req in ids} - known.keys())
     if unknown:
+        _REQUIREMENTS_BY_TEST.clear()  # an aborted run must not overwrite the last report
         raise pytest.UsageError(f"Tests reference unknown requirement IDs: {unknown}")
 
 
