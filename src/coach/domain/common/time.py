@@ -7,12 +7,16 @@ timezone is unknown (spec/functional/activities.spec.md section 2).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from enum import IntEnum, StrEnum
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from coach.domain.common.errors import DomainValidationError
+
+_UTC_OFFSET = re.compile(r"^(?P<sign>[+-])(?P<hours>[0-9]{2}):(?P<minutes>[0-5][0-9])$")
+MAX_UTC_OFFSET = timedelta(hours=14)
 
 
 def ensure_utc(value: datetime) -> datetime:
@@ -84,12 +88,26 @@ def local_context(instant: datetime, zone: ZoneInfo) -> LocalContext:
     return LocalContext(
         local_time=local.replace(tzinfo=None),
         timezone=zone.key,
-        utc_offset=_format_offset(offset),
+        utc_offset=format_utc_offset(offset),
     )
 
 
-def _format_offset(offset: timedelta) -> str:
+def format_utc_offset(offset: timedelta) -> str:
+    """``+HH:MM`` text of a UTC offset within +/-14:00, in whole minutes."""
+    if abs(offset) > MAX_UTC_OFFSET or offset % timedelta(minutes=1):
+        raise DomainValidationError("UTC offset must be whole minutes within +/-14:00")
     total_minutes = int(offset.total_seconds()) // 60
     sign = "-" if total_minutes < 0 else "+"
     hours, minutes = divmod(abs(total_minutes), 60)
     return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def parse_utc_offset(text: str) -> timedelta:
+    """Parse ``+HH:MM``/``-HH:MM`` within +/-14:00."""
+    match = _UTC_OFFSET.match(text)
+    if match is None:
+        raise DomainValidationError(f"invalid UTC offset: {text!r}")
+    offset = timedelta(hours=int(match["hours"]), minutes=int(match["minutes"]))
+    if offset > MAX_UTC_OFFSET:
+        raise DomainValidationError(f"UTC offset beyond 14 hours: {text!r}")
+    return -offset if match["sign"] == "-" else offset

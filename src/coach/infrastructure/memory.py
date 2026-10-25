@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import secrets
 import threading
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from uuid import UUID
 
 from coach.application.audit import (
@@ -25,8 +26,16 @@ from coach.application.events import EventName, check_fields
 from coach.application.identity import Identity, OwnerAlreadyRegisteredError
 from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope, check_owner
-from coach.application.ports import IdFactory, OwnedAggregate
+from coach.application.ports import ActivityChange, IdFactory, OwnedAggregate
 from coach.application.secrets import SecretValue
+from coach.domain.activity.activity import Activity
+from coach.domain.activity.observation import Observation, SourceKey
+from coach.domain.activity.overrides import (
+    DataOverride,
+    EntityType,
+    StaleOverrideError,
+    check_new_override,
+)
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import (
     DerivedMetricValue,
@@ -190,6 +199,152 @@ class InMemoryDerivedValueRepository:
         if item is None or item.athlete_id != scope.athlete_id:
             raise NotFoundError
         return item
+
+
+class InMemoryActivityRepository:
+    """Activities with a source index over live activities, like the SQLite adapter."""
+
+    def __init__(self) -> None:
+        self._items: dict[UUID, Activity] = {}
+        self._lock = threading.Lock()
+
+    def get(self, scope: OwnerScope, activity_id: UUID) -> Activity:
+        with self._lock:
+            item = self._items.get(activity_id)
+            if item is None or item.athlete_id != scope.athlete_id:
+                raise NotFoundError
+            return item
+
+    def list_all(self, scope: OwnerScope) -> list[Activity]:
+        with self._lock:
+            return self._owned(scope)
+
+    def find_by_source(self, scope: OwnerScope, key: SourceKey) -> Activity | None:
+        with self._lock:
+            return next((item for item in self._live(scope) if key in item.source_keys), None)
+
+    def find_by_provider_record(
+        self, scope: OwnerScope, provider: str, provider_activity_id: str
+    ) -> Activity | None:
+        with self._lock:
+            found = [
+                item
+                for item in self._live(scope)
+                if any(
+                    (link.provider, link.provider_activity_id) == (provider, provider_activity_id)
+                    for link in item.sources
+                )
+            ]
+            return min(found, key=lambda item: str(item.activity_id), default=None)
+
+    def starting_between(self, scope: OwnerScope, start: datetime, end: datetime) -> list[Activity]:
+        with self._lock:
+            found = [item for item in self._live(scope) if start <= item.start_time_utc <= end]
+            return sorted(found, key=lambda item: item.start_time_utc)
+
+    def save(self, scope: OwnerScope, changes: Sequence[ActivityChange]) -> list[Activity]:
+        with self._lock:
+            staged = dict(self._items)
+            stored = []
+            for change in changes:
+                activity = change.activity
+                if change.expected_version is None:
+                    check_owner(scope, activity.athlete_id)
+                    if activity.activity_id in staged:
+                        raise ConcurrencyConflictError("resource already exists")
+                    saved = activity.with_version(1)
+                else:
+                    current = staged.get(activity.activity_id)
+                    if current is None or current.athlete_id != scope.athlete_id:
+                        raise NotFoundError
+                    check_owner(scope, activity.athlete_id)
+                    if current.version != change.expected_version:
+                        raise ConcurrencyConflictError("resource was modified concurrently")
+                    saved = activity.with_version(change.expected_version + 1)
+                staged[saved.activity_id] = saved
+                stored.append(saved)
+            keys = [
+                key
+                for item in staged.values()
+                if item.athlete_id == scope.athlete_id and item.is_live
+                for key in item.source_keys
+            ]
+            if len(keys) != len(set(keys)):
+                raise ConcurrencyConflictError("source already linked to another activity")
+            self._items = staged
+            return stored
+
+    def _owned(self, scope: OwnerScope) -> list[Activity]:
+        return [item for item in self._items.values() if item.athlete_id == scope.athlete_id]
+
+    def _live(self, scope: OwnerScope) -> list[Activity]:
+        return [item for item in self._owned(scope) if item.is_live]
+
+
+class InMemoryObservationRepository:
+    def __init__(self) -> None:
+        self._items: dict[SourceKey, Observation] = {}
+        self._lock = threading.Lock()
+
+    def add(self, scope: OwnerScope, observation: Observation) -> tuple[Observation, bool]:
+        check_owner(scope, observation.athlete_id)
+        with self._lock:
+            existing = self._items.get(observation.key)
+            if existing is None:
+                self._items[observation.key] = observation
+                return observation, True
+            if existing != observation:
+                raise ConcurrencyConflictError("a different observation exists for this source")
+            return existing, False
+
+    def get(self, scope: OwnerScope, key: SourceKey) -> Observation:
+        with self._lock:
+            item = self._items.get(key)
+            if item is None or item.athlete_id != scope.athlete_id:
+                raise NotFoundError
+            return item
+
+
+class InMemoryOverrideRepository:
+    def __init__(self) -> None:
+        self._items: dict[UUID, DataOverride] = {}
+        self._lock = threading.Lock()
+
+    def add(self, scope: OwnerScope, override: DataOverride) -> DataOverride:
+        check_owner(scope, override.athlete_id)
+        with self._lock:
+            if override.override_id in self._items:
+                raise ConcurrencyConflictError("override id already used")
+            existing = self._for_entity(scope, override.entity_type, override.entity_id)
+            try:
+                check_new_override(existing, override)
+            except StaleOverrideError as error:
+                raise ConcurrencyConflictError(str(error)) from error
+            self._items[override.override_id] = override
+            return override
+
+    def get(self, scope: OwnerScope, override_id: UUID) -> DataOverride:
+        with self._lock:
+            item = self._items.get(override_id)
+            if item is None or item.athlete_id != scope.athlete_id:
+                raise NotFoundError
+            return item
+
+    def for_entity(
+        self, scope: OwnerScope, entity_type: EntityType, entity_id: UUID
+    ) -> list[DataOverride]:
+        with self._lock:
+            return self._for_entity(scope, entity_type, entity_id)
+
+    def _for_entity(
+        self, scope: OwnerScope, entity_type: EntityType, entity_id: UUID
+    ) -> list[DataOverride]:
+        return [
+            item
+            for item in self._items.values()
+            if (item.athlete_id, item.entity_type, item.entity_id)
+            == (scope.athlete_id, entity_type, entity_id)
+        ]
 
 
 class InMemoryCredentialProvider:

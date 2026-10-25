@@ -26,6 +26,16 @@ class EventName(StrEnum):
     CONSENT_DECLINED = "consent.declined"
     CREDENTIAL_STORED = "credential.stored"
     CREDENTIAL_ROTATED = "credential.rotated"
+    ACTIVITY_CREATED = "activity.created"
+    ACTIVITY_CORRECTED = "activity.corrected"
+    INGESTION_DUPLICATE = "ingestion.duplicate"
+    DEDUP_LINKED = "dedup.linked"
+    DEDUP_AMBIGUOUS = "dedup.ambiguous"
+    DEDUP_MERGED = "dedup.merged"
+    DEDUP_KEPT_SEPARATE = "dedup.kept_separate"
+    DEDUP_SPLIT = "dedup.split"
+    QUALITY_ISSUE_RAISED = "quality.issue.raised"
+    QUALITY_ISSUE_RESOLVED = "quality.issue.resolved"
 
 
 def check_fields(fields: Mapping[str, str]) -> dict[str, str]:

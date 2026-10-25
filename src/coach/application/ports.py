@@ -8,6 +8,7 @@ athlete is reported exactly like a missing one.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, Self
 from uuid import UUID
@@ -17,6 +18,9 @@ from coach.application.events import EventName
 from coach.application.identity import Identity
 from coach.application.ownership import OwnerScope
 from coach.application.secrets import SecretValue
+from coach.domain.activity.activity import Activity
+from coach.domain.activity.observation import Observation, SourceKey
+from coach.domain.activity.overrides import DataOverride, EntityType
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import DerivedMetricValue, MetricSubject
 
@@ -79,6 +83,54 @@ class DerivedValueRepository(Protocol):
     def history(
         self, scope: OwnerScope, metric_id: str, subject: MetricSubject
     ) -> Sequence[DerivedMetricValue]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ActivityChange:
+    """An activity to save: new when ``expected_version`` is ``None``, else an update."""
+
+    activity: Activity
+    expected_version: int | None = None
+
+
+class ActivityRepository(Protocol):
+    """Logical activities (ADR-004). A linked source belongs to at most one live activity."""
+
+    def get(self, scope: OwnerScope, activity_id: UUID) -> Activity: ...
+
+    def list_all(self, scope: OwnerScope) -> Sequence[Activity]: ...
+
+    def find_by_source(self, scope: OwnerScope, key: SourceKey) -> Activity | None: ...
+
+    def find_by_provider_record(
+        self, scope: OwnerScope, provider: str, provider_activity_id: str
+    ) -> Activity | None: ...
+
+    def starting_between(
+        self, scope: OwnerScope, start: datetime, end: datetime
+    ) -> Sequence[Activity]: ...
+
+    def save(self, scope: OwnerScope, changes: Sequence[ActivityChange]) -> list[Activity]: ...
+
+
+class ObservationRepository(Protocol):
+    """Immutable source observations; adding an identical one again returns the stored one."""
+
+    def add(self, scope: OwnerScope, observation: Observation) -> tuple[Observation, bool]: ...
+
+    def get(self, scope: OwnerScope, key: SourceKey) -> Observation: ...
+
+
+class OverrideRepository(Protocol):
+    """Append-only corrections; each new override extends its field's chain (FR-ACT-006)."""
+
+    def add(self, scope: OwnerScope, override: DataOverride) -> DataOverride: ...
+
+    def get(self, scope: OwnerScope, override_id: UUID) -> DataOverride: ...
+
+    def for_entity(
+        self, scope: OwnerScope, entity_type: EntityType, entity_id: UUID
+    ) -> Sequence[DataOverride]: ...
 
 
 class BlobStore(Protocol):

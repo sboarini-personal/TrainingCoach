@@ -1,8 +1,9 @@
 """Lineage from a derived value down to its sources (NFR-TRC-001).
 
-Derived values and RAW sources resolve now; other evidence kinds (activities, check-ins, ...)
-stay unresolved until their repositories exist. A reference that does not resolve for this
-athlete is reported as unresolved, never as another athlete's data.
+Derived values, activities (down to their linked RAW sources) and RAW sources resolve; other
+evidence kinds (check-ins, ...) stay unresolved until their repositories exist. A reference
+that does not resolve for this athlete is reported as unresolved, never as another athlete's
+data.
 """
 
 from __future__ import annotations
@@ -13,7 +14,12 @@ from uuid import UUID
 
 from coach.application.errors import NotFoundError
 from coach.application.ownership import OwnerScope
-from coach.application.ports import DerivedValueRepository, RawSourceRepository
+from coach.application.ports import (
+    ActivityRepository,
+    DerivedValueRepository,
+    RawSourceRepository,
+)
+from coach.domain.activity.activity import Activity
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import DerivedMetricValue
@@ -28,14 +34,20 @@ class LineageError(RuntimeError):
 @dataclass(frozen=True, slots=True)
 class LineageNode:
     reference: EvidenceRef
-    resolved: DerivedMetricValue | RawSource | None
+    resolved: DerivedMetricValue | Activity | RawSource | None
     children: tuple[LineageNode, ...] = ()
 
 
 class LineageService:
-    def __init__(self, values: DerivedValueRepository, sources: RawSourceRepository) -> None:
+    def __init__(
+        self,
+        values: DerivedValueRepository,
+        sources: RawSourceRepository,
+        activities: ActivityRepository,
+    ) -> None:
         self._values = values
         self._sources = sources
+        self._activities = activities
 
     def trace(self, scope: OwnerScope, value_id: UUID) -> LineageNode:
         """Lineage of an owned derived value; raises NotFoundError for anything else."""
@@ -79,6 +91,19 @@ class LineageService:
                 return self._expand(scope, reference, value, depth=depth, seen=seen)
             if reference.kind is EvidenceKind.RAW_SOURCE:
                 return LineageNode(reference, self._sources.get(scope, reference.ref_id))
+            if reference.kind is EvidenceKind.ACTIVITY:
+                return self._activity(scope, reference)
         except NotFoundError:
             return LineageNode(reference, None)
         return LineageNode(reference, None)
+
+    def _activity(self, scope: OwnerScope, reference: EvidenceRef) -> LineageNode:
+        activity = self._activities.get(scope, reference.ref_id)
+        children = []
+        for link in activity.sources:
+            source_ref = EvidenceRef(EvidenceKind.RAW_SOURCE, link.source_id)
+            try:
+                children.append(LineageNode(source_ref, self._sources.get(scope, link.source_id)))
+            except NotFoundError:
+                children.append(LineageNode(source_ref, None))
+        return LineageNode(reference, activity, tuple(children))

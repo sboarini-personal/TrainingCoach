@@ -48,6 +48,15 @@ def test_guard_finds_the_known_adapters() -> None:
         "SqliteRawSourceRepository",
         "SqliteDerivedValueRepository",
         "FileBlobStore",
+        "ActivityRepository",
+        "ObservationRepository",
+        "OverrideRepository",
+        "InMemoryActivityRepository",
+        "InMemoryObservationRepository",
+        "InMemoryOverrideRepository",
+        "SqliteActivityRepository",
+        "SqliteObservationRepository",
+        "SqliteOverrideRepository",
     } <= names
 
 

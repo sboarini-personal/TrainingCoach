@@ -49,3 +49,8 @@ class DerivedMetricService:
         if current.same_computation(candidate):
             return current
         return self._values.supersede(scope, current.value_id, candidate)
+
+    def current(
+        self, scope: OwnerScope, metric_id: str, subject: MetricSubject
+    ) -> DerivedMetricValue | None:
+        return self._values.current(scope, metric_id, subject)

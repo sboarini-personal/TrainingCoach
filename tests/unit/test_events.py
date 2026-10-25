@@ -22,6 +22,16 @@ def test_event_names_follow_the_nfr_catalogue() -> None:
         "consent.declined",
         "credential.stored",
         "credential.rotated",
+        "activity.created",
+        "activity.corrected",
+        "ingestion.duplicate",
+        "dedup.linked",
+        "dedup.ambiguous",
+        "dedup.merged",
+        "dedup.kept_separate",
+        "dedup.split",
+        "quality.issue.raised",
+        "quality.issue.resolved",
     }
 
 

@@ -124,7 +124,67 @@ BEGIN
 END;
 """
 
+_ACTIVITY_SCHEMA: Final = """
+CREATE TABLE activities (
+    activity_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    version INTEGER NOT NULL CHECK (version >= 1),
+    status TEXT NOT NULL CHECK (status IN ('ACTIVE', 'PENDING_REVIEW', 'MERGED')),
+    start_us INTEGER NOT NULL,
+    schema_version TEXT NOT NULL,
+    document TEXT NOT NULL CHECK (json_valid(document))
+) STRICT;
+CREATE INDEX activities_by_start ON activities (athlete_id, start_us);
+
+CREATE TABLE activity_sources (
+    athlete_id TEXT NOT NULL,
+    raw_source_id TEXT NOT NULL,
+    part INTEGER NOT NULL CHECK (part >= 0),
+    activity_id TEXT NOT NULL REFERENCES activities (activity_id),
+    provider TEXT,
+    provider_activity_id TEXT,
+    PRIMARY KEY (athlete_id, raw_source_id, part)
+) STRICT;
+CREATE INDEX activity_sources_by_activity ON activity_sources (activity_id);
+CREATE INDEX activity_sources_by_record
+    ON activity_sources (athlete_id, provider, provider_activity_id)
+    WHERE provider_activity_id IS NOT NULL;
+
+CREATE TABLE source_observations (
+    raw_source_id TEXT NOT NULL REFERENCES raw_sources (raw_source_id),
+    part INTEGER NOT NULL CHECK (part >= 0),
+    athlete_id TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    document TEXT NOT NULL CHECK (json_valid(document)),
+    PRIMARY KEY (raw_source_id, part)
+) STRICT;
+CREATE TRIGGER source_observations_are_immutable BEFORE UPDATE ON source_observations
+BEGIN
+    SELECT RAISE(ABORT, 'source observations are immutable');
+END;
+
+CREATE TABLE data_overrides (
+    override_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    field TEXT NOT NULL,
+    supersedes_override_id TEXT UNIQUE REFERENCES data_overrides (override_id),
+    schema_version TEXT NOT NULL,
+    document TEXT NOT NULL CHECK (json_valid(document))
+) STRICT;
+CREATE INDEX data_overrides_by_entity ON data_overrides (athlete_id, entity_type, entity_id);
+CREATE UNIQUE INDEX data_overrides_one_first_per_field
+    ON data_overrides (athlete_id, entity_type, entity_id, field)
+    WHERE supersedes_override_id IS NULL;
+CREATE TRIGGER data_overrides_are_append_only BEFORE UPDATE ON data_overrides
+BEGIN
+    SELECT RAISE(ABORT, 'data overrides are append-only');
+END;
+"""
+
 MIGRATIONS: Final[tuple[Migration, ...]] = (
     Migration(1, "aggregates, raw sources and derived metric values", _INITIAL_SCHEMA),
     Migration(2, "identities and hash-chained audit log", _SECURITY_SCHEMA),
+    Migration(3, "activities, source observations and data overrides", _ACTIVITY_SCHEMA),
 )

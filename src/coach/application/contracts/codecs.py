@@ -7,6 +7,16 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from coach.application.contracts._json import Document, Json, check_schema_version
+from coach.application.contracts.activities import (
+    activity_from_contract,
+    activity_to_contract,
+    issue_from_contract,
+    issue_to_contract,
+    observation_from_contract,
+    observation_to_contract,
+    override_from_contract,
+    override_to_contract,
+)
 from coach.application.contracts.availability import (
     availability_from_contract,
     availability_to_contract,
@@ -36,6 +46,10 @@ from coach.application.contracts.goals import (
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
 from coach.application.credentials import CredentialRecord
+from coach.domain.activity.activity import Activity
+from coach.domain.activity.issues import DataQualityIssue
+from coach.domain.activity.observation import Observation
+from coach.domain.activity.overrides import DataOverride
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.availability.availability import Availability
 from coach.domain.coaching.state import CoachingState
@@ -99,6 +113,18 @@ CREDENTIAL_RECORD_CODEC: Final[DocumentCodec[CredentialRecord]] = DocumentCodec(
     credential_record_to_contract,
     credential_record_from_contract,
 )
+ACTIVITY_CODEC: Final[DocumentCodec[Activity]] = DocumentCodec(
+    "activity", "activity", activity_to_contract, activity_from_contract
+)
+OBSERVATION_CODEC: Final[DocumentCodec[Observation]] = DocumentCodec(
+    "source_observation", "source-observation", observation_to_contract, observation_from_contract
+)
+DATA_OVERRIDE_CODEC: Final[DocumentCodec[DataOverride]] = DocumentCodec(
+    "data_override", "data-override", override_to_contract, override_from_contract
+)
+DATA_QUALITY_ISSUE_CODEC: Final[DocumentCodec[DataQualityIssue]] = DocumentCodec(
+    "data_quality_issue", "data-quality-issue", issue_to_contract, issue_from_contract
+)
 ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     PROFILE_CODEC,
     AVAILABILITY_CODEC,
@@ -109,4 +135,8 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     RAW_SOURCE_CODEC,
     DERIVED_VALUE_CODEC,
     CREDENTIAL_RECORD_CODEC,
+    ACTIVITY_CODEC,
+    OBSERVATION_CODEC,
+    DATA_OVERRIDE_CODEC,
+    DATA_QUALITY_ISSUE_CODEC,
 )
