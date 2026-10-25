@@ -32,6 +32,11 @@ athlete's control and could defeat deletion (threat model R-01).
   They contain no athlete data or secrets.
 - `.git` inside a synced folder can occasionally conflict; pushing to a remote (ADR-020) keeps
   a safe copy.
+- Observed in P2: OneDrive rejects hardlinks (OS error 396), so uv is configured with
+  `link-mode = "copy"`; and OneDrive briefly locks files in `.venv` after a reinstall, making
+  some `uv sync` runs fail with "Access denied" until retried. Recommended fix: keep the
+  virtual environment outside the synced folder by setting the user environment variable
+  `UV_PROJECT_ENVIRONMENT` (for example `%LOCALAPPDATA%\CoachDeportivo\venv`).
 
 ## Verification
 

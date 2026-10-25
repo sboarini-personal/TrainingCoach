@@ -56,6 +56,14 @@ Enforced by import-linter contracts in `pyproject.toml` on every CI run:
 Domain and application code are cloud-neutral (ADR-014). Ports are defined in the
 application layer and implemented outside it.
 
+Additionally, `tests/unit/test_architecture_purity.py` checks that `coach.domain`,
+`coach.metrics`, `coach.planning` and `coach.policy` import only the standard library and
+`coach`, and never use I/O, clock or randomness modules or call `now()`/`today()`. IDs and the
+current time are passed in by the application layer.
+
+Domain packages (P2): `common` (errors, time, units, quality, provenance, sport, evidence,
+untrusted text), `athlete`, `availability`, `goals`, `consent`, `coaching`, `onboarding`.
+
 ## 3. Runtime and deployment (V1)
 
 - Single local process on the athlete's Windows PC: HTTP API bound to loopback, background
@@ -145,8 +153,8 @@ Open provider questions G-1 to G-7: `spec/integration/garmin.spec.md` section 8.
 | P0 | Repository discovery (`docs/discovery/00-discovery-report.md`) | Done |
 | P0.5 | Workspace: git, uv project, quality gates, CI | Done |
 | P1 | Specification, ADRs, architecture, threat model, privacy, CLAUDE.md | Done |
-| P2 | Domain core and shared value objects; athlete, availability, goals, consent, coaching state; OwnerScope; log redaction; contract tests | Next |
-| P3 | Metric registry; RAW/NORMALIZED/DERIVED storage; lineage; SQLite and blob store; data-directory guard | |
+| P2 | Domain core and shared value objects; athlete, availability, goals, consent, coaching state, onboarding planner; OwnerScope and repository port; secret redaction; P2 contracts and contract tests | Done |
+| P3 | Metric registry; RAW/NORMALIZED/DERIVED storage; lineage; SQLite and blob store (same repository contract tests as the in-memory adapter); contract-to-domain mapping; data-directory guard | Next |
 | P4 | Authentication, authorization chain, CredentialProvider, audit, consent enforcement, secret detector; threat model v1 | |
 | P5 | Canonical Activity, quality, deduplication, overrides | |
 | P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP) with sandbox | |

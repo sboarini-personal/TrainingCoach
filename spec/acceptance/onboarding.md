@@ -3,6 +3,12 @@
 All tests are PROPOSED until implemented. "First executable" is the delivery phase in which the
 test can run.
 
+Implementation status (P2): AT-STM-001, AT-AVL-001 and AT-CONC-001 are executed by
+`tests/unit/test_coaching_state.py`, `tests/unit/test_availability.py` and
+`tests/contract/test_repository_contract.py` (in-memory adapter; the SQLite adapter joins in
+P3). AT-ONB-001 is executed for the deterministic question planner
+(`tests/unit/test_onboarding_planner.py`); its dialogue part waits for P13.
+
 ### AT-ONB-001 — Progressive onboarding without repeated questions
 - Requirements: FR-ONB-001, FR-ONB-002
 - Level: unit (question planner) and agent evaluation. First executable: P2 (planner), P13 (dialogue).

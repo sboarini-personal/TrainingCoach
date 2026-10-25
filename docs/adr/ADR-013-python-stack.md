@@ -16,6 +16,7 @@ the phase that needs it:
 
 | Need | Library |
 |---|---|
+| IANA time zones on Windows, which has no system tz database (added P2) | `tzdata` |
 | FIT decoding | `garmin-fit-sdk` (official) |
 | Garmin Personal API transport | `garmin-connect-personal-api-python` (official), data client only |
 | Hardened XML | `defusedxml` |

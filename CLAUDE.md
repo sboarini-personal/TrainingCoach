@@ -86,6 +86,17 @@ claim a test ran unless it ran. Distinguish executed tests from proposed tests.
 IMPLEMENTED (requirement IDs), FILES CHANGED, TESTS EXECUTED (commands and results), SECURITY
 CHECKS, TRACEABILITY, ASSUMPTIONS, REMAINING (next dependency-aware work).
 
+## Local environment notes
+
+The repository is in a OneDrive-synced folder (ADR-014). OneDrive can briefly lock files in
+`.venv`, so `uv sync` (or a `uv run` that triggers a sync) may fail with "Access denied":
+retry, or run tools with `uv run --no-sync` once the environment is synced. A permanent fix is
+setting `UV_PROJECT_ENVIRONMENT` to a folder outside OneDrive.
+
+Synthetic secrets in tests must sit on one line with `# pragma: allowlist secret` (the
+formatter can move trailing comments, so use one-line constants).
+
 ## Current phase
 
-P0, P0.5 and P1 are done. Next: P2 (domain core). See `docs/architecture.md` section 8.
+P0 to P2 are done. Next: P3 (metric registry, data layers, SQLite and blob store). See
+`docs/architecture.md` section 8.
