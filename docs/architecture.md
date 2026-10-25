@@ -63,7 +63,17 @@ current time are passed in by the application layer.
 
 Domain packages (P2): `common` (errors, time, units, quality, provenance, sport, evidence,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
-`onboarding`; `raw` (P3); `activity` (P5).
+`onboarding`; `raw` (P3); `activity` (P5); `ingestion` (P6).
+
+P6 additions:
+
+| Package | Content |
+|---|---|
+| `coach.domain` | `ingestion` (limits, immutable ingestion records, CSV templates and formula prefixes); `activity.streams` (time series); IMPORT_FAILED issues; CSV rows as athlete entries |
+| `coach.application` | `ingestion` (`IngestionService`: the 13-stage pipeline, duplicates, idempotency keys, secret screening of file text, records and failure issues), `files` (ports `FileFormats`, `Quarantine`, `MalwareScanner`; `DecodedSession`), `csv_export`, codecs for ingestion records and time series, port `IngestionRecordRepository` |
+| `coach.integrations.files` | `detection` (extensions, signatures, FIT CRC, XML root scanner), `archive` (in-memory ZIP with limits), `sandbox` (isolated worker process, Job Object or RLIMIT_AS, output limit), `worker`, parsers (`fit_parser` with the Garmin FIT SDK, `tcx_parser`, `gpx_parser`, `csv_parser`, `xmlsafe`), `output` (strict decoding), `normalise` (rules 1.0.0), `formats` (adapter) |
+| `coach.infrastructure` | `quarantine` (random names, NOT_SCANNED scanner), `sqlite/ingestion` (migration 4), in-memory ingestion records; data layout gains `quarantine/` |
+| `coach.cli` | `consent list/grant/revoke`, `profile timezone`, `import`, `activity list/export`, `issue list/ack` (`cli/activities.py`); runtime wires activities and ingestion |
 
 P5 additions:
 
@@ -137,6 +147,12 @@ Storage (P3, ADR-022): one SQLite file `<data_dir>/coach.sqlite3`.
 
 Data quality issues are aggregates in `aggregates` (kind `data_quality_issue`).
 
+| `ingestion_records` (P6) | one immutable record per upload attempt (outcome, reason, hashes, files, activities) | trigger rejects every update; unique idempotency key per athlete; indexes by hash and time |
+
+Time series are content-addressed JSON blobs in the athlete's blob store, referenced from
+observations. Uploads wait in `<data_dir>/quarantine/` under random names only while they are
+processed.
+
 RAW bytes live in `<data_dir>/raw/<athlete_id>/<sha256[0:2]>/<sha256>`, written atomically,
 read-only, verified on read.
 
@@ -186,7 +202,7 @@ engine for proposals -> AgentDecision audit.
 | A-08 | Canonical units metric/SI; display per athlete preference | Proposed |
 | A-09 | LLM provider: Anthropic Claude behind `LLMProvider`; AI_PROCESSING consent required | Open, to confirm |
 | A-10 | Encryption at rest through OS full-disk encryption (BitLocker) in V1 | Open, to confirm |
-| A-11 | Malware scanning through an optional OS scanner hook; unscanned imports flagged | Verify in P6 |
+| A-11 | Malware scanning through an optional OS scanner hook; unscanned imports flagged | Decided in P6: no scanner adapter in V1, every upload NOT_SCANNED (ADR-025) |
 | A-12 | RPE on CR-10; daily check-in on a documented 1 to 5 scale | Proposed |
 | A-13 | Only an explicit athlete action releases SAFETY_HOLD | Proposed |
 | A-14 | Specs, code and logs in English; athlete-facing language configurable, default Spanish | Proposed |
@@ -210,8 +226,8 @@ Open provider questions G-1 to G-7: `spec/integration/garmin.spec.md` section 8.
 | P3 | Metric registry and session RPE load; derived values; RAW sources and per-athlete blob store; SQLite persistence and migrations (ADR-022); contract-to-domain codecs; lineage; data-directory guard | Done |
 | P4 | Local token authentication with lockout and rate limiting; authorization chain and identity directory; credentials in the OS secret store; hash-chained audit log (ADR-023); consent service and gate; policy engine core; chat secret screening; `coach` CLI; threat model v1 | Done |
 | P5 | Canonical Activity and field catalogue, source observations and field-level resolution (ADR-024), time model, data quality rules and issues, deduplication tiers with merge, keep separate and split, DataOverride corrections and the effective view, weekly volume, activity storage (migration 3) | Done |
-| P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP) with sandbox | Next |
-| P7 | FitnessProvider, capabilities, Garmin Personal adapter, sync, degradation | |
+| P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP): detection, archives, sandboxed parsers (ADR-025), normalisation rules 1.0.0, time series, ingestion records and failure issues, CSV export, CLI import | Done |
+| P7 | FitnessProvider, capabilities, Garmin Personal adapter, sync, degradation | Next |
 | P8 | Deterministic metrics engine | |
 | P9 | Running, cycling, swimming analytics; tennis load | |
 | P10 | Exercise catalogue, strength prescription and execution, interference | |

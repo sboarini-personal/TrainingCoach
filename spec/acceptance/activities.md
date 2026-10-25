@@ -12,6 +12,10 @@ matching tiers, re-upload, both arrival orders and the property-based tests
 (`tests/unit/test_activity_service.py`, `tests/unit/test_dedup_properties.py`); real FIT and
 Garmin sources follow in P6 and P7.
 
+Implementation status (P6): AT-ACT-001 is executed with real files: a FIT upload enriching a
+synthetic Garmin observation, FIT and GPX of the same session in both orders, and re-upload
+(`tests/unit/test_ingestion_service.py`). The real Garmin source follows in P7.
+
 ### AT-ACT-001 — Garmin activity enriched by a later FIT upload
 - Requirements: FR-ACT-005, FR-ACT-007, FR-ACT-008, NFR-REL-001, INT-GAR-007, INT-FIL-001
 - Level: integration and property-based. First executable: P6 (two file sources), P7 (Garmin plus FIT).

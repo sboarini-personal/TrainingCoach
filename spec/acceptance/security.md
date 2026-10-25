@@ -10,6 +10,13 @@ the agent part waits for P13. AT-SEC-002 is executed for P4 flows
 executed at repository and application level (`tests/security/test_idor_application.py`); the
 API level waits for the HTTP API.
 
+Implementation status (P6): AT-UPL-001, AT-XXE-001 and AT-ZIP-001 are executed end to end with
+the real sandbox and SQLite (`tests/security/test_upload_security.py`) and at unit level
+(`tests/unit/test_file_detection.py`, `tests/unit/test_file_archive.py`,
+`tests/unit/test_ingestion_service.py`, `tests/integration/test_parser_sandbox.py`). AT-CSV-001
+is executed (`tests/unit/test_csv_export.py`, `tests/integration/test_cli_activities.py`).
+AT-SEC-001 covers secrets in activity corrections and imported file text.
+
 ### AT-SEC-001 — Accidentally disclosed secret
 - Requirements: SEC-SEC-005
 - Level: security and agent evaluation. First executable: P4 (detector), P13 (agent).

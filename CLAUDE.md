@@ -103,7 +103,7 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P5 are done. Next: P6 (file ingestion: FIT, TCX, GPX, CSV, ZIP with the parser sandbox).
+P0 to P6 are done. Next: P7 (FitnessProvider, capabilities, Garmin Personal adapter, sync).
 See `docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
@@ -117,3 +117,11 @@ paths in `coach.domain.activity.fields`) for stored RawSources; `ActivityService
 deduplication, resolution, quality, metrics and issues; read activities through
 `ActivityService.effective` (corrections applied). Tests wire the service with
 `tests/activity_world.py` and build synthetic observations with `samples.sample_observation`.
+
+File ingestion (P6): `IngestionService.import_file` runs the whole pipeline; format knowledge
+lives behind `FileFormats` (`coach.integrations.files`), parsers run in `ParserSandbox`.
+Synthetic files come from `tests/file_samples.py` (FIT via the official SDK encoder), never
+from committed activity files; `tests/ingestion_world.py` runs the worker in-process. Test
+commands for the sandbox must use `sandbox.interpreter()`, not `sys.executable` (the Windows
+venv launcher is itself a child process). Files with backslashes in literals are written with
+the editor tool, never with shell heredocs.

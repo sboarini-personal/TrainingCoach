@@ -2,7 +2,7 @@
 
 Spec-driven, data-driven coaching for running, cycling, swimming, strength and tennis.
 
-> Status: P4 complete (domain core, storage, security architecture, `coach` command line).
+> Status: P6 complete (domain core, storage, security, canonical activities, file import).
 > No training features yet. See [docs/architecture.md](docs/architecture.md#8-delivery-phases).
 
 ## What it is
@@ -42,7 +42,17 @@ uv run coach secret set garmin-api-key --expires-on 2027-01-23   # hidden input
 uv run coach secret list                            # credentials and expiry state
 uv run coach token rotate                           # replace the local API token
 uv run coach audit verify                           # check the audit hash chain
+uv run coach consent grant activities               # allow activity data to be processed
+uv run coach profile timezone America/Argentina/Buenos_Aires
+uv run coach import run.fit ride.tcx export.zip     # FIT, TCX, GPX, CSV template, ZIP
+uv run coach activity list                          # most recent activities
+uv run coach activity export activities.csv         # CSV activity template
+uv run coach issue list                             # data problems and failed imports
 ```
+
+Imports run each file through a sandboxed parser; rejected files leave only an ingestion
+record and an issue (`coach issue list`). The CSV template header is documented in
+`spec/integration/files.spec.md` section 8.4.
 
 Data goes to `COACH_DATA_DIR` (default `%LOCALAPPDATA%\CoachDeportivo`); the command refuses
 OneDrive, Dropbox and Google Drive folders. Secrets go to the Windows Credential Manager.

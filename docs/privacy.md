@@ -9,7 +9,7 @@ context.
 |---|---|---|---|---|---|---|
 | Profile | name, birth date, height, weight, HR settings, devices | athlete | planning, metrics | onboarding | local database | minimised, with AI_PROCESSING |
 | Health constraints, pain, red flags | declared constraints, pain reports | athlete | safety, planning | onboarding | local database | only what the current advice needs |
-| Activities | summaries, laps, streams, per-source observations, corrections with the athlete's reason, data quality issues | files, Garmin, athlete | analytics, load, adaptation | ACTIVITIES | local database and blob store | derived summaries only; no GPS traces; correction reasons never |
+| Activities | summaries, time series (no positions), per-source observations, corrections with the athlete's reason, data quality issues, ingestion records (hashes, codes, sanitised filenames) | files, Garmin, athlete | analytics, load, adaptation | ACTIVITIES | local database and blob store; uploads wait in quarantine only while processed | derived summaries only; no GPS traces; correction reasons never |
 | Recovery | resting HR, sleep, HRV, Body Battery, stress | Garmin, athlete | recovery assessment | RECOVERY, SLEEP, HRV, PROVIDER_RECOVERY_METRICS | local database | derived summaries |
 | Check-ins | sleep quality, fatigue, soreness, stress, motivation | athlete | recovery | onboarding | local database | yes, with AI_PROCESSING |
 | Plans, insights, decisions | plan versions, insights, AgentDecisions | system | coaching | none extra | local database | as needed |

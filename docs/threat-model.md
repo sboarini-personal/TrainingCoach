@@ -63,6 +63,8 @@ surface (P6 uploads, P7 provider, P13 agent).
 | Deduplication (P5) | T: a wrong or crafted source merges into another session or doubles its load | deterministic, versioned scoring; ambiguous matches never merged automatically and excluded from totals until the athlete decides; one live activity per source enforced by the database; aggregation over logical activities only | FR-ACT-007, FR-ACT-008 |
 | Activity text (P5) | I/E: provider names, descriptions, comments or correction reasons carry injected instructions or pasted secrets | stored as untrusted text (control characters removed, length capped), never in audit or observability events; correction text screened for secrets before storage with the fixed notice; the agent wraps untrusted text (P13) | SEC-INJ-001, SEC-SEC-005 |
 | Activities (P5) | I: IDOR on activities, sources, overrides and quality issues | owner-scoped repositories and services, foreign references behave like missing ones; contract tests on both adapters | SEC-IDOR-001 |
+| File ingestion (P6) | T/D: polyglots, oversized or pathological files, zip bombs, traversal, XXE; E: parser exploit | extension allow-list and content signatures, per-format and archive limits checked from headers and while reading, member names never used as paths, defusedxml with DTDs forbidden, sandboxed worker in isolated mode with a minimal environment, timeout, output limit, Job Object (memory, one process) or RLIMIT_AS, strict decoding of its output, all-or-nothing persistence (ADR-025) | INT-FIL-002, SEC-UPL-001 to SEC-UPL-005, AT-UPL-001, AT-XXE-001, AT-ZIP-001 |
+| Imported text (P6) | I: secrets pasted into activity names or CSV comments; E: formula injection on export | file text screened for secrets before storage; export quotes formula-like text | SEC-SEC-005, SEC-INJ-004, AT-CSV-001 |
 | Schema evolution | T/D: an automatic migration destroys data | migration runner refuses unapproved destructive migrations, downgrades and edited migrations (P3) | NFR-REL-004 |
 | External workout publication | T/R: unconfirmed or replayed writes | capability gate (unsupported in V1), confirmation tokens, idempotency per proposal, audit | INT-GAR-002, INT-GAR-003, SEC-AUD-001 |
 | Administrator / host | I: other OS users or malware read the database and blobs | data outside synced folders, per-user ACL, OS full-disk encryption, no secrets in the database; no admin API | ADR-014, A-10 |
@@ -77,14 +79,16 @@ surface (P6 uploads, P7 provider, P13 agent).
 |---|---|---|
 | R-01 | Repository folder syncs to an organisational OneDrive tenant | Accepted for code and docs only (ADR-014); athlete data and secrets stay outside |
 | R-11 | Garmin Personal API terms on third-party AI processing unknown (G-5) | Athlete review before P13 uses Garmin data |
-| R-12 | Memory limits for parsers are best effort on Windows | Record limits and timeouts apply everywhere |
+| R-12 | Parser memory limits depend on the platform: enforced by a Job Object on Windows and RLIMIT_AS on POSIX (P6); if a Job Object cannot be created the parser runs without the Windows memory limit | Record limits, output limits and timeouts apply everywhere; `memory_limit_enforced` reports it (ADR-025) |
 | R-13 | CI actions pinned to tags, not SHAs | Follow-up after the GitHub remote exists |
 | R-14 | Any process running as the same OS user can read the Windows Credential Manager entries and the data directory | Accepted for V1 single-user local use; OS account security and full-disk encryption are the boundary (A-10) |
 | R-15 | `coach token rotate` issues a token without the old one when it is missing from the store | Accepted: whoever can run commands as that OS user can already read the store (authentication.spec.md 1.1) |
 | R-16 | The audit salt is stored with the data; pseudonymity rests on the random part of UUIDv7 identifiers | Accepted (ADR-023) |
 | R-17 | Lockout and rate-limit state is in memory and resets on restart | Accepted for a local single process; a hosted deployment needs shared state |
 | R-18 | No unit of work across repositories: a crash between saving an activity and its follow-up work (derived values, quality issues, the review issue of an ambiguous match) leaves them stale until the next change or a retried import, which repairs them | Accepted for a local single process (ADR-024); reviewed in P15 |
-| R-19 | Text inside uploaded files and provider payloads (activity names, descriptions) is not yet screened for pasted secrets | Normalisers screen athlete-visible text fields from P6 |
+| R-19 | Text inside uploaded files and provider payloads (activity names, descriptions) is not yet screened for pasted secrets | Closed for files in P6 (ingestion screens text fields); provider payloads follow in P7 |
+| R-20 | No malware scanner integration: uploads are NOT_SCANNED | Accepted for V1 (A-11, ADR-025); parsing is sandboxed regardless and the flag is shown |
+| R-21 | A parser exploit runs with the OS user's file and network access; Windows offers no file-system confinement for the worker | Accepted for V1: memory-safe parsers, isolated interpreter, minimal environment, one-process limit, memory and time limits, strict output decoding (ADR-025) |
 
 ## 5. Explicitly analysed threat classes
 
