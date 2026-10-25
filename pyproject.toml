@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Personal Multisport Performance Coach: spec-driven, data-driven coaching for running, cycling, swimming, strength and tennis."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "tzdata>=2025.2",
+]
 
 [dependency-groups]
 dev = [
@@ -16,7 +18,13 @@ dev = [
   "pre-commit>=4.0",
   "detect-secrets>=1.5",
   "pip-audit>=2.7",
+  "hypothesis>=6.100",
 ]
+
+[tool.uv]
+# The repository lives in a OneDrive-synced folder (ADR-014), where hardlinks fail
+# (OS error 396). Copying from the uv cache avoids that.
+link-mode = "copy"
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -41,6 +49,9 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+# Synthetic secret fixtures (by design) need their detect-secrets pragma on the same line.
+"tests/unit/test_redaction.py" = ["S101", "S105", "E501"]
+"tests/unit/test_log_redaction.py" = ["S101", "S105", "E501"]
 "tools/**" = ["T20"]
 
 # ---------------------------------------------------------------- mypy
