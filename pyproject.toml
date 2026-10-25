@@ -59,7 +59,7 @@ select = [
 python_version = "3.12"
 strict = true
 files = ["src", "tests", "tools"]
-mypy_path = ["src", "tools"]
+mypy_path = ["src", "tools", "tests"]
 
 [[tool.mypy.overrides]]
 module = ["jsonschema", "jsonschema.*", "referencing", "referencing.*"]
@@ -68,7 +68,7 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["tools"]
+pythonpath = ["tools", "tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
 markers = [

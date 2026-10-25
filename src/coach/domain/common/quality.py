@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Final
 
 from coach.domain.common.errors import DomainValidationError
 
@@ -71,3 +73,15 @@ def derive_confidence(
     if completeness >= 0.8 and reliability is Reliability.HIGH and anomalies == 0:
         return Confidence.HIGH
     return Confidence.MEDIUM
+
+
+_CONFIDENCE_RANK: Final = {Confidence.LOW: 0, Confidence.MEDIUM: 1, Confidence.HIGH: 2}
+
+
+def lowest_confidence(values: Iterable[Confidence]) -> Confidence | None:
+    """The weakest confidence (LOW < MEDIUM < HIGH); ``None`` when there are no values."""
+    return min(values, key=_CONFIDENCE_RANK.__getitem__, default=None)
+
+
+def meets_minimum(confidence: Confidence, minimum: Confidence) -> bool:
+    return _CONFIDENCE_RANK[confidence] >= _CONFIDENCE_RANK[minimum]

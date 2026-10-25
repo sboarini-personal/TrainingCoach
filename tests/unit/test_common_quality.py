@@ -8,6 +8,8 @@ from coach.domain.common.quality import (
     Reliability,
     UncertaintyReason,
     derive_confidence,
+    lowest_confidence,
+    meets_minimum,
 )
 
 
@@ -58,6 +60,16 @@ def test_anomaly_codes_are_upper_snake_case() -> None:
     assert Anomaly(code="HR_OUT_OF_RANGE", field="cardiovascular.maxHr").code == "HR_OUT_OF_RANGE"
     with pytest.raises(DomainValidationError):
         Anomaly(code="hr out of range", field="cardiovascular.maxHr")
+
+
+@pytest.mark.req("FR-MET-004")
+def test_lowest_confidence_orders_low_medium_high() -> None:
+    assert lowest_confidence([Confidence.HIGH, Confidence.LOW, Confidence.MEDIUM]) is Confidence.LOW
+    assert lowest_confidence([Confidence.HIGH, Confidence.MEDIUM]) is Confidence.MEDIUM
+    assert lowest_confidence([]) is None
+    assert meets_minimum(Confidence.MEDIUM, Confidence.MEDIUM)
+    assert meets_minimum(Confidence.HIGH, Confidence.MEDIUM)
+    assert not meets_minimum(Confidence.LOW, Confidence.MEDIUM)
 
 
 @pytest.mark.req("FR-ACT-010")

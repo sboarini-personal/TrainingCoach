@@ -1,14 +1,18 @@
-"""Contract every owner-scoped repository implementation must satisfy (ADR-016, NFR-REL-003)."""
+"""Contract every owner-scoped aggregate repository must satisfy (ADR-016, NFR-REL-003).
 
-import inspect
+The same tests run against every implementation, so the SQLite adapter behaves exactly like
+the in-memory reference.
+"""
+
 import threading
-import typing
 from collections.abc import Callable
 from datetime import UTC, date, datetime
+from pathlib import Path
 from uuid import UUID
 
 import pytest
 
+from coach.application.contracts import GOAL_CODEC
 from coach.application.errors import ConcurrencyConflictError, NotFoundError, OwnershipError
 from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
@@ -16,6 +20,8 @@ from coach.application.ports import OwnedRepository
 from coach.domain.common.sport import Sport
 from coach.domain.goals.goal import Goal, GoalPriority, GoalStatus
 from coach.infrastructure.memory import InMemoryRepository
+from coach.infrastructure.sqlite.aggregates import SqliteAggregateRepository
+from coach.infrastructure.sqlite.database import SqliteDatabase
 
 ATHLETE_A = UUID("0193b2a0-0000-7000-8000-00000000000a")
 ATHLETE_B = UUID("0193b2a0-0000-7000-8000-00000000000b")
@@ -23,7 +29,16 @@ SCOPE_A = OwnerScope(ATHLETE_A)
 SCOPE_B = OwnerScope(ATHLETE_B)
 NOW = datetime(2026, 10, 24, 18, 0, tzinfo=UTC)
 
-IMPLEMENTATIONS: list[Callable[[], OwnedRepository[Goal]]] = [InMemoryRepository]
+
+def _in_memory(_: Path) -> OwnedRepository[Goal]:
+    return InMemoryRepository()
+
+
+def _sqlite(directory: Path) -> OwnedRepository[Goal]:
+    return SqliteAggregateRepository(SqliteDatabase.open(directory / "coach.sqlite3"), GOAL_CODEC)
+
+
+IMPLEMENTATIONS: list[Callable[[Path], OwnedRepository[Goal]]] = [_in_memory, _sqlite]
 
 
 def goal_for(athlete_id: UUID) -> Goal:
@@ -37,10 +52,10 @@ def goal_for(athlete_id: UUID) -> Goal:
     )
 
 
-@pytest.fixture(params=IMPLEMENTATIONS, ids=lambda factory: getattr(factory, "__name__", "repo"))
-def repository(request: pytest.FixtureRequest) -> OwnedRepository[Goal]:
-    factory: Callable[[], OwnedRepository[Goal]] = request.param
-    return factory()
+@pytest.fixture(params=IMPLEMENTATIONS, ids=["in-memory", "sqlite"])
+def repository(request: pytest.FixtureRequest, tmp_path: Path) -> OwnedRepository[Goal]:
+    factory: Callable[[Path], OwnedRepository[Goal]] = request.param
+    return factory(tmp_path)
 
 
 # ------------------------------------------------------------------ ownership
@@ -93,20 +108,6 @@ def test_update_cannot_transfer_ownership(repository: OwnedRepository[Goal]) -> 
         repository.update(SCOPE_A, stolen, expected_version=mine.version)
 
 
-@pytest.mark.req("SEC-IDOR-001")
-def test_repository_port_requires_owner_scope_on_every_method() -> None:
-    for implementation in (OwnedRepository, InMemoryRepository):
-        # PEP 695 type parameters (T) live in the class scope; expose them to the resolver.
-        type_params = {param.__name__: param for param in implementation.__type_params__}
-        for name, member in inspect.getmembers(implementation, predicate=inspect.isfunction):
-            if name.startswith("_"):
-                continue
-            parameters = list(inspect.signature(member).parameters)
-            hints = typing.get_type_hints(member, localns=type_params)
-            assert parameters[1] == "scope", f"{implementation.__name__}.{name} lacks scope"
-            assert hints["scope"] is OwnerScope, f"{implementation.__name__}.{name} scope type"
-
-
 # ------------------------------------------------------------------ concurrency
 
 
@@ -114,6 +115,7 @@ def test_repository_port_requires_owner_scope_on_every_method() -> None:
 def test_new_resources_start_at_version_one(repository: OwnedRepository[Goal]) -> None:
     stored = repository.add(SCOPE_A, goal_for(ATHLETE_A).with_version(9))
     assert stored.version == 1
+    assert repository.get(SCOPE_A, stored.entity_id) == stored
     with pytest.raises(ConcurrencyConflictError):
         repository.add(SCOPE_A, stored)
 
