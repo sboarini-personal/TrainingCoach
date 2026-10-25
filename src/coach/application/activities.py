@@ -429,7 +429,7 @@ class ActivityService:
             if issue.resolution is IssueResolution.MERGED:
                 return self._stores.activities.get(scope, related)
             raise InvalidOperationError("the match was already resolved")
-        pending = self._stores.activities.get(scope, issue.activity_id)
+        pending = self._stores.activities.get(scope, _activity_of(issue))
         target = self._live(scope, related)
         now = self._clock()
         if not (pending.status is ActivityStatus.MERGED and pending.merged_into == related):
@@ -465,7 +465,7 @@ class ActivityService:
         """The athlete rejects an ambiguous match: the pending activity becomes ACTIVE."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
         issue = self._ambiguous_issue(scope, issue_id)
-        pending = self._stores.activities.get(scope, issue.activity_id)
+        pending = self._stores.activities.get(scope, _activity_of(issue))
         if not issue.is_open:
             if issue.resolution is IssueResolution.KEPT_SEPARATE:
                 return pending
@@ -531,10 +531,10 @@ class ActivityService:
         return separated
 
     def acknowledge(self, scope: OwnerScope, issue_id: UUID) -> DataQualityIssue:
-        """The athlete accepts flagged data as it is."""
+        """The athlete accepts flagged data as it is, or has seen a failed import."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
         issue = self._stores.issues.get(scope, issue_id)
-        if issue.kind is not IssueKind.ANOMALY:
+        if issue.kind is IssueKind.AMBIGUOUS_MATCH:
             raise InvalidOperationError("ambiguous matches are merged or kept separate")
         if not issue.is_open:
             return issue
@@ -664,6 +664,12 @@ class ActivityService:
                 target_id=str(target_id),
             )
         )
+
+
+def _activity_of(issue: DataQualityIssue) -> UUID:
+    if issue.activity_id is None:
+        raise InvalidOperationError("issue names no activity")
+    return issue.activity_id
 
 
 def _score(match: Match) -> str:

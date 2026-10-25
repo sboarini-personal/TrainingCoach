@@ -57,6 +57,9 @@ def test_guard_finds_the_known_adapters() -> None:
         "SqliteActivityRepository",
         "SqliteObservationRepository",
         "SqliteOverrideRepository",
+        "IngestionRecordRepository",
+        "InMemoryIngestionRecordRepository",
+        "SqliteIngestionRecordRepository",
     } <= names
 
 

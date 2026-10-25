@@ -13,7 +13,9 @@ import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Final, TextIO
+from uuid import UUID
 
 from coach.application.authentication import AuthenticationError
 from coach.application.authorization import AuthorizationError
@@ -24,6 +26,7 @@ from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.secrets import SecretValue
+from coach.cli import activities as activity_commands
 from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.common.errors import DomainValidationError
 from coach.infrastructure.datadir import SyncedDataDirError, ensure_layout, resolve_data_dir
@@ -58,6 +61,33 @@ def _parser() -> argparse.ArgumentParser:
         dest="action", required=True
     )
     audit.add_parser("verify", help="verify the audit hash chain")
+    consent = commands.add_parser("consent", help="consents").add_subparsers(
+        dest="action", required=True
+    )
+    consent.add_parser("list", help="consent status per type")
+    for action in ("grant", "revoke"):
+        change = consent.add_parser(action, help=f"{action} a consent")
+        change.add_argument("type", choices=sorted(activity_commands.CONSENT_TYPES))
+    profile = commands.add_parser("profile", help="athlete profile").add_subparsers(
+        dest="action", required=True
+    )
+    zone = profile.add_parser("timezone", help="show or set the IANA timezone")
+    zone.add_argument("name", nargs="?", help="for example America/Argentina/Buenos_Aires")
+    upload = commands.add_parser("import", help="import FIT, TCX, GPX, CSV or ZIP files")
+    upload.add_argument("paths", nargs="+", type=Path)
+    activity = commands.add_parser("activity", help="activities").add_subparsers(
+        dest="action", required=True
+    )
+    listing = activity.add_parser("list", help="most recent activities, corrections applied")
+    listing.add_argument("--limit", type=int, default=20)
+    exporting = activity.add_parser("export", help="write activities as CSV (activity template)")
+    exporting.add_argument("output", type=Path)
+    issue = commands.add_parser("issue", help="data quality issues").add_subparsers(
+        dest="action", required=True
+    )
+    issue.add_parser("list", help="open issues")
+    acknowledge = issue.add_parser("ack", help="acknowledge an issue")
+    acknowledge.add_argument("issue_id", type=UUID)
     return parser
 
 
@@ -178,9 +208,25 @@ def main(
                 return _list_secrets(runtime, args, stream)
             case ("audit", "verify"):
                 return _verify_audit(runtime, args, stream)
+            case ("consent", "list"):
+                return activity_commands.list_consents(runtime, _session(runtime), stream)
+            case ("consent", _):
+                return activity_commands.change_consent(runtime, _session(runtime), args, stream)
+            case ("profile", "timezone"):
+                return activity_commands.timezone(runtime, _session(runtime), args, stream)
+            case ("import", _):
+                return activity_commands.import_files(runtime, _session(runtime), args, stream)
+            case ("activity", "list"):
+                return activity_commands.list_activities(runtime, _session(runtime), args, stream)
+            case ("activity", "export"):
+                return activity_commands.export(runtime, _session(runtime), args, stream)
+            case ("issue", "list"):
+                return activity_commands.list_issues(runtime, _session(runtime), stream)
+            case ("issue", "ack"):
+                return activity_commands.acknowledge_issue(runtime, _session(runtime), args, stream)
             case _:  # pragma: no cover - argparse rejects anything else
                 return 2
-    except CliError as error:
+    except (CliError, activity_commands.CommandError) as error:
         print(f"error: {error}", file=stream)
         return 2
     except (AuthenticationError, AuthorizationError, RateLimitedError) as error:

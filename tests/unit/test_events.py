@@ -32,6 +32,10 @@ def test_event_names_follow_the_nfr_catalogue() -> None:
         "dedup.split",
         "quality.issue.raised",
         "quality.issue.resolved",
+        "ingestion.file.received",
+        "ingestion.file.parsed",
+        "ingestion.file.rejected",
+        "ingestion.file.failed",
     }
 
 

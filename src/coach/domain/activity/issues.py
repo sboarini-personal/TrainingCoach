@@ -1,7 +1,8 @@
-"""Data quality issues shown to the athlete (FR-ACT-009, FR-ACT-007).
+"""Data quality issues shown to the athlete (FR-ACT-009, FR-ACT-007, INT-FIL-004).
 
 ANOMALY issues mirror an anomaly on an activity field; AMBIGUOUS_MATCH issues ask the athlete
-whether a pending activity is the same session as an existing one
+whether a pending activity is the same session as an existing one; IMPORT_FAILED issues report
+a rejected or failed file import by its ingestion record
 (spec/functional/activities.spec.md section 5.2).
 """
 
@@ -29,6 +30,7 @@ _CODE: Final = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 class IssueKind(StrEnum):
     ANOMALY = "ANOMALY"
     AMBIGUOUS_MATCH = "AMBIGUOUS_MATCH"
+    IMPORT_FAILED = "IMPORT_FAILED"
 
 
 class IssueStatus(StrEnum):
@@ -48,6 +50,7 @@ RESOLUTIONS: Final = {
         {IssueResolution.NO_LONGER_DETECTED, IssueResolution.ACKNOWLEDGED}
     ),
     IssueKind.AMBIGUOUS_MATCH: frozenset({IssueResolution.MERGED, IssueResolution.KEPT_SEPARATE}),
+    IssueKind.IMPORT_FAILED: frozenset({IssueResolution.ACKNOWLEDGED}),
 }
 
 
@@ -56,7 +59,7 @@ class DataQualityIssue:
     issue_id: UUID
     athlete_id: UUID
     kind: IssueKind
-    activity_id: UUID
+    activity_id: UUID | None
     code: str
     field: str | None
     created_at: datetime
@@ -64,6 +67,7 @@ class DataQualityIssue:
     related_activity_id: UUID | None = None
     match_score: float | None = None
     dedup_rules_version: str | None = None
+    ingestion_id: UUID | None = None
     status: IssueStatus = IssueStatus.OPEN
     closed_at: datetime | None = None
     resolution: IssueResolution | None = None
@@ -76,10 +80,16 @@ class DataQualityIssue:
         object.__setattr__(
             self, "detail", clean_optional_text(self.detail, max_length=300, field="detail")
         )
+        if (self.kind is IssueKind.IMPORT_FAILED) != (self.ingestion_id is not None):
+            raise DomainValidationError("failed imports, and only they, name an ingestion")
+        if (self.kind is IssueKind.IMPORT_FAILED) != (self.activity_id is None):
+            raise DomainValidationError("activity issues, and only they, name an activity")
         if self.kind is IssueKind.AMBIGUOUS_MATCH:
             self._check_ambiguous_match()
-        else:
+        elif self.kind is IssueKind.ANOMALY:
             self._check_anomaly()
+        else:
+            self._check_import_failure()
         self._check_status()
 
     def _check_ambiguous_match(self) -> None:
@@ -101,6 +111,16 @@ class DataQualityIssue:
         if self.field is None:
             raise DomainValidationError("an anomaly issue names its field")
         field_spec(self.field)
+        if (
+            self.related_activity_id is not None
+            or self.match_score is not None
+            or self.dedup_rules_version is not None
+        ):
+            raise DomainValidationError("only ambiguous matches name a candidate")
+
+    def _check_import_failure(self) -> None:
+        if self.field is not None:
+            raise DomainValidationError("a failed import names no field")
         if (
             self.related_activity_id is not None
             or self.match_score is not None
@@ -163,6 +183,29 @@ class DataQualityIssue:
             created_at=created_at,
         )
 
+    @classmethod
+    def for_import_failure(
+        cls,
+        *,
+        issue_id: UUID,
+        athlete_id: UUID,
+        ingestion_id: UUID,
+        reason: str,
+        detail: str | None,
+        created_at: datetime,
+    ) -> DataQualityIssue:
+        return cls(
+            issue_id=issue_id,
+            athlete_id=athlete_id,
+            kind=IssueKind.IMPORT_FAILED,
+            activity_id=None,
+            ingestion_id=ingestion_id,
+            code=reason,
+            field=None,
+            detail=detail,
+            created_at=created_at,
+        )
+
     @property
     def entity_id(self) -> UUID:
         return self.issue_id
@@ -174,7 +217,7 @@ class DataQualityIssue:
     def is_open(self) -> bool:
         return self.status is IssueStatus.OPEN
 
-    def anomaly_key(self) -> tuple[UUID, str, str | None]:
+    def anomaly_key(self) -> tuple[UUID | None, str, str | None]:
         return self.activity_id, self.code, self.field
 
     def close(self, resolution: IssueResolution, *, at: datetime) -> DataQualityIssue:

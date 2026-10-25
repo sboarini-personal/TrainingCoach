@@ -21,6 +21,7 @@ from coach.application.secrets import SecretValue
 from coach.domain.activity.activity import Activity
 from coach.domain.activity.observation import Observation, SourceKey
 from coach.domain.activity.overrides import DataOverride, EntityType
+from coach.domain.ingestion.record import IngestionRecord
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import DerivedMetricValue, MetricSubject
 
@@ -131,6 +132,24 @@ class OverrideRepository(Protocol):
     def for_entity(
         self, scope: OwnerScope, entity_type: EntityType, entity_id: UUID
     ) -> Sequence[DataOverride]: ...
+
+
+class IngestionRecordRepository(Protocol):
+    """Immutable ingestion records, one per upload attempt (files spec section 9)."""
+
+    def add(self, scope: OwnerScope, record: IngestionRecord) -> IngestionRecord: ...
+
+    def get(self, scope: OwnerScope, ingestion_id: UUID) -> IngestionRecord: ...
+
+    def find_imported(self, scope: OwnerScope, sha256: str) -> IngestionRecord | None:
+        """The earliest IMPORTED record of these bytes."""
+        ...
+
+    def find_by_idempotency_key(self, scope: OwnerScope, key: str) -> IngestionRecord | None: ...
+
+    def recent(self, scope: OwnerScope, limit: int) -> Sequence[IngestionRecord]:
+        """Most recent first."""
+        ...
 
 
 class BlobStore(Protocol):

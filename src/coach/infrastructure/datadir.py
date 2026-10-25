@@ -30,6 +30,7 @@ class DataLayout:
     root: Path
     database: Path
     raw: Path
+    quarantine: Path
 
 
 def _is_within(path: Path, root: Path) -> bool:
@@ -77,4 +78,6 @@ def resolve_data_dir(
 def ensure_layout(root: Path) -> DataLayout:
     raw = root / "raw"
     raw.mkdir(mode=0o700, parents=True, exist_ok=True)
-    return DataLayout(root=root, database=root / "coach.sqlite3", raw=raw)
+    quarantine = root / "quarantine"
+    quarantine.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return DataLayout(root=root, database=root / "coach.sqlite3", raw=raw, quarantine=quarantine)

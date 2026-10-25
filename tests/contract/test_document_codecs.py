@@ -20,16 +20,19 @@ from coach.application.contracts import (
     DATA_QUALITY_ISSUE_CODEC,
     DERIVED_VALUE_CODEC,
     GOAL_CODEC,
+    INGESTION_RECORD_CODEC,
     OBSERVATION_CODEC,
     PROFILE_CODEC,
     RAW_SOURCE_CODEC,
     SPORT_EVENT_CODEC,
+    TIME_SERIES_CODEC,
     DocumentCodec,
     UnsupportedSchemaVersionError,
 )
 from coach.domain.activity.activity import ActivityStatus
 from coach.domain.activity.issues import DataQualityIssue, IssueResolution
 from coach.domain.activity.observation import SourceKind
+from coach.domain.activity.streams import TimeSeries
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.coaching.state import CoachingState
 from coach.domain.consent.ledger import ConsentLedger
@@ -106,6 +109,24 @@ ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
     ),
     (DATA_OVERRIDE_CODEC, sample_override(original_value=None, corrected_value=None)),
     (DATA_QUALITY_ISSUE_CODEC, sample_issue()),
+    (
+        INGESTION_RECORD_CODEC,
+        INGESTION_RECORD_CODEC.load(load_json(EXAMPLES_DIR / "ingestion-record.example.json")),
+    ),
+    (
+        INGESTION_RECORD_CODEC,
+        INGESTION_RECORD_CODEC.load(
+            load_json(EXAMPLES_DIR / "ingestion-record.rejected.example.json")
+        ),
+    ),
+    (
+        TIME_SERIES_CODEC,
+        TIME_SERIES_CODEC.load(load_json(EXAMPLES_DIR / "time-series.example.json")),
+    ),
+    (
+        TIME_SERIES_CODEC,
+        TimeSeries(start_time_utc=NOW, offset_seconds=(0.0, 1.5), power_watts=(None, 250.0)),
+    ),
     (
         DATA_QUALITY_ISSUE_CODEC,
         DataQualityIssue.for_ambiguous_match(

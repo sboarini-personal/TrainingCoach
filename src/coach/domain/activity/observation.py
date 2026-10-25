@@ -46,18 +46,19 @@ class SourceKind(StrEnum):
     ATHLETE_ENTRY = "ATHLETE_ENTRY"
 
 
-_ORIGIN: Final = {
-    SourceKind.FIT_FILE: SourceOrigin.FILE_UPLOAD,
-    SourceKind.OTHER_FILE: SourceOrigin.FILE_UPLOAD,
-    SourceKind.PROVIDER_RECORD: SourceOrigin.GARMIN_PERSONAL_API,
-    SourceKind.ATHLETE_ENTRY: SourceOrigin.MANUAL_ENTRY,
+_ORIGINS: Final = {
+    SourceKind.FIT_FILE: frozenset({SourceOrigin.FILE_UPLOAD}),
+    SourceKind.OTHER_FILE: frozenset({SourceOrigin.FILE_UPLOAD}),
+    SourceKind.PROVIDER_RECORD: frozenset({SourceOrigin.GARMIN_PERSONAL_API}),
+    # The CSV activity template holds the athlete's own declarations (files spec 8.4).
+    SourceKind.ATHLETE_ENTRY: frozenset({SourceOrigin.MANUAL_ENTRY, SourceOrigin.FILE_UPLOAD}),
 }
 
 
 def source_kind_of(origin: SourceOrigin, detected_type: DetectedType) -> SourceKind:
     if origin is SourceOrigin.GARMIN_PERSONAL_API:
         return SourceKind.PROVIDER_RECORD
-    if origin is SourceOrigin.MANUAL_ENTRY:
+    if origin is SourceOrigin.MANUAL_ENTRY or detected_type is DetectedType.CSV:
         return SourceKind.ATHLETE_ENTRY
     return SourceKind.FIT_FILE if detected_type is DetectedType.FIT else SourceKind.OTHER_FILE
 
@@ -94,8 +95,8 @@ class Observation:
 
     def __post_init__(self) -> None:
         SourceKey(self.raw_source_id, self.part)
-        if self.origin is not _ORIGIN[self.kind]:
-            raise DomainValidationError(f"{self.kind} sources come from {_ORIGIN[self.kind]}")
+        if self.origin not in _ORIGINS[self.kind]:
+            raise DomainValidationError(f"{self.kind} sources cannot come from {self.origin}")
         require_sha256(self.raw_sha256)
         object.__setattr__(self, "received_at", ensure_utc(self.received_at))
         if not _NAME.match(self.normaliser) or not _SEMVER.match(self.normaliser_version):

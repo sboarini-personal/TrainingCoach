@@ -1,0 +1,200 @@
+"""FIT parser (runs in the sandbox): official Garmin FIT SDK with the CRC check enabled.
+
+Reads file_id, session, activity and record messages into the parser-output document; the
+mapping to canonical fields happens in the parent (spec/integration/files.spec.md 8.1).
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, Final, cast
+
+from garmin_fit_sdk import Decoder, Stream
+
+from coach.integrations.files.parsing import (
+    ParserLimits,
+    RecordCounter,
+    SessionData,
+    limit_exceeded,
+    number,
+    output,
+    parse_failed,
+)
+
+PARSER: Final = "fit"
+VERSION: Final = "1.0.0"
+FIT_EPOCH: Final = datetime(1989, 12, 31, tzinfo=UTC)
+MAX_OFFSET_SECONDS: Final = 14 * 3600
+_CODE: Final = re.compile(r"^[a-z0-9_]{1,40}$")
+
+# summary key -> FIT session fields, first present wins
+_SUMMARY: Final = (
+    ("elapsedSeconds", ("total_elapsed_time",)),
+    ("timerSeconds", ("total_timer_time",)),
+    ("movingSeconds", ("total_moving_time",)),
+    ("distanceMeters", ("total_distance",)),
+    ("ascentMeters", ("total_ascent",)),
+    ("descentMeters", ("total_descent",)),
+    ("avgHeartRate", ("avg_heart_rate",)),
+    ("maxHeartRate", ("max_heart_rate",)),
+    ("avgSpeedMps", ("enhanced_avg_speed", "avg_speed")),
+    ("maxSpeedMps", ("enhanced_max_speed", "max_speed")),
+    ("avgPowerWatts", ("avg_power",)),
+    ("maxPowerWatts", ("max_power",)),
+    ("totalWorkJoules", ("total_work",)),
+    ("trainingEffectAerobic", ("total_training_effect",)),
+    ("trainingEffectAnaerobic", ("total_anaerobic_training_effect",)),
+    ("poolLengthMeters", ("pool_length",)),
+    ("lengthCount", ("num_active_lengths", "num_lengths")),
+)
+
+
+class _RecordLimit(Exception):  # noqa: N818 - control flow inside the decoder callback
+    pass
+
+
+def _code(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if _CODE.match(text) else None
+
+
+def _first(message: dict[str, Any], names: tuple[str, ...]) -> tuple[str, float] | None:
+    for name in names:
+        value = number(message.get(name))
+        if value is not None:
+            return name, value
+    return None
+
+
+def _value(message: dict[str, Any], names: tuple[str, ...]) -> float | None:
+    found = _first(message, names)
+    return None if found is None else found[1]
+
+
+def _cadence(message: dict[str, Any], whole: str, fraction: str) -> float | None:
+    cadence = number(message.get(whole))
+    if cadence is None:
+        return None
+    return cadence + (number(message.get(fraction)) or 0.0)
+
+
+def _utc_offset_minutes(activities: list[dict[str, Any]]) -> int | None:
+    """``activity.local_timestamp - activity.timestamp`` (files spec 8.1)."""
+    if len(activities) != 1:
+        return None
+    timestamp = activities[0].get("timestamp")
+    local = activities[0].get("local_timestamp")
+    if isinstance(local, datetime):
+        local = (local.replace(tzinfo=UTC) - FIT_EPOCH) // timedelta(seconds=1)
+    if not isinstance(timestamp, datetime) or isinstance(local, bool) or not isinstance(local, int):
+        return None
+    offset = local - (timestamp.astimezone(UTC) - FIT_EPOCH) // timedelta(seconds=1)
+    if offset % 60 or abs(offset) > MAX_OFFSET_SECONDS:
+        return None
+    return offset // 60
+
+
+def _window_end(session: dict[str, Any], start: datetime) -> datetime | None:
+    elapsed = number(session.get("total_elapsed_time"))
+    if elapsed is not None:
+        return start + timedelta(seconds=elapsed)
+    end = session.get("timestamp")
+    return end if isinstance(end, datetime) else None
+
+
+def _session(index: int, message: dict[str, Any], manufacturer: str | None) -> SessionData:
+    start = message.get("start_time")
+    if not isinstance(start, datetime):
+        raise parse_failed("SESSION_WITHOUT_START")
+    data = SessionData(
+        index=index,
+        start=start.astimezone(UTC),
+        sport=_code(message.get("sport")),
+        sub_sport=_code(message.get("sub_sport")),
+        manufacturer=manufacturer,
+    )
+    for key, names in _SUMMARY:
+        found = _first(message, names)
+        if found is not None:
+            data.put(key, found[1], f"session[{index}].{found[0]}")
+    data.put(
+        "avgCadence",
+        _cadence(message, "avg_cadence", "avg_fractional_cadence"),
+        f"session[{index}].avg_cadence",
+    )
+    data.put(
+        "maxCadence",
+        _cadence(message, "max_cadence", "max_fractional_cadence"),
+        f"session[{index}].max_cadence",
+    )
+    stroke = _code(message.get("swim_stroke"))
+    if stroke is not None:
+        data.labels["strokeType"] = stroke
+        data.source_paths["strokeType"] = f"session[{index}].swim_stroke"
+    return data
+
+
+def _samples(data: SessionData, records: list[dict[str, Any]], end: datetime | None) -> None:
+    for record in records:
+        timestamp = record.get("timestamp")
+        if not isinstance(timestamp, datetime) or timestamp < data.start:
+            continue
+        if end is not None and timestamp > end:
+            continue
+        data.sample(
+            (timestamp - data.start).total_seconds(),
+            distanceMeters=number(record.get("distance")),
+            heartRate=number(record.get("heart_rate")),
+            speedMps=_value(record, ("enhanced_speed", "speed")),
+            cadence=_cadence(record, "cadence", "fractional_cadence"),
+            powerWatts=number(record.get("power")),
+            altitudeMeters=_value(record, ("enhanced_altitude", "altitude")),
+        )
+
+
+def parse_fit(path: Path, limits: ParserLimits) -> dict[str, Any]:
+    counter = RecordCounter(limits.records)
+
+    def count(_mesg_num: int, _message: dict[str, Any]) -> None:
+        try:
+            counter.add()
+        except Exception as error:
+            raise _RecordLimit from error
+
+    stream = Stream.from_file(str(path))
+    try:
+        messages, errors = Decoder(stream).read(
+            enable_crc_check=True, merge_heart_rates=False, mesg_listener=count
+        )
+    finally:
+        stream.close()
+    if any(isinstance(error, _RecordLimit) for error in errors):
+        raise limit_exceeded("RECORDS")
+    if errors:
+        crc = any("CRC" in str(error) for error in errors)
+        raise parse_failed("CRC_ERROR" if crc else "FIT_DECODE")
+    decoded = cast(dict[str, list[dict[str, Any]]], messages)
+    file_ids = decoded.get("file_id_mesgs", [])
+    file_type = _code(file_ids[0].get("type")) if file_ids else None
+    manufacturer = _code(file_ids[0].get("manufacturer")) if file_ids else None
+    offset = _utc_offset_minutes(decoded.get("activity_mesgs", []))
+    records = decoded.get("record_mesgs", [])
+    sessions = []
+    for index, message in enumerate(decoded.get("session_mesgs", [])):
+        data = _session(index, message, manufacturer)
+        data.utc_offset_minutes = offset
+        _samples(data, records, _window_end(message, data.start))
+        sessions.append(data)
+    return output(
+        "FIT",
+        PARSER,
+        VERSION,
+        records=counter.count,
+        sessions=sessions,
+        limits=limits,
+        file_type=file_type,
+    )

@@ -43,6 +43,12 @@ from coach.application.contracts.goals import (
     sport_event_from_contract,
     sport_event_to_contract,
 )
+from coach.application.contracts.ingestion import (
+    ingestion_record_from_contract,
+    ingestion_record_to_contract,
+    time_series_from_contract,
+    time_series_to_contract,
+)
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
 from coach.application.credentials import CredentialRecord
@@ -50,11 +56,13 @@ from coach.domain.activity.activity import Activity
 from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.activity.observation import Observation
 from coach.domain.activity.overrides import DataOverride
+from coach.domain.activity.streams import TimeSeries
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.availability.availability import Availability
 from coach.domain.coaching.state import CoachingState
 from coach.domain.consent.ledger import ConsentLedger
 from coach.domain.goals.goal import Goal, SportEvent
+from coach.domain.ingestion.record import IngestionRecord
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import DerivedMetricValue
 
@@ -125,6 +133,15 @@ DATA_OVERRIDE_CODEC: Final[DocumentCodec[DataOverride]] = DocumentCodec(
 DATA_QUALITY_ISSUE_CODEC: Final[DocumentCodec[DataQualityIssue]] = DocumentCodec(
     "data_quality_issue", "data-quality-issue", issue_to_contract, issue_from_contract
 )
+INGESTION_RECORD_CODEC: Final[DocumentCodec[IngestionRecord]] = DocumentCodec(
+    "ingestion_record",
+    "ingestion-record",
+    ingestion_record_to_contract,
+    ingestion_record_from_contract,
+)
+TIME_SERIES_CODEC: Final[DocumentCodec[TimeSeries]] = DocumentCodec(
+    "time_series", "time-series", time_series_to_contract, time_series_from_contract
+)
 ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     PROFILE_CODEC,
     AVAILABILITY_CODEC,
@@ -139,4 +156,6 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     OBSERVATION_CODEC,
     DATA_OVERRIDE_CODEC,
     DATA_QUALITY_ISSUE_CODEC,
+    INGESTION_RECORD_CODEC,
+    TIME_SERIES_CODEC,
 )

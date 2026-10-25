@@ -183,8 +183,30 @@ BEGIN
 END;
 """
 
+_INGESTION_SCHEMA: Final = """
+CREATE TABLE ingestion_records (
+    ingestion_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL,
+    sha256 TEXT CHECK (sha256 IS NULL OR length(sha256) = 64),
+    outcome TEXT NOT NULL CHECK (outcome IN ('IMPORTED', 'DUPLICATE', 'REJECTED', 'FAILED')),
+    idempotency_key TEXT,
+    received_at TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    document TEXT NOT NULL CHECK (json_valid(document))
+) STRICT;
+CREATE INDEX ingestion_records_by_hash ON ingestion_records (athlete_id, sha256, outcome);
+CREATE INDEX ingestion_records_by_time ON ingestion_records (athlete_id, received_at);
+CREATE UNIQUE INDEX ingestion_records_one_key
+    ON ingestion_records (athlete_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE TRIGGER ingestion_records_are_immutable BEFORE UPDATE ON ingestion_records
+BEGIN
+    SELECT RAISE(ABORT, 'ingestion records are immutable');
+END;
+"""
+
 MIGRATIONS: Final[tuple[Migration, ...]] = (
     Migration(1, "aggregates, raw sources and derived metric values", _INITIAL_SCHEMA),
     Migration(2, "identities and hash-chained audit log", _SECURITY_SCHEMA),
     Migration(3, "activities, source observations and data overrides", _ACTIVITY_SCHEMA),
+    Migration(4, "file ingestion records", _INGESTION_SCHEMA),
 )

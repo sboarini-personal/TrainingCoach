@@ -36,6 +36,7 @@ from coach.domain.activity.overrides import (
     StaleOverrideError,
     check_new_override,
 )
+from coach.domain.ingestion.record import IngestionOutcome, IngestionRecord
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import (
     DerivedMetricValue,
@@ -345,6 +346,52 @@ class InMemoryOverrideRepository:
             if (item.athlete_id, item.entity_type, item.entity_id)
             == (scope.athlete_id, entity_type, entity_id)
         ]
+
+
+class InMemoryIngestionRecordRepository:
+    def __init__(self) -> None:
+        self._items: list[IngestionRecord] = []
+        self._lock = threading.Lock()
+
+    def add(self, scope: OwnerScope, record: IngestionRecord) -> IngestionRecord:
+        check_owner(scope, record.athlete_id)
+        with self._lock:
+            if any(item.ingestion_id == record.ingestion_id for item in self._items):
+                raise ConcurrencyConflictError("ingestion id already used")
+            key = record.idempotency_key
+            if key is not None and any(item.idempotency_key == key for item in self._owned(scope)):
+                raise ConcurrencyConflictError("idempotency key already used")
+            self._items.append(record)
+            return record
+
+    def get(self, scope: OwnerScope, ingestion_id: UUID) -> IngestionRecord:
+        with self._lock:
+            for item in self._owned(scope):
+                if item.ingestion_id == ingestion_id:
+                    return item
+            raise NotFoundError
+
+    def find_imported(self, scope: OwnerScope, sha256: str) -> IngestionRecord | None:
+        with self._lock:
+            return next(
+                (
+                    item
+                    for item in self._owned(scope)
+                    if item.sha256 == sha256 and item.outcome is IngestionOutcome.IMPORTED
+                ),
+                None,
+            )
+
+    def find_by_idempotency_key(self, scope: OwnerScope, key: str) -> IngestionRecord | None:
+        with self._lock:
+            return next((item for item in self._owned(scope) if item.idempotency_key == key), None)
+
+    def recent(self, scope: OwnerScope, limit: int) -> list[IngestionRecord]:
+        with self._lock:
+            return list(reversed(self._owned(scope)))[:limit]
+
+    def _owned(self, scope: OwnerScope) -> list[IngestionRecord]:
+        return [item for item in self._items if item.athlete_id == scope.athlete_id]
 
 
 class InMemoryCredentialProvider:

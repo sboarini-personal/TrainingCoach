@@ -65,6 +65,10 @@ from coach.domain.common.quality import (
 )
 from coach.domain.raw.source import SourceOrigin
 
+# Contract versions written by this code (spec/README.md change process).
+OBSERVATION_SCHEMA_VERSION: Final = "1.1.0"
+ISSUE_SCHEMA_VERSION: Final = "1.1.0"
+
 
 def _optional_float(value: Any) -> float | None:
     return None if value is None else float(value)
@@ -350,7 +354,7 @@ def activity_from_contract(document: Document) -> Activity:
 
 def observation_to_contract(observation: Observation) -> Json:
     return {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": OBSERVATION_SCHEMA_VERSION,
         "rawSourceId": str(observation.raw_source_id),
         "part": observation.part,
         "athleteId": str(observation.athlete_id),
@@ -432,15 +436,18 @@ def override_from_contract(document: Document) -> DataOverride:
 
 def issue_to_contract(issue: DataQualityIssue) -> Json:
     document: Json = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": ISSUE_SCHEMA_VERSION,
         "issueId": str(issue.issue_id),
         "athleteId": str(issue.athlete_id),
         "version": issue.version,
         "kind": issue.kind.value,
-        "activityId": str(issue.activity_id),
         "code": issue.code,
         "field": issue.field,
     }
+    if issue.activity_id is not None:
+        document["activityId"] = str(issue.activity_id)
+    if issue.ingestion_id is not None:
+        document["ingestionId"] = str(issue.ingestion_id)
     if issue.detail is not None:
         document["detail"] = issue.detail
     if issue.kind is IssueKind.AMBIGUOUS_MATCH:
@@ -465,7 +472,8 @@ def issue_from_contract(document: Document) -> DataQualityIssue:
         athlete_id=UUID(document["athleteId"]),
         version=document["version"],
         kind=IssueKind(document["kind"]),
-        activity_id=UUID(document["activityId"]),
+        activity_id=parse_optional_uuid(document.get("activityId")),
+        ingestion_id=parse_optional_uuid(document.get("ingestionId")),
         code=document["code"],
         field=document["field"],
         detail=document.get("detail"),

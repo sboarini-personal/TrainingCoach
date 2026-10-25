@@ -80,9 +80,10 @@ class World:
         if consent:
             self.grant(ATHLETE)
         self.metrics = DerivedMetricService(CATALOG, self.derived, clock=self.clock, ids=self.ids)
+        self.consents_gate = ConsentGate(self.ledgers, policy_version="1.0")
         self.service = ActivityService(
             self.stores,
-            consents=ConsentGate(self.ledgers, policy_version="1.0"),
+            consents=self.consents_gate,
             metrics=self.metrics,
             timezone_of=lambda _: timezone,
             audit=self.audit,
