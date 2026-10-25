@@ -78,6 +78,7 @@ speed and stored for convenience with their unit in the field name.
   group, whether a source may provide it and whether the athlete may correct it.
 - A **source observation** (contract
   [../contracts/source-observation.schema.json](../contracts/source-observation.schema.json))
+  (1.1.0 from P6: athlete entries may come from a FILE_UPLOAD of the CSV activity template)
   is the normalised content of one part of one RawSource: the field values that source
   provides, the path of each value inside the source, stream references and anomalies the
   normaliser detected. It is immutable and identified by `(rawSourceId, part)`; `part` is 0

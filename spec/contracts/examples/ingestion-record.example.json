@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0.0",
+  "ingestionId": "0193b2a0-0000-7000-8000-000000000701",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "receivedAt": "2026-10-21T08:00:00Z",
+  "completedAt": "2026-10-21T08:00:02Z",
+  "originalFilename": "morning_run.fit",
+  "declaredMimeType": "application/octet-stream",
+  "detectedType": "FIT",
+  "byteSize": 182044,
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "malwareScan": "NOT_SCANNED",
+  "outcome": "IMPORTED",
+  "reasonCode": null,
+  "detail": null,
+  "failedFileIndex": null,
+  "files": [
+    {
+      "index": 0,
+      "detectedType": "FIT",
+      "byteSize": 182044,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rawSourceId": "0193b2a0-0000-7000-8000-000000000202",
+      "sessions": 1
+    }
+  ],
+  "activities": [
+    {
+      "activityId": "0193b2a0-0000-7000-8000-000000000101",
+      "rawSourceId": "0193b2a0-0000-7000-8000-000000000202",
+      "part": 0,
+      "outcome": "LINKED"
+    }
+  ],
+  "duplicateOf": null,
+  "idempotencyKey": null
+}

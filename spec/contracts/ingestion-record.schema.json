@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:ingestion-record:1",
+  "title": "IngestionRecord",
+  "description": "Immutable record of one file upload attempt and its outcome (INT-FIL-002, INT-FIL-004, NFR-REL-001). Holds codes, hashes and identifiers; the original filename is sanitised, untrusted display text. Owner spec: spec/integration/files.spec.md section 9.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "ingestionId",
+    "athleteId",
+    "receivedAt",
+    "completedAt",
+    "originalFilename",
+    "declaredMimeType",
+    "detectedType",
+    "byteSize",
+    "sha256",
+    "malwareScan",
+    "outcome",
+    "reasonCode",
+    "detail",
+    "failedFileIndex",
+    "files",
+    "activities",
+    "duplicateOf",
+    "idempotencyKey"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "ingestionId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "receivedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "completedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "originalFilename": {
+      "description": "Display only, untrusted; never used for storage paths (SEC-UPL-005).",
+      "type": ["string", "null"],
+      "maxLength": 255
+    },
+    "declaredMimeType": {
+      "description": "Recorded, never trusted (SEC-UPL-001).",
+      "type": ["string", "null"],
+      "pattern": "^[A-Za-z0-9!#$&^_.+-]{1,64}/[A-Za-z0-9!#$&^_.+-]{1,64}$"
+    },
+    "detectedType": { "enum": ["FIT", "TCX", "GPX", "CSV", "ZIP", "UNKNOWN"] },
+    "byteSize": {
+      "description": "Bytes read; for a TOO_LARGE rejection at stage 1, the bytes read before stopping.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "sha256": {
+      "description": "Null when the upload was not read completely (stage 1).",
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/sha256" }, { "type": "null" }]
+    },
+    "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED", null] },
+    "outcome": { "enum": ["IMPORTED", "DUPLICATE", "REJECTED", "FAILED"] },
+    "reasonCode": {
+      "enum": [
+        "TOO_LARGE",
+        "EXTENSION_NOT_ALLOWED",
+        "CONTENT_MISMATCH",
+        "MALWARE_SUSPECTED",
+        "PARSE_FAILED",
+        "PARSE_TIMEOUT",
+        "LIMIT_EXCEEDED",
+        "SCHEMA_INVALID",
+        "SEMANTIC_INVALID",
+        "NORMALIZATION_FAILED",
+        "PERSISTENCE_FAILED",
+        null
+      ]
+    },
+    "detail": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+    "failedFileIndex": {
+      "description": "Archive member that caused the rejection.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["index", "detectedType", "byteSize", "sha256", "rawSourceId", "sessions"],
+        "additionalProperties": false,
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "detectedType": { "enum": ["FIT", "TCX", "GPX", "CSV"] },
+          "byteSize": { "type": "integer", "minimum": 0 },
+          "sha256": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" },
+          "rawSourceId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+          "sessions": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "activities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["activityId", "rawSourceId", "part", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "activityId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+          "rawSourceId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+          "part": { "type": "integer", "minimum": 0 },
+          "outcome": { "enum": ["CREATED", "DUPLICATE", "NEW_VERSION", "LINKED", "AMBIGUOUS"] }
+        }
+      }
+    },
+    "duplicateOf": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "idempotencyKey": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9._:-]{1,128}$" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "outcome": { "enum": ["IMPORTED", "DUPLICATE"] } },
+        "required": ["outcome"]
+      },
+      "then": {
+        "properties": {
+          "reasonCode": { "type": "null" },
+          "detail": { "type": "null" },
+          "failedFileIndex": { "type": "null" },
+          "sha256": { "type": "string" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "DUPLICATE" } }, "required": ["outcome"] },
+      "then": { "properties": { "duplicateOf": { "type": "string" } } },
+      "else": { "properties": { "duplicateOf": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "REJECTED" } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "reasonCode": { "type": "string", "not": { "const": "PERSISTENCE_FAILED" } },
+          "activities": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "FAILED" } }, "required": ["outcome"] },
+      "then": { "properties": { "reasonCode": { "const": "PERSISTENCE_FAILED" } } }
+    }
+  ]
+}

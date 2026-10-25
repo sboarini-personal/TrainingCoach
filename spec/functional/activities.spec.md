@@ -66,7 +66,8 @@ function of the set of linked source observations (canonical model section 6), s
 depends on the order in which sources arrived.
 
 Source kinds, from the RawSource: `FIT_FILE` (uploaded FIT), `PROVIDER_RECORD` (provider API
-payload), `OTHER_FILE` (TCX, GPX, CSV and other uploads), `ATHLETE_ENTRY` (manual entry).
+payload), `OTHER_FILE` (TCX, GPX and other uploads), `ATHLETE_ENTRY` (manual entry, and rows
+of the CSV activity template, which are the athlete's own declarations: files spec 8.4).
 
 Resolution rules 1.0.0 (`resolutionRulesVersion`). For each field the first source in the
 group's order with a known value wins. When every source that provides the field has it
@@ -216,10 +217,13 @@ its sources' observations in addition to its own.
 
 Contract: [../contracts/data-quality-issue.schema.json](../contracts/data-quality-issue.schema.json).
 
-- Kinds: ANOMALY (per activity, code and field) and AMBIGUOUS_MATCH (deduplication spec
-  section 3). Status OPEN or CLOSED. Resolutions: MERGED and KEPT_SEPARATE (ambiguous
-  matches), NO_LONGER_DETECTED (the anomaly left the EFFECTIVE view, for example after a
-  correction or a better source), ACKNOWLEDGED (the athlete accepts the data as it is).
+- Kinds: ANOMALY (per activity, code and field), AMBIGUOUS_MATCH (deduplication spec
+  section 3) and IMPORT_FAILED (from P6: a rejected or failed file import; it names the
+  ingestion record instead of an activity and its code is the reason code). Status OPEN or
+  CLOSED. Resolutions: MERGED and KEPT_SEPARATE (ambiguous matches), NO_LONGER_DETECTED (the
+  anomaly left the EFFECTIVE view, for example after a correction or a better source),
+  ACKNOWLEDGED (the athlete accepts the data as it is, or has seen a failed import).
+- Contract 1.1.0 (P6) adds IMPORT_FAILED and `ingestionId`; 1.0.0 documents stay valid.
 - Issues are synchronised after every change to an activity: a detected anomaly opens an
   issue unless an open or acknowledged issue exists for the same activity, code and field;
   an open anomaly issue that is no longer detected is closed. Activities that are not live

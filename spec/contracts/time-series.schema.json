@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:time-series:1",
+  "title": "TimeSeries",
+  "description": "Columnar time series of one session, stored as a content-addressed blob and referenced as the TIME_SERIES stream of an observation. All columns have the length of offsetSeconds (checked in code); null = UNKNOWN at that sample; an absent column = not recorded. Positions are never included (data minimisation). Owner spec: spec/integration/files.spec.md section 8.5.",
+  "type": "object",
+  "required": ["schemaVersion", "startTimeUtc", "offsetSeconds"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "startTimeUtc": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "offsetSeconds": {
+      "description": "Seconds since startTimeUtc, never decreasing.",
+      "type": "array",
+      "items": { "type": "number", "minimum": 0 }
+    },
+    "distanceMeters": { "$ref": "#/$defs/column" },
+    "heartRateBpm": { "$ref": "#/$defs/column" },
+    "speedMps": { "$ref": "#/$defs/column" },
+    "cadence": { "$ref": "#/$defs/column" },
+    "cadenceUnit": { "enum": ["STEPS_PER_MIN", "RPM", "STROKES_PER_MIN"] },
+    "powerWatts": { "$ref": "#/$defs/column" },
+    "altitudeMeters": {
+      "type": "array",
+      "items": { "type": ["number", "null"], "minimum": -500, "maximum": 9000 }
+    }
+  },
+  "dependentRequired": { "cadence": ["cadenceUnit"], "cadenceUnit": ["cadence"] },
+  "$defs": {
+    "column": {
+      "type": "array",
+      "items": { "type": ["number", "null"], "minimum": 0 }
+    }
+  }
+}

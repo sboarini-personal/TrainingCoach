@@ -29,3 +29,4 @@ change is a new ADR that supersedes the old one (status `Superseded by ADR-NNN`)
 | [ADR-022](ADR-022-sqlite-document-persistence.md) | SQLite document persistence with the standard library (amends ADR-013) | Accepted |
 | [ADR-023](ADR-023-audit-chain-pseudonymous.md) | Hash-chained audit log with pseudonymous identifiers | Accepted |
 | [ADR-024](ADR-024-source-observations-resolution.md) | Source observations and pure field-level resolution | Accepted |
+| [ADR-025](ADR-025-file-ingestion-mechanism.md) | File ingestion mechanism: sandbox process, FIT SDK, archives and streams | Accepted |

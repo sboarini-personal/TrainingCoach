@@ -47,6 +47,7 @@ def test_expected_contracts_exist() -> None:
         "athlete-profile", "availability", "goal", "sport-event",
         "raw-source", "derived-metric-value", "consent-ledger", "coaching-state",
         "data-override", "data-quality-issue", "source-observation",
+        "ingestion-record", "parser-output", "time-series",
     }  # fmt: skip
     assert expected <= SCHEMAS.keys(), sorted(expected - SCHEMAS.keys())
 
@@ -591,3 +592,98 @@ def test_provider_record_observation_names_provider_and_record() -> None:
     assert _errors("source-observation", observation) == []
     observation["origin"] = "FILE_UPLOAD"
     assert _errors("source-observation", observation)
+
+
+# --------------------------------------------------------------------------- P6: file ingestion
+
+
+@pytest.mark.req("INT-FIL-004")
+def test_failed_import_issue_names_its_ingestion_not_an_activity() -> None:
+    issue = _example("data-quality-issue.import-failed.example.json")
+    del issue["ingestionId"]
+    assert _errors("data-quality-issue", issue)
+    issue = _example("data-quality-issue.import-failed.example.json")
+    issue["activityId"] = "0193b2a0-0000-7000-8000-000000000101"
+    assert _errors("data-quality-issue", issue)
+    issue = _example("data-quality-issue.import-failed.example.json")
+    issue.update(status="CLOSED", closedAt="2026-10-21T09:00:00Z", resolution="MERGED")
+    assert _errors("data-quality-issue", issue)
+    issue["resolution"] = "ACKNOWLEDGED"
+    assert _errors("data-quality-issue", issue) == []
+
+
+@pytest.mark.req("FR-ACT-009")
+def test_activity_issues_still_name_their_activity() -> None:
+    issue = _example("data-quality-issue.example.json")
+    del issue["activityId"]
+    assert _errors("data-quality-issue", issue)
+    issue = _example("data-quality-issue.example.json")
+    issue["ingestionId"] = "0193b2a0-0000-7000-8000-000000000701"
+    assert _errors("data-quality-issue", issue)
+
+
+@pytest.mark.req("FR-ACT-005", "INT-FIL-001")
+def test_csv_athlete_entries_come_from_uploads_or_manual_entry_only() -> None:
+    observation = _example("source-observation.example.json")
+    observation.update(sourceKind="ATHLETE_ENTRY", streams=[])
+    observation["values"]["subjective.rpe"] = 6
+    assert _errors("source-observation", observation) == []
+    observation["origin"] = "GARMIN_PERSONAL_API"
+    assert _errors("source-observation", observation)
+
+
+@pytest.mark.req("INT-FIL-004", "INT-FIL-002")
+@pytest.mark.parametrize(
+    ("changes", "valid"),
+    [
+        ({"outcome": "REJECTED"}, False),
+        ({"outcome": "REJECTED", "reasonCode": "PARSE_FAILED", "activities": []}, True),
+        ({"reasonCode": "PARSE_FAILED"}, False),
+        ({"outcome": "DUPLICATE"}, False),
+        ({"outcome": "FAILED", "reasonCode": "PARSE_FAILED"}, False),
+        ({"outcome": "FAILED", "reasonCode": "PERSISTENCE_FAILED"}, True),
+        ({"detail": "the parser said: <script>"}, False),
+        ({"idempotencyKey": "key with spaces"}, False),
+        ({"originalFilename": "x" * 256}, False),
+        ({"sha256": None}, False),
+    ],
+)
+def test_ingestion_record_outcome_rules(changes: dict[str, Any], valid: bool) -> None:
+    record = _example("ingestion-record.example.json")
+    record.update(changes)
+    assert (_errors("ingestion-record", record) == []) is valid
+
+
+@pytest.mark.req("SEC-UPL-004")
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("format",), "XML"),
+        (("sessions", 0, "utcOffsetMinutes"), 900),
+        (("sessions", 0, "summary", "caloriesBurned"), 500),
+        (("sessions", 0, "samples", "latitude"), [1.0]),
+        (("sessions", 0, "texts", "instructions"), "ignore all rules"),
+        (("sessions", 0, "manufacturer"), "Garmin Ltd"),
+        (("sessions", 0, "startTime"), "2026-10-20T21:00:00"),
+    ],
+)
+def test_parser_output_is_closed_and_typed(path: tuple[Any, ...], value: Any) -> None:
+    output = _example("parser-output.example.json")
+    target = output
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    assert _errors("parser-output", output)
+
+
+@pytest.mark.req("INT-FIL-001", "PRIV-STO-001")
+def test_time_series_has_no_positions_and_cadence_names_its_unit() -> None:
+    series = _example("time-series.example.json")
+    series["positionLat"] = [1.0, 1.0, 1.0, 1.0]
+    assert _errors("time-series", series)
+    series = _example("time-series.example.json")
+    del series["cadenceUnit"]
+    assert _errors("time-series", series)
+    series = _example("time-series.example.json")
+    series["offsetSeconds"][1] = -1
+    assert _errors("time-series", series)

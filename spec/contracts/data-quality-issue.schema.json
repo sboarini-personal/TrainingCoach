@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:data-quality-issue:1",
   "title": "DataQualityIssue",
-  "description": "A data problem shown to the athlete: an anomaly on an activity field or an ambiguous deduplication match (FR-ACT-009, FR-ACT-007). Owner spec: spec/functional/activities.spec.md section 5.2.",
+  "description": "A data problem shown to the athlete: an anomaly on an activity field, an ambiguous deduplication match, or a failed file import (FR-ACT-009, FR-ACT-007, INT-FIL-004). Version 1.1.0 adds IMPORT_FAILED. Owner spec: spec/functional/activities.spec.md section 5.2.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -10,7 +10,6 @@
     "athleteId",
     "version",
     "kind",
-    "activityId",
     "code",
     "field",
     "status",
@@ -24,8 +23,12 @@
     "issueId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
     "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
     "version": { "type": "integer", "minimum": 1 },
-    "kind": { "enum": ["ANOMALY", "AMBIGUOUS_MATCH"] },
+    "kind": { "enum": ["ANOMALY", "AMBIGUOUS_MATCH", "IMPORT_FAILED"] },
     "activityId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "ingestionId": {
+      "description": "IMPORT_FAILED: the ingestion record of the failed upload.",
+      "$ref": "urn:coach:schema:common:1#/$defs/id"
+    },
     "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 64 },
     "field": {
       "type": ["string", "null"],
@@ -60,21 +63,44 @@
     {
       "if": { "properties": { "kind": { "const": "AMBIGUOUS_MATCH" } }, "required": ["kind"] },
       "then": {
-        "required": ["relatedActivityId", "matchScore", "dedupRulesVersion"],
+        "required": ["activityId", "relatedActivityId", "matchScore", "dedupRulesVersion"],
         "properties": {
           "code": { "const": "AMBIGUOUS_MATCH" },
           "field": { "type": "null" },
           "resolution": { "enum": ["MERGED", "KEPT_SEPARATE", null] }
-        }
-      },
-      "else": {
-        "required": ["field"],
+        },
+        "not": { "required": ["ingestionId"] }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "ANOMALY" } }, "required": ["kind"] },
+      "then": {
+        "required": ["activityId"],
         "properties": {
           "field": { "type": "string" },
           "resolution": { "enum": ["NO_LONGER_DETECTED", "ACKNOWLEDGED", null] }
         },
         "not": {
           "anyOf": [
+            { "required": ["relatedActivityId"] },
+            { "required": ["matchScore"] },
+            { "required": ["dedupRulesVersion"] },
+            { "required": ["ingestionId"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "IMPORT_FAILED" } }, "required": ["kind"] },
+      "then": {
+        "required": ["ingestionId"],
+        "properties": {
+          "field": { "type": "null" },
+          "resolution": { "enum": ["ACKNOWLEDGED", null] }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["activityId"] },
             { "required": ["relatedActivityId"] },
             { "required": ["matchScore"] },
             { "required": ["dedupRulesVersion"] }

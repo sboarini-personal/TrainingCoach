@@ -44,4 +44,5 @@ concatenation of SQL with external values is forbidden (ruff `S608` rule enforce
 When the application **exports** CSV that may be opened in spreadsheet software, any text
 cell starting with `=`, `+`, `-`, `@`, tab or carriage return is prefixed with a single quote
 (`'`). Cells holding valid numbers are written as numbers and are not altered. Imported CSV
-values are stored as data and never evaluated (AT-CSV-001).
+values are stored as data and never evaluated (AT-CSV-001). From P6 the activity export uses
+the CSV activity template (files spec 8.4).

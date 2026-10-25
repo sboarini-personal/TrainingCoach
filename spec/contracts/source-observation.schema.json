@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:source-observation:1",
   "title": "SourceObservation",
-  "description": "Normalised content of one part of one RawSource: the fields that source provides, keyed by canonical field path (NORMALIZED layer, immutable). Activities are resolved from their sources' observations (FR-ACT-005). Owner spec: spec/integration/canonical-model.spec.md section 6.",
+  "description": "Normalised content of one part of one RawSource: the fields that source provides, keyed by canonical field path (NORMALIZED layer, immutable). Activities are resolved from their sources' observations (FR-ACT-005). Version 1.1.0: athlete entries may come from a FILE_UPLOAD (CSV activity template). Owner spec: spec/integration/canonical-model.spec.md section 6.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -160,7 +160,7 @@
       },
       "then": {
         "properties": {
-          "origin": { "const": "MANUAL_ENTRY" },
+          "origin": { "enum": ["MANUAL_ENTRY", "FILE_UPLOAD"] },
           "provider": { "type": "null" },
           "providerActivityId": { "type": "null" },
           "streams": { "maxItems": 0 }

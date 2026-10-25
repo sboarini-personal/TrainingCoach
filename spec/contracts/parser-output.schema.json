@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:parser-output:1",
+  "title": "ParserOutput",
+  "description": "Internal contract: the JSON a sandboxed file parser returns (SEC-UPL-004). Values are in the file's own vocabulary and units; the parent decodes it strictly (equal sample columns, session limit and finite numbers are checked in code) before normalising. Owner spec: spec/integration/files.spec.md section 7.",
+  "type": "object",
+  "required": ["schemaVersion", "format", "parser", "recordCount", "fileType", "sessions"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "format": { "enum": ["FIT", "TCX", "GPX", "CSV"] },
+    "parser": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "recordCount": { "type": "integer", "minimum": 0 },
+    "fileType": {
+      "description": "FIT file_id.type label; null for other formats.",
+      "type": ["string", "null"],
+      "pattern": "^[a-z0-9_]{1,40}$"
+    },
+    "sessions": { "type": "array", "items": { "$ref": "#/$defs/session" } }
+  },
+  "$defs": {
+    "label": { "type": ["string", "null"], "minLength": 1, "maxLength": 64 },
+    "session": {
+      "type": "object",
+      "required": [
+        "index",
+        "sport",
+        "subSport",
+        "manufacturer",
+        "startTime",
+        "utcOffsetMinutes",
+        "summary",
+        "labels",
+        "texts",
+        "sourcePaths",
+        "samples"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "sport": { "$ref": "#/$defs/label" },
+        "subSport": { "$ref": "#/$defs/label" },
+        "manufacturer": { "type": ["string", "null"], "pattern": "^[a-z0-9_]{1,40}$" },
+        "startTime": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        "utcOffsetMinutes": { "type": ["integer", "null"], "minimum": -840, "maximum": 840 },
+        "summary": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "elapsedSeconds",
+              "timerSeconds",
+              "movingSeconds",
+              "distanceMeters",
+              "ascentMeters",
+              "descentMeters",
+              "avgHeartRate",
+              "maxHeartRate",
+              "avgCadence",
+              "maxCadence",
+              "avgSpeedMps",
+              "maxSpeedMps",
+              "avgPowerWatts",
+              "maxPowerWatts",
+              "totalWorkJoules",
+              "trainingEffectAerobic",
+              "trainingEffectAnaerobic",
+              "poolLengthMeters",
+              "lengthCount",
+              "rpe"
+            ]
+          },
+          "additionalProperties": { "type": ["number", "null"] }
+        },
+        "labels": {
+          "type": "object",
+          "propertyNames": { "enum": ["strokeType", "subtype"] },
+          "additionalProperties": { "$ref": "#/$defs/label" }
+        },
+        "texts": {
+          "type": "object",
+          "propertyNames": { "enum": ["name", "description", "comments"] },
+          "additionalProperties": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" }
+        },
+        "sourcePaths": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 300 }
+        },
+        "samples": {
+          "type": "object",
+          "required": ["offsetSeconds"],
+          "additionalProperties": false,
+          "properties": {
+            "offsetSeconds": { "type": "array", "items": { "type": "number" } },
+            "distanceMeters": { "$ref": "#/$defs/column" },
+            "heartRate": { "$ref": "#/$defs/column" },
+            "speedMps": { "$ref": "#/$defs/column" },
+            "cadence": { "$ref": "#/$defs/column" },
+            "powerWatts": { "$ref": "#/$defs/column" },
+            "altitudeMeters": { "$ref": "#/$defs/column" }
+          }
+        }
+      }
+    },
+    "column": { "type": "array", "items": { "type": ["number", "null"] } }
+  }
+}
