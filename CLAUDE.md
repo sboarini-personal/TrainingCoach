@@ -103,5 +103,11 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P3 are done. Next: P4 (authentication, authorization chain, CredentialProvider, audit,
-consent enforcement, secret detector). See `docs/architecture.md` section 8.
+P0 to P4 are done. Next: P5 (canonical Activity, data quality, deduplication, overrides).
+See `docs/architecture.md` section 8.
+
+Security building blocks to reuse (P4): obtain an `OwnerScope` only through
+`AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
+with `AuditLog` (codes and identifiers only) and `EventSink`; screen athlete text with
+`SecretScreen` before storing it or sending it to the LLM; secrets through `CredentialService`.
+Tests never touch the real OS secret store: inject `InMemoryCredentialProvider`.

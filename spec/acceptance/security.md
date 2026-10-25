@@ -1,5 +1,15 @@
 # Acceptance: security
 
+Implementation status (P4): AT-AUTH-001 and AT-AUD-001 are executed
+(`tests/unit/test_authentication.py`, `tests/unit/test_rate_limit.py`,
+`tests/integration/test_cli.py`, `tests/unit/test_audit_chain.py`,
+`tests/contract/test_audit_log_contract.py`, `tests/integration/test_sqlite_audit_storage.py`).
+AT-SEC-001 is executed for the detector and notice (`tests/unit/test_secret_screening.py`);
+the agent part waits for P13. AT-SEC-002 is executed for P4 flows
+(`tests/security/test_secret_leakage.py`) and is extended in P7 and P13. AT-IDOR-001 is
+executed at repository and application level (`tests/security/test_idor_application.py`); the
+API level waits for the HTTP API.
+
 ### AT-SEC-001 — Accidentally disclosed secret
 - Requirements: SEC-SEC-005
 - Level: security and agent evaluation. First executable: P4 (detector), P13 (agent).

@@ -1,6 +1,9 @@
 # Acceptance: privacy and safety
 
 Implementation status (P3): AT-STO-001 is executed by `tests/unit/test_data_dir.py`.
+Implementation status (P4): AT-CON-001 is executed for the consent ledger, service, gate and
+policy engine (`tests/unit/test_consent_service.py`, `tests/unit/test_policy_gate.py`); sync and
+agent enforcement follow in P7 and P13.
 
 ### AT-CON-001 — Missing consent blocks processing
 - Requirements: PRIV-CON-001, PRIV-CON-002, PRIV-CON-003, FR-REC-005

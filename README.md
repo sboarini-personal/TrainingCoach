@@ -2,8 +2,8 @@
 
 Spec-driven, data-driven coaching for running, cycling, swimming, strength and tennis.
 
-> Status: specification phase complete (P1). No application features yet. See
-> [docs/architecture.md](docs/architecture.md#8-delivery-phases).
+> Status: P4 complete (domain core, storage, security architecture, `coach` command line).
+> No training features yet. See [docs/architecture.md](docs/architecture.md#8-delivery-phases).
 
 ## What it is
 
@@ -33,6 +33,19 @@ uv run python tools/traceability.py
 
 Tests declare the requirements they verify with `@pytest.mark.req("FR-ACT-007")`; unknown IDs
 fail the run. The traceability matrix is written to `reports/traceability.md`.
+
+## Command line
+
+```bash
+uv run coach init                                   # create the installation and its local token
+uv run coach secret set garmin-api-key --expires-on 2027-01-23   # hidden input
+uv run coach secret list                            # credentials and expiry state
+uv run coach token rotate                           # replace the local API token
+uv run coach audit verify                           # check the audit hash chain
+```
+
+Data goes to `COACH_DATA_DIR` (default `%LOCALAPPDATA%\CoachDeportivo`); the command refuses
+OneDrive, Dropbox and Google Drive folders. Secrets go to the Windows Credential Manager.
 
 ## Data and secrets
 

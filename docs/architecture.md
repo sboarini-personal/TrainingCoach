@@ -65,6 +65,20 @@ Domain packages (P2): `common` (errors, time, units, quality, provenance, sport,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
 `onboarding`; `raw` (P3).
 
+P4 additions:
+
+| Package | Content |
+|---|---|
+| `coach.policy` | `engine` (Action, PolicyContext, `evaluate`, policy set 1.0.0) |
+| `coach.application` | `authentication`, `authorization`, `identity`, `rate_limit`, `credentials`, `audit`, `consent`, `policy_gate`, `screening`, `events` |
+| `coach.infrastructure` | `keyring_credentials`, `events` (log sink), `logs` (redacted file log), `sqlite/identities`, `sqlite/audit` (migration 2) |
+| `coach.cli` | `main` (`coach init`, `token rotate`, `secret set/list`, `audit verify`), `runtime` (composition root) |
+
+Request path (CLI now, HTTP API later): read token from the OS store -> `AuthenticationService`
+(lockout, constant-time check) -> `AuthorizationService.scope_for` -> application service with
+the owner scope -> `PolicyGate` (consents and conditions from storage) -> repositories. Audit
+events and observability events are written along the way.
+
 P3 additions:
 
 | Package | Content |
@@ -178,8 +192,8 @@ Open provider questions G-1 to G-7: `spec/integration/garmin.spec.md` section 8.
 | P1 | Specification, ADRs, architecture, threat model, privacy, CLAUDE.md | Done |
 | P2 | Domain core and shared value objects; athlete, availability, goals, consent, coaching state, onboarding planner; OwnerScope and repository port; secret redaction; P2 contracts and contract tests | Done |
 | P3 | Metric registry and session RPE load; derived values; RAW sources and per-athlete blob store; SQLite persistence and migrations (ADR-022); contract-to-domain codecs; lineage; data-directory guard | Done |
-| P4 | Authentication, authorization chain, CredentialProvider, audit, consent enforcement, secret detector; threat model v1 | Next |
-| P5 | Canonical Activity, quality, deduplication, overrides | |
+| P4 | Local token authentication with lockout and rate limiting; authorization chain and identity directory; credentials in the OS secret store; hash-chained audit log (ADR-023); consent service and gate; policy engine core; chat secret screening; `coach` CLI; threat model v1 | Done |
+| P5 | Canonical Activity, quality, deduplication, overrides | Next |
 | P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP) with sandbox | |
 | P7 | FitnessProvider, capabilities, Garmin Personal adapter, sync, degradation | |
 | P8 | Deterministic metrics engine | |

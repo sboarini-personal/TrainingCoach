@@ -1,8 +1,9 @@
-# Threat model (STRIDE), version 0
+# Threat model (STRIDE), version 1
 
-Status: v0 written in P1 from the specification, extended in P3 with storage threats.
-Version 1 is due in P4 (security architecture) and is reviewed at the end of every phase that
-adds an attack surface (P6 uploads, P7 provider, P13 agent).
+Status: v1, P4 (security architecture). v0 was written in P1 from the specification and
+extended in P3 with storage threats; v1 records the implemented authentication, credential,
+audit, consent and policy controls. Reviewed at the end of every phase that adds an attack
+surface (P6 uploads, P7 provider, P13 agent).
 
 ## 1. Assets
 
@@ -51,6 +52,13 @@ adds an attack surface (P6 uploads, P7 provider, P13 agent).
 | Storage integrity | T: RAW data or derived values silently rewritten by a bug or a direct database edit | database triggers reject updates to RAW sources and any change to a derived value except the one-time supersession link; blobs read-only and verified against their hash on every read (P3) | FR-ACT-002, FR-MET-004 |
 | Blob store | I: one athlete learns that another stored the same file (existence oracle); D/T: path tricks | blobs partitioned per athlete; paths built only from the athlete UUID and a validated SHA-256 (P3) | SEC-IDOR-001, SEC-UPL-005 |
 | Data directory | I: health data synchronised to an organisational cloud tenant | synced-folder guard refuses OneDrive/Dropbox/Google Drive paths; explicit, logged override only (P3) | PRIV-STO-001 |
+| Local authentication (P4) | S: guessing or replaying the local API token; brute force | 256-bit token in the OS secret store, constant-time digest comparison, read from the store on every attempt (rotation is immediate), one generic failure message, lockout after 5 failures in 60 s doubling to 1 h, failures audited and emitted | SEC-AUTH-001, SEC-AUTH-003 |
+| Authorization chain (P4) | E: a principal without an athlete link acting on data; a caller choosing the athlete | owner scope derived only from the authenticated principal through the identity directory; no service takes an athlete ID from input; denials audited | SEC-AUTHZ-001 |
+| Credentials (P4) | I: secret in the database, logs, CLI arguments or output; arbitrary secret-store access | values only in the OS secret store; database keeps metadata without value or hash; derived handles validated before reaching the store; hidden input; `SecretValue` never renders; leakage sweep test plants secrets and scans output, logs, files and errors | SEC-SEC-001 to SEC-SEC-004, AT-SEC-002 |
+| Chat and pasted text (P4) | I: athlete pastes a key; it is stored or sent to the LLM | deterministic screening before storage and LLM; fixed notice text recommending rotation; event without the value | SEC-SEC-005, AT-SEC-001 |
+| Audit log (P4) | T/R: editing, deleting or reordering events; reassigning events to another athlete; I: identifiers surviving deletion | hash chain with gapless sequence, verification command; triggers allow only nulling the plain athlete column; all identifiers inside events are salted hashes (ADR-023) | SEC-AUD-001, PRIV-DEL-003, AT-AUD-001 |
+| Observability events (P4) | I: free text or secrets in events | event fields restricted to code-like values; redacting log formatter on the file log | NFR-OBS-001, NFR-OBS-002 |
+| Consent and policy (P4) | E: processing without consent; AI or interface loosening the policy context | consent ledger enforced by the policy engine with context assembled from stored state; deny-overrides; denials audited | PRIV-CON-002, FR-POL-001, FR-POL-002 |
 | Schema evolution | T/D: an automatic migration destroys data | migration runner refuses unapproved destructive migrations, downgrades and edited migrations (P3) | NFR-REL-004 |
 | External workout publication | T/R: unconfirmed or replayed writes | capability gate (unsupported in V1), confirmation tokens, idempotency per proposal, audit | INT-GAR-002, INT-GAR-003, SEC-AUD-001 |
 | Administrator / host | I: other OS users or malware read the database and blobs | data outside synced folders, per-user ACL, OS full-disk encryption, no secrets in the database; no admin API | ADR-014, A-10 |
@@ -67,6 +75,10 @@ adds an attack surface (P6 uploads, P7 provider, P13 agent).
 | R-11 | Garmin Personal API terms on third-party AI processing unknown (G-5) | Athlete review before P13 uses Garmin data |
 | R-12 | Memory limits for parsers are best effort on Windows | Record limits and timeouts apply everywhere |
 | R-13 | CI actions pinned to tags, not SHAs | Follow-up after the GitHub remote exists |
+| R-14 | Any process running as the same OS user can read the Windows Credential Manager entries and the data directory | Accepted for V1 single-user local use; OS account security and full-disk encryption are the boundary (A-10) |
+| R-15 | `coach token rotate` issues a token without the old one when it is missing from the store | Accepted: whoever can run commands as that OS user can already read the store (authentication.spec.md 1.1) |
+| R-16 | The audit salt is stored with the data; pseudonymity rests on the random part of UUIDv7 identifiers | Accepted (ADR-023) |
+| R-17 | Lockout and rate-limit state is in memory and resets on restart | Accepted for a local single process; a hosted deployment needs shared state |
 
 ## 5. Explicitly analysed threat classes
 
