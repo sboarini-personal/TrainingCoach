@@ -1,5 +1,9 @@
 # Acceptance: activities, data layers, time
 
+Implementation status (P3): the RAW part of AT-RAW-001 is executed (immutable RAW sources and
+blobs: `tests/contract/test_raw_source_repository_contract.py`,
+`tests/integration/test_blob_store.py`); the correction part needs DataOverride (P5).
+
 ### AT-ACT-001 — Garmin activity enriched by a later FIT upload
 - Requirements: FR-ACT-005, FR-ACT-007, FR-ACT-008, NFR-REL-001, INT-GAR-007, INT-FIL-001
 - Level: integration and property-based. First executable: P6 (two file sources), P7 (Garmin plus FIT).

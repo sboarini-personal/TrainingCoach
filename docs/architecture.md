@@ -62,14 +62,25 @@ Additionally, `tests/unit/test_architecture_purity.py` checks that `coach.domain
 current time are passed in by the application layer.
 
 Domain packages (P2): `common` (errors, time, units, quality, provenance, sport, evidence,
-untrusted text), `athlete`, `availability`, `goals`, `consent`, `coaching`, `onboarding`.
+untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
+`onboarding`; `raw` (P3).
+
+P3 additions:
+
+| Package | Content |
+|---|---|
+| `coach.metrics` | `registry` (MetricDefinition, namespace and origin rules), `derived` (DerivedMetricValue, `derive`), `catalog` (`any.srpe_load`) |
+| `coach.application` | `contracts/` (one codec per aggregate, domain <-> contract document), `ports` (repositories, blob store, clock, ids), `raw_storage`, `derived_metrics`, `lineage` |
+| `coach.infrastructure` | `sqlite/` (database, migrations, aggregate, raw-source and derived-value repositories), `blobs` (per-athlete content-addressed files), `datadir` (data directory and synced-folder guard), `memory` (reference implementations) |
 
 ## 3. Runtime and deployment (V1)
 
 - Single local process on the athlete's Windows PC: HTTP API bound to loopback, background
   sync worker, CLI. No inbound internet surface.
 - Data directory outside synced folders: default `%LOCALAPPDATA%\CoachDeportivo`
-  (`COACH_DATA_DIR`), containing SQLite (WAL) and the content-addressed blob store.
+  (`COACH_DATA_DIR`), containing SQLite (WAL) and the content-addressed blob store. The
+  application refuses a data directory inside OneDrive, Dropbox or Google Drive folders
+  (PRIV-STO-001).
 - Secrets in Windows Credential Manager through `keyring`.
 - The repository (code, specs, synthetic fixtures) stays in its current folder (athlete
   decision D-1) and is pushed to a private GitHub repository (D-3).
@@ -86,6 +97,18 @@ PROVIDER / FILE --bytes--> RAW (immutable, sha256) --normaliser vN--> NORMALIZED
 
 Logical Activities are separate from their sources (ADR-004); conflicts resolve per field
 (ADR-011); plans are immutable versions (ADR-010).
+
+Storage (P3, ADR-022): one SQLite file `<data_dir>/coach.sqlite3`.
+
+| Table | Holds | Integrity |
+|---|---|---|
+| `aggregates` | mutable aggregates as contract documents (profile, availability, goals, events, consent ledger, coaching state) | owner column on every query; optimistic `version` |
+| `raw_sources` | immutable RAW metadata | unique `(athlete_id, sha256)`; trigger rejects every update |
+| `derived_metric_values` | append-only metric values with input snapshots | partial unique index: one current value per athlete, metric and subject; trigger allows only the one-time `superseded_by` link |
+| `schema_migrations` | applied migrations with SQL checksums | refuses downgrades, edited migrations and unapproved destructive migrations |
+
+RAW bytes live in `<data_dir>/raw/<athlete_id>/<sha256[0:2]>/<sha256>`, written atomically,
+read-only, verified on read.
 
 ## 5. Key flows
 
@@ -154,8 +177,8 @@ Open provider questions G-1 to G-7: `spec/integration/garmin.spec.md` section 8.
 | P0.5 | Workspace: git, uv project, quality gates, CI | Done |
 | P1 | Specification, ADRs, architecture, threat model, privacy, CLAUDE.md | Done |
 | P2 | Domain core and shared value objects; athlete, availability, goals, consent, coaching state, onboarding planner; OwnerScope and repository port; secret redaction; P2 contracts and contract tests | Done |
-| P3 | Metric registry; RAW/NORMALIZED/DERIVED storage; lineage; SQLite and blob store (same repository contract tests as the in-memory adapter); contract-to-domain mapping; data-directory guard | Next |
-| P4 | Authentication, authorization chain, CredentialProvider, audit, consent enforcement, secret detector; threat model v1 | |
+| P3 | Metric registry and session RPE load; derived values; RAW sources and per-athlete blob store; SQLite persistence and migrations (ADR-022); contract-to-domain codecs; lineage; data-directory guard | Done |
+| P4 | Authentication, authorization chain, CredentialProvider, audit, consent enforcement, secret detector; threat model v1 | Next |
 | P5 | Canonical Activity, quality, deduplication, overrides | |
 | P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP) with sandbox | |
 | P7 | FitnessProvider, capabilities, Garmin Personal adapter, sync, degradation | |

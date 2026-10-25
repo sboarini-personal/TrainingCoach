@@ -1,5 +1,6 @@
 # Acceptance: privacy and safety
 
+Implementation status (P3): AT-STO-001 is executed by `tests/unit/test_data_dir.py`.
 
 ### AT-CON-001 — Missing consent blocks processing
 - Requirements: PRIV-CON-001, PRIV-CON-002, PRIV-CON-003, FR-REC-005

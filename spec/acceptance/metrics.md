@@ -1,5 +1,12 @@
 # Acceptance: metrics and lineage
 
+Implementation status (P3): AT-MET-001 is executed with session RPE load
+(`tests/unit/test_derived_metrics.py`, `tests/unit/test_derived_metric_service.py`); the full
+metrics engine over activities comes in P8. AT-MET-002 is executed by
+`tests/unit/test_metric_registry.py`. AT-LIN-001 is partly executed
+(`tests/unit/test_lineage.py`): lineage resolves derived values and RAW sources, and activity
+references resolve once the canonical Activity exists (P5).
+
 ### AT-MET-001 — Deterministic metrics in code with provenance
 - Requirements: FR-MET-001, FR-MET-002, FR-MET-004
 - Level: unit. First executable: P3 (registry), P8 (engine).

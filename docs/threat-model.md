@@ -1,8 +1,8 @@
 # Threat model (STRIDE), version 0
 
-Status: v0 written in P1 from the specification. Version 1 is due in P4 (security
-architecture) and is reviewed at the end of every phase that adds an attack surface (P6
-uploads, P7 provider, P13 agent).
+Status: v0 written in P1 from the specification, extended in P3 with storage threats.
+Version 1 is due in P4 (security architecture) and is reviewed at the end of every phase that
+adds an attack surface (P6 uploads, P7 provider, P13 agent).
 
 ## 1. Assets
 
@@ -47,7 +47,11 @@ uploads, P7 provider, P13 agent).
 | Malware | T: infected files stored | scan hook; unscanned imports flagged | SEC-UPL-006 |
 | Agent tools | E: prompt injection drives tool misuse; I: exfiltration through tool arguments; T: injected "publish" or "delete" | narrow tools, no URL/HTTP/SQL/shell/secret tools, no athlete ID parameter, policy engine, human confirmation tokens the agent never sees | FR-AGT-001, FR-AGT-002, SEC-INJ-001, SEC-INJ-002, FR-POL-002 |
 | LLM provider (B4) | I: personal data disclosed to a third party; secrets in prompts | AI_PROCESSING consent, minimisation, pre-LLM secret redaction, no GPS traces | PRIV-CON-003, SEC-SEC-002, SEC-SEC-005 |
-| Repositories | I/E: SQL injection | parameterised queries, ruff S608 | SEC-INJ-003 |
+| Repositories | I/E: SQL injection | parameterised queries only (no formatted SQL), ruff S608; tested with SQL metacharacters (P3) | SEC-INJ-003 |
+| Storage integrity | T: RAW data or derived values silently rewritten by a bug or a direct database edit | database triggers reject updates to RAW sources and any change to a derived value except the one-time supersession link; blobs read-only and verified against their hash on every read (P3) | FR-ACT-002, FR-MET-004 |
+| Blob store | I: one athlete learns that another stored the same file (existence oracle); D/T: path tricks | blobs partitioned per athlete; paths built only from the athlete UUID and a validated SHA-256 (P3) | SEC-IDOR-001, SEC-UPL-005 |
+| Data directory | I: health data synchronised to an organisational cloud tenant | synced-folder guard refuses OneDrive/Dropbox/Google Drive paths; explicit, logged override only (P3) | PRIV-STO-001 |
+| Schema evolution | T/D: an automatic migration destroys data | migration runner refuses unapproved destructive migrations, downgrades and edited migrations (P3) | NFR-REL-004 |
 | External workout publication | T/R: unconfirmed or replayed writes | capability gate (unsupported in V1), confirmation tokens, idempotency per proposal, audit | INT-GAR-002, INT-GAR-003, SEC-AUD-001 |
 | Administrator / host | I: other OS users or malware read the database and blobs | data outside synced folders, per-user ACL, OS full-disk encryption, no secrets in the database; no admin API | ADR-014, A-10 |
 | Audit | R: actions denied by athlete or agent; tampering | append-only, hash-chained events | SEC-AUD-001 |

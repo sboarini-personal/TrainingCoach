@@ -33,8 +33,14 @@ Requirement (requirements-index.md)
 - every JSON Schema is valid Draft 2020-12, cross-schema references resolve, and the examples
   in `contracts/examples/` validate.
 
+## Reading the matrix
+
+COVERED means at least one passing test is marked with the requirement. It does not mean the
+requirement is complete: many requirements are implemented across several phases (for
+example lineage resolves activities only from P5). The acceptance files record which parts of
+each acceptance test are executed so far.
+
 ## Current state
 
-Phase P1 (specification). Only the spec-integrity and contract tests exist; functional
-requirements are UNTESTED until their implementation phases (see `docs/architecture.md`,
-section "Delivery phases").
+After P3: 64 of 152 requirements have passing tests; the rest are UNTESTED until their
+implementation phases (see `docs/architecture.md`, section "Delivery phases").

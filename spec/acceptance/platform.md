@@ -1,5 +1,6 @@
 # Acceptance: data platform
 
+Implementation status (P3): AT-MIG-001 is executed by `tests/integration/test_sqlite_database.py`.
 
 ### AT-MIG-001 — Migrations are explicit and never destructive by default
 - Requirements: NFR-REL-004

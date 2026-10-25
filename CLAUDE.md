@@ -88,15 +88,20 @@ CHECKS, TRACEABILITY, ASSUMPTIONS, REMAINING (next dependency-aware work).
 
 ## Local environment notes
 
-The repository is in a OneDrive-synced folder (ADR-014). OneDrive can briefly lock files in
-`.venv`, so `uv sync` (or a `uv run` that triggers a sync) may fail with "Access denied":
-retry, or run tools with `uv run --no-sync` once the environment is synced. A permanent fix is
-setting `UV_PROJECT_ENVIRONMENT` to a folder outside OneDrive.
+The repository is in a OneDrive-synced folder (ADR-014). The virtual environment lives outside
+it: the user variable `UV_PROJECT_ENVIRONMENT` is `%LOCALAPPDATA%\CoachDeportivo-dev\venv`. A
+shell started before that variable existed must set it per command (Git Bash:
+`export UV_PROJECT_ENVIRONMENT="$LOCALAPPDATA/CoachDeportivo-dev/venv"`). Never recreate a
+`.venv` inside the repository. Inside Claude Desktop, `%LOCALAPPDATA%` writes are redirected to
+the app's package folder (MSIX), so a normal terminal has its own copy of the environment.
+
+Pre-commit hooks run `uv run --no-sync`; run `uv sync` after changing dependencies.
 
 Synthetic secrets in tests must sit on one line with `# pragma: allowlist secret` (the
-formatter can move trailing comments, so use one-line constants).
+formatter can move trailing comments, so use one-line constants). Shared synthetic domain
+objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P2 are done. Next: P3 (metric registry, data layers, SQLite and blob store). See
-`docs/architecture.md` section 8.
+P0 to P3 are done. Next: P4 (authentication, authorization chain, CredentialProvider, audit,
+consent enforcement, secret detector). See `docs/architecture.md` section 8.

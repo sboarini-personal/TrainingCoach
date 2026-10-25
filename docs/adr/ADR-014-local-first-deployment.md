@@ -36,9 +36,16 @@ athlete's control and could defeat deletion (threat model R-01).
   `link-mode = "copy"`; and OneDrive briefly locks files in `.venv` after a reinstall, making
   some `uv sync` runs fail with "Access denied" until retried. Recommended fix: keep the
   virtual environment outside the synced folder by setting the user environment variable
-  `UV_PROJECT_ENVIRONMENT` (for example `%LOCALAPPDATA%\CoachDeportivo\venv`).
+  `UV_PROJECT_ENVIRONMENT`. Applied in P3 as `%LOCALAPPDATA%\CoachDeportivo-dev\venv`, separate
+  from the athlete data directory so that deleting athlete data never touches the
+  development environment.
+- Observed in P3: Claude Desktop is a packaged (MSIX) Windows app, so writes to
+  `%LOCALAPPDATA%` from processes it starts are redirected to the app's private
+  `%LOCALAPPDATA%\Packages\Claude_...\LocalCache\Local\...`. Data written that way is still per
+  user and outside OneDrive; the application itself runs as a normal process and uses the
+  real `%LOCALAPPDATA%`.
 
 ## Verification
 
-- Data-directory guard unit test (P3).
+- Data-directory guard unit tests (P3, AT-STO-001).
 - Secret scanning and athlete-data hooks on every commit (ADR-020).
