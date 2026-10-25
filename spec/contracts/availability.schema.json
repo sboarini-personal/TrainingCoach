@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:availability:1",
+  "title": "Availability",
+  "description": "Recurring availability, default availability and date-specific exceptions (FR-PRF-004, FR-PRF-005). Precedence: exception > recurring > default. Owner spec: spec/functional/profile.spec.md.",
+  "type": "object",
+  "required": ["schemaVersion", "athleteId", "version", "recurring", "defaults", "exceptions"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "recurring": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "daysPerWeek",
+            "maximumHoursPerWeek",
+            "preferredRestDays",
+            "dailyWindows",
+            "doubleSessionsAllowed",
+            "restrictions"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "daysPerWeek": { "type": "integer", "minimum": 0, "maximum": 7 },
+            "maximumHoursPerWeek": { "type": "number", "minimum": 0, "maximum": 80 },
+            "preferredRestDays": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "urn:coach:schema:common:1#/$defs/weekday" }
+            },
+            "dailyWindows": {
+              "type": "object",
+              "propertyNames": { "$ref": "urn:coach:schema:common:1#/$defs/weekday" },
+              "additionalProperties": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/timeWindow" }
+              }
+            },
+            "doubleSessionsAllowed": { "type": "boolean" },
+            "restrictions": { "type": ["string", "null"], "maxLength": 500 }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "defaults": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["maximumDurationMinutes", "allowedSports"],
+          "additionalProperties": false,
+          "properties": {
+            "maximumDurationMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+            "allowedSports": { "$ref": "#/$defs/sportsOrAny" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["date", "available", "maximumDurationMinutes", "allowedSports", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "date": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+          "available": { "type": "boolean" },
+          "maximumDurationMinutes": { "type": ["integer", "null"], "minimum": 1, "maximum": 1440 },
+          "allowedSports": { "$ref": "#/$defs/sportsOrAny" },
+          "reason": { "type": ["string", "null"], "maxLength": 200 }
+        },
+        "if": { "properties": { "available": { "const": true } } },
+        "then": { "properties": { "maximumDurationMinutes": { "type": "integer" } } }
+      }
+    }
+  },
+  "$defs": {
+    "timeWindow": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "$ref": "urn:coach:schema:common:1#/$defs/localTime" },
+        "end": { "$ref": "urn:coach:schema:common:1#/$defs/localTime" }
+      }
+    },
+    "sportsOrAny": {
+      "description": "null means any sport.",
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "urn:coach:schema:common:1#/$defs/sport" }
+        },
+        { "type": "null" }
+      ]
+    }
+  }
+}

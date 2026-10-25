@@ -19,10 +19,11 @@ Questions are asked in small groups of related items, at most **5 questions per 
 
 | # | Group | Content | Feeds |
 |---|---|---|---|
-| G1 | Identity and preferences | display name, timezone, units, language | FR-PRF-001, FR-PRF-007 |
+| G0 | Consent (deterministic, step 0) | consent decisions, including AI_PROCESSING | PRIV-CON-001 |
+| G1 | Identity, preferences, body | display name, birth date or age, timezone, units, language, height, weight | FR-PRF-001, FR-PRF-007 |
 | G2 | Health and safety screen | declared health constraints, current symptoms (red-flag screen) | FR-PRF-006, SAFE-MED-002 |
 | G3 | Primary goal | sport, distance/event, target date, target time, priority | FR-GOL-001, FR-GOL-002 |
-| G4 | Current level | experience and recent results for the goal sport first, then other sports | FR-PRF-003 |
+| G4 | Current level | experience and recent results for the goal sport first, then other sports; resting and maximum heart rate | FR-PRF-003 |
 | G5 | Availability and resources | days, hours, rest days, windows, pool, bike, trainer, gym | FR-PRF-004 |
 | G6 | Strength experience | years, sessions/week, familiar exercises, RPE/RIR familiarity | FR-PRF-003, FR-STR-001 |
 | G7 | Tennis | sessions/week, duration, typical RPE, match/practice | FR-TEN-002 |
@@ -35,11 +36,18 @@ continue but no intensive plan is produced.
 
 The next group is chosen in code from profile completeness, not by the LLM. The planner:
 
-1. Lists missing or invalid **REQUIRED** inputs (section 2) first, then **PREFERRED** ones.
-2. Skips any field that is **known and valid**. A field is valid when it is not UNKNOWN,
-   passes validation, and is within its freshness window.
-3. Returns the group ID and the field list. The AI coach phrases the questions; it never
-   chooses which data to request beyond the planner's list.
+1. **First pass:** walks the groups in order (G0 to G8) and selects the first group with a
+   pending **REQUIRED** input (section 2). The batch lists that group's pending REQUIRED
+   fields first, then its pending PREFERRED fields, up to the batch limit. Related
+   questions therefore stay together.
+2. **Second pass:** when no REQUIRED input is pending, selects the first group with a pending
+   **PREFERRED** input.
+3. A field is **pending** when it was never recorded, or its recording is older than its
+   freshness window. A field recorded within its window is **satisfied**, whether its value is
+   known or was answered as UNKNOWN; validation happens when the value is recorded.
+4. Returns the group ID and the field list, or nothing when onboarding data is complete. The
+   AI coach phrases the questions; it never chooses which data to request beyond the
+   planner's list. G0 is presented by the deterministic consent step, never by the LLM.
 
 Freshness windows (proposed defaults, configurable, assumption A-18):
 

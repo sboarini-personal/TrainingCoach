@@ -1,0 +1,147 @@
+{
+  "schemaVersion": "1.0.0",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 4,
+  "identity": {
+    "displayName": {
+      "value": "Synthetic Athlete",
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:05:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    }
+  },
+  "physiology": {
+    "declaredAge": {
+      "value": 45,
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:05:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    },
+    "weightKg": {
+      "value": null,
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:06:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    }
+  },
+  "heartRate": {
+    "restingHr": {
+      "value": 52,
+      "provenance": {
+        "source": "PROVIDER",
+        "recordedAt": "2026-10-24T18:10:00Z",
+        "provider": "garmin",
+        "metricId": null
+      }
+    },
+    "zoneModels": [
+      {
+        "zoneModelId": "0193b2a0-0000-7000-8000-000000000301",
+        "method": "PERCENT_MAX_HR",
+        "source": "ATHLETE_DECLARED",
+        "boundariesBpm": [100, 120, 140, 158, 170, 185],
+        "validFrom": "2026-10-01"
+      }
+    ]
+  },
+  "preferences": {
+    "timezone": {
+      "value": "America/Argentina/Buenos_Aires",
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:05:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    },
+    "language": {
+      "value": "es",
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:05:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    }
+  },
+  "devices": {
+    "sensors": {
+      "value": [{ "type": "HR_STRAP", "model": null, "reliableForTraining": true }],
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:20:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    }
+  },
+  "experience": {
+    "running": {
+      "value": {
+        "yearsExperience": 6,
+        "weeklyDistanceKm": 30,
+        "longestDistanceKm": 21.1,
+        "recent5k": null,
+        "recent10k": { "timeSeconds": 2940, "date": "2026-09-14", "source": "ATHLETE_DECLARED" },
+        "recentHalfMarathon": null,
+        "recentMarathon": null
+      },
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:12:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    },
+    "tennis": {
+      "value": {
+        "sessionsPerWeek": 1,
+        "typicalDurationMinutes": 90,
+        "typicalRpe": 6,
+        "profile": "PRACTICE"
+      },
+      "provenance": {
+        "source": "ATHLETE_DECLARED",
+        "recordedAt": "2026-10-24T18:15:00Z",
+        "provider": null,
+        "metricId": null
+      }
+    }
+  },
+  "resources": {
+    "value": {
+      "pool": { "available": true, "lengthM": 25 },
+      "bicycle": true,
+      "smartTrainer": false,
+      "gym": true,
+      "strengthEquipment": ["BARBELL", "DUMBBELLS", "BENCH"],
+      "tennisSchedule": [
+        { "weekday": "WEDNESDAY", "start": "19:00", "durationMinutes": 90, "sessionType": "PRACTICE" }
+      ]
+    },
+    "provenance": {
+      "source": "ATHLETE_DECLARED",
+      "recordedAt": "2026-10-24T18:14:00Z",
+      "provider": null,
+      "metricId": null
+    }
+  },
+  "health": {
+    "value": { "declaredAt": "2026-10-24T18:08:00Z", "constraints": [] },
+    "provenance": {
+      "source": "ATHLETE_DECLARED",
+      "recordedAt": "2026-10-24T18:08:00Z",
+      "provider": null,
+      "metricId": null
+    }
+  }
+}

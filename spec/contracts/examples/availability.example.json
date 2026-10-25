@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.0.0",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 2,
+  "recurring": {
+    "daysPerWeek": 5,
+    "maximumHoursPerWeek": 7.5,
+    "preferredRestDays": ["MONDAY"],
+    "dailyWindows": {
+      "TUESDAY": [{ "start": "07:00", "end": "08:00" }],
+      "WEDNESDAY": [{ "start": "19:00", "end": "20:30" }],
+      "THURSDAY": [{ "start": "07:00", "end": "08:30" }],
+      "SATURDAY": [{ "start": "08:00", "end": "10:30" }],
+      "SUNDAY": [{ "start": "08:00", "end": "09:30" }]
+    },
+    "doubleSessionsAllowed": false,
+    "restrictions": null
+  },
+  "defaults": null,
+  "exceptions": [
+    {
+      "date": "2026-11-05",
+      "available": true,
+      "maximumDurationMinutes": 30,
+      "allowedSports": ["SWIMMING"],
+      "reason": "Work trip, hotel pool only"
+    }
+  ]
+}

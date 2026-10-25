@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0.0",
+  "goalId": "0193b2a0-0000-7000-8000-000000000601",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 1,
+  "eventId": "0193b2a0-0000-7000-8000-000000000611",
+  "sport": "RUNNING",
+  "distanceMeters": 10000,
+  "targetTimeSeconds": 2700,
+  "targetDate": "2026-12-13",
+  "priority": "A",
+  "status": "ACTIVE",
+  "createdAt": "2026-10-24T18:30:00Z",
+  "baseline": {
+    "capturedAt": "2026-10-24T18:30:00Z",
+    "evidence": [],
+    "summary": "Declared 10K in 49:00 on 2026-09-14; no activity history imported yet."
+  }
+}

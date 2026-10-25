@@ -35,6 +35,26 @@ Controls:
 - AT-SEC-002 scans logs, error responses, prompts sent to a fake LLM, and the database after a
   full test flow for planted secret values.
 
+## 3.1 Redaction rules
+
+The same deterministic detector serves log redaction (NFR-OBS-002) and chat secret detection
+(SEC-SEC-005). It replaces matches with `[REDACTED-SECRET]`:
+
+| Rule | Matches |
+|---|---|
+| JWT | three base64url segments starting with `eyJ` |
+| PEM | `-----BEGIN ... PRIVATE KEY-----` blocks |
+| Authorization scheme | values after `Bearer`, `ApiKey`, `Basic` |
+| Named assignment | values after names such as `api_key`, `apikey`, `secret`, `client_secret`, `password`, `passwd`, `token`, `access_token`, `refresh_token`, `cookie`, `authorization`, followed by `=` or `:` |
+| Known prefixes | `sk-ant-`, `ghp_`, `github_pat_`, `AKIA` followed by key material |
+| High entropy | uninterrupted alphanumeric runs of 20 or more characters containing letters and digits, with Shannon entropy of at least 3.5 bits per character |
+
+Entropy alone does not separate secrets from file paths or package names (both measure about
+4 bits per character); the length of the uninterrupted alphanumeric run does, because paths and
+names break into short words at `/`, `-`, `_` and `.`. UUIDs are not matched for the same
+reason. Full 64-character hashes are redacted, so the logging convention is to log content
+hashes as their first 12 hexadecimal characters (`sha256:1a2b3c4d5e6f`).
+
 ## 4. Rotation and expiry (SEC-SEC-004)
 
 - Every secret can be replaced by a CLI command without code changes.

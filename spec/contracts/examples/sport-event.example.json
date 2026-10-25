@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "1.0.0",
+  "eventId": "0193b2a0-0000-7000-8000-000000000611",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 1,
+  "name": "Synthetic City 10K",
+  "sport": "RUNNING",
+  "date": "2026-12-13",
+  "distanceMeters": 10000,
+  "location": null,
+  "priority": "A",
+  "expectedConditions": "Flat road course, early morning, warm."
+}

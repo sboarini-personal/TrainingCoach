@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:goal:1",
+  "title": "Goal",
+  "description": "Athlete goal, separate from the sport event it may reference (FR-GOL-001, FR-GOL-002). Owner spec: spec/functional/goals.spec.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "goalId",
+    "athleteId",
+    "version",
+    "eventId",
+    "sport",
+    "distanceMeters",
+    "targetTimeSeconds",
+    "targetDate",
+    "priority",
+    "status",
+    "createdAt",
+    "baseline"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "goalId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "eventId": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "sport": { "$ref": "urn:coach:schema:common:1#/$defs/sport" },
+    "distanceMeters": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+    "targetTimeSeconds": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+    "targetDate": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "priority": { "$ref": "#/$defs/priority" },
+    "status": { "enum": ["DRAFT", "ACTIVE", "ACHIEVED", "MISSED", "ABANDONED", "SUPERSEDED"] },
+    "createdAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "baseline": {
+      "description": "Immutable snapshot of current-level evidence at goal creation.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["capturedAt", "evidence", "summary"],
+          "additionalProperties": false,
+          "properties": {
+            "capturedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+            "evidence": {
+              "type": "array",
+              "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
+            },
+            "summary": { "type": ["string", "null"], "maxLength": 1000 }
+          }
+        },
+        { "type": "null" }
+      ]
+    }
+  },
+  "$defs": {
+    "priority": {
+      "description": "A primary, B secondary, C development or recreational.",
+      "enum": ["A", "B", "C"]
+    }
+  }
+}

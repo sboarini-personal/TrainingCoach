@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:sport-event:1",
+  "title": "SportEvent",
+  "description": "A race or event, independent of any goal (FR-GOL-001). Owner spec: spec/functional/goals.spec.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "athleteId",
+    "version",
+    "name",
+    "sport",
+    "date",
+    "distanceMeters",
+    "location",
+    "priority",
+    "expectedConditions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "eventId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "sport": { "$ref": "urn:coach:schema:common:1#/$defs/sport" },
+    "date": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "distanceMeters": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+    "location": { "type": ["string", "null"], "maxLength": 200 },
+    "priority": { "$ref": "urn:coach:schema:goal:1#/$defs/priority" },
+    "expectedConditions": { "type": ["string", "null"], "maxLength": 1000 }
+  }
+}

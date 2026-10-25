@@ -8,7 +8,12 @@ General rules:
 - Every field records its provenance: `ATHLETE_DECLARED`, `PROVIDER` (with provider name) or
   `DERIVED` (with metric ID), plus `updatedAt`.
 - Mutable aggregates use optimistic concurrency (NFR-REL-003).
-- Updates go through allow-listed commands (SEC-AUTHZ-003).
+- Updates go through allow-listed commands (SEC-AUTHZ-003): a profile update can set only the
+  athlete-editable fields; identity (`athleteId`) and `version` are never part of an update.
+- A field that was never recorded is absent; a field recorded as unknown has value `null`
+  with its provenance (who recorded it and when). The onboarding planner uses this
+  distinction (FR-ONB-002).
+- Free-text fields are untrusted: control characters are removed and lengths are capped.
 
 ## 1. AthleteProfile (FR-PRF-001)
 
@@ -32,10 +37,15 @@ General rules:
 ### 1.1 Heart-rate zones
 
 - A zone model is `{zoneModelId, method, source, boundariesBpm[], validFrom}`.
+  `boundariesBpm` holds 2 to 11 strictly ascending values between 30 and 230; zone *i* spans
+  `[boundariesBpm[i], boundariesBpm[i+1])`.
 - Zones come only from the athlete, the provider, or a standard calculation over **measured
-  or declared** anchors (maxHR, restingHR, LTHR).
+  or declared** anchors (maxHR, restingHR, LTHR). The zone `source` values are
+  ATHLETE_DECLARED, PROVIDER and CALCULATED_FROM_MEASURED_ANCHORS; there is deliberately no
+  value for age-predicted anchors.
 - Age-predicted maximum heart rate MUST NOT be used to prescribe intensity. Without reliable
   anchors, intensity is prescribed by RPE (FR-PLN-005).
+- When both are known, restingHR MUST be lower than maxHR.
 
 ## 2. Sport experience (FR-PRF-003)
 

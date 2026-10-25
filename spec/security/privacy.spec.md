@@ -16,10 +16,18 @@ Contract: [../contracts/consent.schema.json](../contracts/consent.schema.json).
 | PROVIDER_RECOVERY_METRICS | proprietary recovery metrics (Body Battery, stress) | asked |
 | LONG_TERM_STORAGE | keeping data beyond the active coaching period | asked |
 | AI_PROCESSING | sending personal data to the external LLM provider (PRIV-CON-003) | asked first, step 0 |
-| WOMENS_HEALTH | women's health data (PRIV-CON-004) | not offered in V1 |
+| WOMENS_HEALTH | women's health data (PRIV-CON-004) | not offered in V1: cannot be granted |
 
 - Consent is an append-only ledger of `ConsentRecord`s. The current state of a type is its
-  latest record.
+  latest record. Record timestamps never go backwards within a ledger.
+- Record kinds: **grant** (`granted = true`, `grantedAt` set), **revocation** of an existing
+  grant (`granted = false`, original `grantedAt`, `revokedAt` set), and **decline** of a type
+  never granted (`granted = false`, `grantedAt = null`, `revokedAt` = decision time).
+- Status of a type for a required policy version: `NOT_GRANTED` (no record), `DECLINED`,
+  `REVOKED`, `OUTDATED_POLICY` (granted under a different policy version), `GRANTED`. Only
+  `GRANTED` allows processing.
+- Granting a type that is already granted under the same policy version is a no-op.
+  Revoking a type that is not granted is an error.
 - Each record states `policyVersion` and `purpose`. A new privacy policy version requires
   re-consent for affected types.
 - Enforcement points (all deterministic): ingestion (a category without consent is not
