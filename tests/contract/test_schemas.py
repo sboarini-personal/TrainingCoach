@@ -7,46 +7,22 @@ contract itself enforces the cited requirement.
 from __future__ import annotations
 
 import copy
-import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
-from referencing import Registry, Resource
 
-from specindex import SPEC_DIR
+from schemas import EXAMPLES_DIR, REGISTRY, SCHEMAS, load_json
+from schemas import validation_errors as _errors
 
-CONTRACTS = SPEC_DIR / "contracts"
-EXAMPLES = CONTRACTS / "examples"
-
-
-def _load(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-SCHEMAS: dict[str, dict[str, Any]] = {
-    path.name.removesuffix(".schema.json"): _load(path)
-    for path in sorted(CONTRACTS.glob("*.schema.json"))
-}
-REGISTRY: Registry[Any] = Registry().with_resources(
-    (schema["$id"], Resource.from_contents(schema)) for schema in SCHEMAS.values()
-)
-EXAMPLE_FILES = sorted(EXAMPLES.glob("*.json"))
-
-
-def _errors(schema_name: str, instance: Any) -> list[str]:
-    validator = Draft202012Validator(
-        SCHEMAS[schema_name],
-        registry=REGISTRY,
-        format_checker=Draft202012Validator.FORMAT_CHECKER,
-    )
-    return [error.message for error in validator.iter_errors(instance)]
+EXAMPLE_FILES = sorted(EXAMPLES_DIR.glob("*.json"))
+_load = load_json
 
 
 def _example(filename: str) -> dict[str, Any]:
-    data: dict[str, Any] = _load(EXAMPLES / filename)
+    data: dict[str, Any] = _load(EXAMPLES_DIR / filename)
     return copy.deepcopy(data)
 
 
@@ -66,7 +42,10 @@ def _refs(node: Any) -> Iterator[str]:
 
 
 def test_expected_contracts_exist() -> None:
-    expected = {"common", "activity", "workout", "training-plan", "insight", "consent"}
+    expected = {
+        "common", "activity", "workout", "training-plan", "insight", "consent",
+        "athlete-profile", "availability", "goal", "sport-event",
+    }  # fmt: skip
     assert expected <= SCHEMAS.keys(), sorted(expected - SCHEMAS.keys())
 
 
