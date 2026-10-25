@@ -59,6 +59,10 @@ surface (P6 uploads, P7 provider, P13 agent).
 | Audit log (P4) | T/R: editing, deleting or reordering events; reassigning events to another athlete; I: identifiers surviving deletion | hash chain with gapless sequence, verification command; triggers allow only nulling the plain athlete column; all identifiers inside events are salted hashes (ADR-023) | SEC-AUD-001, PRIV-DEL-003, AT-AUD-001 |
 | Observability events (P4) | I: free text or secrets in events | event fields restricted to code-like values; redacting log formatter on the file log | NFR-OBS-001, NFR-OBS-002 |
 | Consent and policy (P4) | E: processing without consent; AI or interface loosening the policy context | consent ledger enforced by the policy engine with context assembled from stored state; deny-overrides; denials audited | PRIV-CON-002, FR-POL-001, FR-POL-002 |
+| Activity data (P5) | T: corrections or later sources silently rewriting imported data; R: who changed what | RAW sources and source observations immutable (database triggers); corrections are append-only overrides with author, time and reason, applied at read time; corrections, merges, keep-separate decisions and splits audited | FR-ACT-002, FR-ACT-006, SEC-AUD-001 |
+| Deduplication (P5) | T: a wrong or crafted source merges into another session or doubles its load | deterministic, versioned scoring; ambiguous matches never merged automatically and excluded from totals until the athlete decides; one live activity per source enforced by the database; aggregation over logical activities only | FR-ACT-007, FR-ACT-008 |
+| Activity text (P5) | I/E: provider names, descriptions, comments or correction reasons carry injected instructions or pasted secrets | stored as untrusted text (control characters removed, length capped), never in audit or observability events; correction text screened for secrets before storage with the fixed notice; the agent wraps untrusted text (P13) | SEC-INJ-001, SEC-SEC-005 |
+| Activities (P5) | I: IDOR on activities, sources, overrides and quality issues | owner-scoped repositories and services, foreign references behave like missing ones; contract tests on both adapters | SEC-IDOR-001 |
 | Schema evolution | T/D: an automatic migration destroys data | migration runner refuses unapproved destructive migrations, downgrades and edited migrations (P3) | NFR-REL-004 |
 | External workout publication | T/R: unconfirmed or replayed writes | capability gate (unsupported in V1), confirmation tokens, idempotency per proposal, audit | INT-GAR-002, INT-GAR-003, SEC-AUD-001 |
 | Administrator / host | I: other OS users or malware read the database and blobs | data outside synced folders, per-user ACL, OS full-disk encryption, no secrets in the database; no admin API | ADR-014, A-10 |
@@ -79,6 +83,8 @@ surface (P6 uploads, P7 provider, P13 agent).
 | R-15 | `coach token rotate` issues a token without the old one when it is missing from the store | Accepted: whoever can run commands as that OS user can already read the store (authentication.spec.md 1.1) |
 | R-16 | The audit salt is stored with the data; pseudonymity rests on the random part of UUIDv7 identifiers | Accepted (ADR-023) |
 | R-17 | Lockout and rate-limit state is in memory and resets on restart | Accepted for a local single process; a hosted deployment needs shared state |
+| R-18 | No unit of work across repositories: a crash between saving an activity and its follow-up work (derived values, quality issues, the review issue of an ambiguous match) leaves them stale until the next change or a retried import, which repairs them | Accepted for a local single process (ADR-024); reviewed in P15 |
+| R-19 | Text inside uploaded files and provider payloads (activity names, descriptions) is not yet screened for pasted secrets | Normalisers screen athlete-visible text fields from P6 |
 
 ## 5. Explicitly analysed threat classes
 

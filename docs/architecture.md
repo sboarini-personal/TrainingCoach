@@ -63,7 +63,16 @@ current time are passed in by the application layer.
 
 Domain packages (P2): `common` (errors, time, units, quality, provenance, sport, evidence,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
-`onboarding`; `raw` (P3).
+`onboarding`; `raw` (P3); `activity` (P5).
+
+P5 additions:
+
+| Package | Content |
+|---|---|
+| `coach.domain` | `activity`: field catalogue (paths, types, groups, correctable fields), source observations, `Activity` and source links, local time and training day, field-level resolution 1.0.0, DataOverride chains and the effective values, deduplication scoring 1.0.0, DataQualityIssue (ADR-024) |
+| `coach.metrics` | `quality` (quality rules 1.0.0: expected fields, anomalies, reliability, confidence, reasons), `volume` (weekly volume over ACTIVE activities), activity bindings in `catalog` (`any.srpe_load` inputs and effective-view target) |
+| `coach.application` | `activities` (`ActivityService`: ingestion tiers, effective view, corrections with secret screening, merge, keep separate, split, acknowledgements, metric recompute and issue sync; `build_activity`), `contracts/activities`, ports `ActivityRepository`, `ObservationRepository`, `OverrideRepository`; lineage resolves activities down to RAW sources |
+| `coach.infrastructure` | `sqlite/activities` (migration 3), in-memory activity, observation and override repositories |
 
 P4 additions:
 
@@ -104,7 +113,8 @@ P3 additions:
 See `spec/functional/activities.spec.md` and ADR-009.
 
 ```
-PROVIDER / FILE --bytes--> RAW (immutable, sha256) --normaliser vN--> NORMALIZED
+PROVIDER / FILE --bytes--> RAW (immutable, sha256) --normaliser vN--> source observations
+     --field-level resolution (pure, ADR-024)--> NORMALIZED logical activities
      --(+ DataOverride at read time)--> EFFECTIVE --metrics vN--> DERIVED (append-only)
      --> INSIGHT --> RECOMMENDATION / DECISION   (evidence references down the chain)
 ```
@@ -120,6 +130,12 @@ Storage (P3, ADR-022): one SQLite file `<data_dir>/coach.sqlite3`.
 | `raw_sources` | immutable RAW metadata | unique `(athlete_id, sha256)`; trigger rejects every update |
 | `derived_metric_values` | append-only metric values with input snapshots | partial unique index: one current value per athlete, metric and subject; trigger allows only the one-time `superseded_by` link |
 | `schema_migrations` | applied migrations with SQL checksums | refuses downgrades, edited migrations and unapproved destructive migrations |
+| `activities` (P5) | logical activities (NORMALIZED) as contract documents; status ACTIVE, PENDING_REVIEW or MERGED | owner column on every query; optimistic `version`; start-time index for candidate search |
+| `activity_sources` (P5) | sources of live activities | primary key `(athlete_id, raw_source_id, part)`: a source belongs to at most one live activity |
+| `source_observations` (P5) | normalised content of each raw source part | trigger rejects every update; foreign key to `raw_sources` |
+| `data_overrides` (P5) | athlete corrections | trigger rejects every update; unique supersession link and one first override per entity and field keep one chain per field |
+
+Data quality issues are aggregates in `aggregates` (kind `data_quality_issue`).
 
 RAW bytes live in `<data_dir>/raw/<athlete_id>/<sha256[0:2]>/<sha256>`, written atomically,
 read-only, verified on read.
@@ -175,9 +191,9 @@ engine for proposals -> AgentDecision audit.
 | A-13 | Only an explicit athlete action releases SAFETY_HOLD | Proposed |
 | A-14 | Specs, code and logs in English; athlete-facing language configurable, default Spanish | Proposed |
 | A-15 | Women's health and nutrition data not ingested | Proposed |
-| A-16 | Deduplication tolerances as in the deduplication spec, versioned | Proposed |
+| A-16 | Deduplication tolerances and weights as in the deduplication spec (rules 1.0.0), versioned | Proposed |
 | A-17 | V1 is for adults (18 or older) | Proposed |
-| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, recovery windows, open-water reliability) are initial, versioned values to be reviewed with real data | Proposed |
+| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability) are initial, versioned values to be reviewed with real data | Proposed |
 | A-19 | At most one ACTIVE priority-A goal | Proposed |
 | A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
 
@@ -193,8 +209,8 @@ Open provider questions G-1 to G-7: `spec/integration/garmin.spec.md` section 8.
 | P2 | Domain core and shared value objects; athlete, availability, goals, consent, coaching state, onboarding planner; OwnerScope and repository port; secret redaction; P2 contracts and contract tests | Done |
 | P3 | Metric registry and session RPE load; derived values; RAW sources and per-athlete blob store; SQLite persistence and migrations (ADR-022); contract-to-domain codecs; lineage; data-directory guard | Done |
 | P4 | Local token authentication with lockout and rate limiting; authorization chain and identity directory; credentials in the OS secret store; hash-chained audit log (ADR-023); consent service and gate; policy engine core; chat secret screening; `coach` CLI; threat model v1 | Done |
-| P5 | Canonical Activity, quality, deduplication, overrides | Next |
-| P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP) with sandbox | |
+| P5 | Canonical Activity and field catalogue, source observations and field-level resolution (ADR-024), time model, data quality rules and issues, deduplication tiers with merge, keep separate and split, DataOverride corrections and the effective view, weekly volume, activity storage (migration 3) | Done |
+| P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP) with sandbox | Next |
 | P7 | FitnessProvider, capabilities, Garmin Personal adapter, sync, degradation | |
 | P8 | Deterministic metrics engine | |
 | P9 | Running, cycling, swimming analytics; tennis load | |

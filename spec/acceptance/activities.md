@@ -4,6 +4,14 @@ Implementation status (P3): the RAW part of AT-RAW-001 is executed (immutable RA
 blobs: `tests/contract/test_raw_source_repository_contract.py`,
 `tests/integration/test_blob_store.py`); the correction part needs DataOverride (P5).
 
+Implementation status (P5): AT-TIM-001 is executed (`tests/unit/test_activity_time.py`).
+AT-RAW-001 is executed end to end on SQLite and the file blob store
+(`tests/integration/test_activity_storage.py`, `tests/unit/test_activity_service.py`).
+AT-ACT-001 is executed with synthetic source observations: resolution with provenance,
+matching tiers, re-upload, both arrival orders and the property-based tests
+(`tests/unit/test_activity_service.py`, `tests/unit/test_dedup_properties.py`); real FIT and
+Garmin sources follow in P6 and P7.
+
 ### AT-ACT-001 — Garmin activity enriched by a later FIT upload
 - Requirements: FR-ACT-005, FR-ACT-007, FR-ACT-008, NFR-REL-001, INT-GAR-007, INT-FIL-001
 - Level: integration and property-based. First executable: P6 (two file sources), P7 (Garmin plus FIT).

@@ -103,7 +103,7 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P4 are done. Next: P5 (canonical Activity, data quality, deduplication, overrides).
+P0 to P5 are done. Next: P6 (file ingestion: FIT, TCX, GPX, CSV, ZIP with the parser sandbox).
 See `docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
@@ -111,3 +111,9 @@ Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 with `AuditLog` (codes and identifiers only) and `EventSink`; screen athlete text with
 `SecretScreen` before storing it or sending it to the LLM; secrets through `CredentialService`.
 Tests never touch the real OS secret store: inject `InMemoryCredentialProvider`.
+
+Activity building blocks (P5): normalisers produce `Observation`s (field values keyed by the
+paths in `coach.domain.activity.fields`) for stored RawSources; `ActivityService.ingest` does
+deduplication, resolution, quality, metrics and issues; read activities through
+`ActivityService.effective` (corrections applied). Tests wire the service with
+`tests/activity_world.py` and build synthetic observations with `samples.sample_observation`.
