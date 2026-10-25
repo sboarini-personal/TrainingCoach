@@ -40,6 +40,17 @@ NFR-TRC-002.
   an explicit migration strategy, rollback strategy and protection of RAW data.
 - Destructive migrations never run automatically; they need human approval (master spec §81).
 
+Database migration rules (P3, ADR-022):
+
+- Migrations are an ordered list with consecutive version numbers, a name, the SQL, and a
+  `destructive` flag. Applied migrations are recorded with the SHA-256 of their SQL.
+- Opening a database applies pending non-destructive migrations, each in its own transaction.
+- A pending destructive migration (dropping or deleting anything) is refused unless the caller
+  passes explicit approval (AT-MIG-001). A test checks that any migration containing `DROP` or
+  `DELETE` is flagged destructive.
+- A database whose recorded schema version is newer than the code, or whose applied migration
+  SQL differs from the code (checksum mismatch), is refused: no downgrade, no silent edit.
+
 ### NFR-REL-005 Backup and restore (PROPOSED)
 
 - A command exports a consistent backup of the database and blob store to a location the

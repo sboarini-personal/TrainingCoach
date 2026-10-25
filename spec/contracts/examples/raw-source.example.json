@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "rawSourceId": "0193b2a0-0000-7000-8000-000000000202",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "origin": "FILE_UPLOAD",
+  "provider": null,
+  "providerObjectId": null,
+  "category": "ACTIVITY_FILE",
+  "receivedAt": "2026-10-21T08:00:00Z",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "byteSize": 182044,
+  "detectedType": "FIT",
+  "originalFilename": "morning_run.fit",
+  "malwareScan": "NOT_SCANNED"
+}

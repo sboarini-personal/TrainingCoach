@@ -1,5 +1,6 @@
 # Acceptance: privacy and safety
 
+
 ### AT-CON-001 — Missing consent blocks processing
 - Requirements: PRIV-CON-001, PRIV-CON-002, PRIV-CON-003, FR-REC-005
 - Level: unit and integration. First executable: P4 (ledger and policy), P7 (sync), P13 (agent).
@@ -9,6 +10,16 @@
 **Then** no HRV data is fetched or stored and the assessment lists MISSING_DATA for HRV
 **And** no personal data is sent to the LLM provider
 **And** deterministic features keep working.
+
+### AT-STO-001 — Synced folders are refused as data directory
+- Requirements: PRIV-STO-001
+- Level: unit. First executable: P3.
+
+**Given** `COACH_DATA_DIR` points inside the folder named by the `OneDrive` variable, or to any path with a `OneDrive...` or `Dropbox` component
+**When** the data directory is resolved
+**Then** it is refused with an explanation
+**And** without `COACH_DATA_DIR` the default is the per-user local application data folder
+**And** only `COACH_ALLOW_SYNCED_DATA_DIR=1` overrides the refusal.
 
 ### AT-DEL-001 — Deletion covers every store
 - Requirements: PRIV-DEL-001, PRIV-DEL-002, PRIV-DEL-003, SEC-AUD-001

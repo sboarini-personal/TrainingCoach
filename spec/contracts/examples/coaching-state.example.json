@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "1.0.0",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 7,
+  "lifecycle": "TRAINING",
+  "conditions": ["INTEGRATION_ERROR"]
+}

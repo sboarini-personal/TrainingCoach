@@ -123,7 +123,7 @@
       "bicycle": true,
       "smartTrainer": false,
       "gym": true,
-      "strengthEquipment": ["BARBELL", "DUMBBELLS", "BENCH"],
+      "strengthEquipment": ["BARBELL", "BENCH", "DUMBBELLS"],
       "tennisSchedule": [
         { "weekday": "WEDNESDAY", "start": "19:00", "durationMinutes": 90, "sessionType": "PRACTICE" }
       ]

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:coaching-state:1",
+  "title": "CoachingState",
+  "description": "Lifecycle state plus overlay conditions (FR-ONB-006, ADR-021). Owner spec: spec/functional/onboarding.spec.md section 4.",
+  "type": "object",
+  "required": ["schemaVersion", "athleteId", "version", "lifecycle", "conditions"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "lifecycle": {
+      "enum": [
+        "NEW_USER",
+        "ONBOARDING",
+        "BASELINE_COLLECTION",
+        "GOAL_DEFINED",
+        "PLAN_READY",
+        "TRAINING",
+        "ANALYSIS",
+        "ADAPTATION"
+      ]
+    },
+    "conditions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["SAFETY_HOLD", "DATA_INCOMPLETE", "INTEGRATION_ERROR", "GOAL_REASSESSMENT", "RECOVERY_BLOCK"]
+      }
+    }
+  }
+}

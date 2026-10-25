@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:raw-source:1",
+  "title": "RawSource",
+  "description": "Immutable metadata of raw bytes received from a file or provider (FR-ACT-002). The bytes are stored content-addressed per athlete. Owner spec: spec/functional/activities.spec.md section 1.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "rawSourceId",
+    "athleteId",
+    "origin",
+    "provider",
+    "providerObjectId",
+    "category",
+    "receivedAt",
+    "sha256",
+    "byteSize",
+    "detectedType",
+    "originalFilename",
+    "malwareScan"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "rawSourceId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "origin": { "$ref": "urn:coach:schema:common:1#/$defs/sourceOrigin" },
+    "provider": { "type": ["string", "null"], "pattern": "^[a-z0-9_]+$" },
+    "providerObjectId": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+    "category": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 64 },
+    "receivedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "sha256": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" },
+    "byteSize": { "type": "integer", "minimum": 0 },
+    "detectedType": { "enum": ["FIT", "TCX", "GPX", "CSV", "ZIP", "JSON", "UNKNOWN"] },
+    "originalFilename": {
+      "description": "Display only, untrusted; never used for storage paths (SEC-UPL-005).",
+      "type": ["string", "null"],
+      "maxLength": 255
+    },
+    "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED", "NOT_APPLICABLE"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "origin": { "const": "GARMIN_PERSONAL_API" } } },
+      "then": {
+        "properties": {
+          "provider": { "const": "garmin" },
+          "malwareScan": { "const": "NOT_APPLICABLE" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "origin": { "const": "FILE_UPLOAD" } } },
+      "then": {
+        "properties": {
+          "provider": { "type": "null" },
+          "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "origin": { "const": "MANUAL_ENTRY" } } },
+      "then": {
+        "properties": {
+          "provider": { "type": "null" },
+          "malwareScan": { "const": "NOT_APPLICABLE" }
+        }
+      }
+    }
+  ]
+}

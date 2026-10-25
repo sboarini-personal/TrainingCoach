@@ -1,6 +1,6 @@
 # ADR-013: Python stack
 
-- Status: Accepted (athlete decision D-2, 2026-10-24)
+- Status: Accepted (athlete decision D-2, 2026-10-24); persistence row amended by ADR-022
 - Date: 2026-10-24
 - Requirements: INT-FIL-001, SEC-UPL-002, INT-GAR-005
 
@@ -23,7 +23,7 @@ the phase that needs it:
 | Typed models | Pydantic v2 |
 | Numerics | NumPy |
 | HTTP API | FastAPI |
-| Persistence | SQLite via SQLAlchemy 2 with Alembic migrations |
+| Persistence | SQLite via the standard `sqlite3` module and a small migration runner (ADR-022; originally SQLAlchemy 2 with Alembic) |
 | Secrets | `keyring` |
 | LLM | Anthropic SDK behind an `LLMProvider` port |
 

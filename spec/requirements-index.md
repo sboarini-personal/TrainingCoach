@@ -157,6 +157,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | PRIV-CON-004 | Unnecessary sensitive categories not ingested by default | security/privacy.spec.md | - | PROPOSED |
 | PRIV-ACC-001 | Athlete can inspect and export their data | security/privacy.spec.md | - | ACCEPTED |
 | PRIV-ACC-002 | Athlete can correct their data | security/privacy.spec.md | AT-RAW-001 | ACCEPTED |
+| PRIV-STO-001 | Athlete data stored outside synced folders by default | security/privacy.spec.md | AT-STO-001 | PROPOSED |
 | PRIV-DEL-001 | Deletion workflow covers every data store | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
 | PRIV-DEL-002 | Provider access revoked where supported, otherwise instructions given | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
 | PRIV-DEL-003 | Retained audit information minimised | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
@@ -178,7 +179,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | NFR-REL-001 | Idempotent ingestion and commands | nfr.spec.md | AT-ACT-001 | ACCEPTED |
 | NFR-REL-002 | Explicit retry strategy and no silent data loss | nfr.spec.md | AT-DEG-001 | ACCEPTED |
 | NFR-REL-003 | Optimistic concurrency on mutable aggregates | nfr.spec.md | AT-CONC-001 | ACCEPTED |
-| NFR-REL-004 | Schema versioning and explicit, non-destructive migrations | nfr.spec.md | - | ACCEPTED |
+| NFR-REL-004 | Schema versioning and explicit, non-destructive migrations | nfr.spec.md | AT-MIG-001 | ACCEPTED |
 | NFR-REL-005 | Backup and restore of the local data store | nfr.spec.md | - | PROPOSED |
 | NFR-OBS-001 | Structured observability events | nfr.spec.md | - | ACCEPTED |
 | NFR-OBS-002 | Log and telemetry redaction | nfr.spec.md | AT-SEC-002 | ACCEPTED |

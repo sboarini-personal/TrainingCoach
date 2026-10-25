@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:consent-ledger:1",
+  "title": "ConsentLedger",
+  "description": "An athlete's append-only consent records in recording order (PRIV-CON-001). Owner spec: spec/security/privacy.spec.md section 1.",
+  "type": "object",
+  "required": ["schemaVersion", "athleteId", "version", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "records": { "type": "array", "items": { "$ref": "urn:coach:schema:consent:1" } }
+  }
+}

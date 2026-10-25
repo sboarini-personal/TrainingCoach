@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.0.0",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 3,
+  "records": [
+    {
+      "schemaVersion": "1.0.0",
+      "consentId": "0193b2a0-0000-7000-8000-000000001001",
+      "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+      "consentType": "AI_PROCESSING",
+      "granted": true,
+      "grantedAt": "2026-10-24T18:00:00Z",
+      "revokedAt": null,
+      "policyVersion": "1.0",
+      "purpose": "Send minimised training data to the external LLM provider for coaching conversation and interpretation.",
+      "recordedAt": "2026-10-24T18:00:00Z"
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "consentId": "0193b2a0-0000-7000-8000-000000001002",
+      "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+      "consentType": "HRV",
+      "granted": false,
+      "grantedAt": null,
+      "revokedAt": "2026-10-24T18:01:00Z",
+      "policyVersion": "1.0",
+      "purpose": "Use heart-rate variability as a recovery signal.",
+      "recordedAt": "2026-10-24T18:01:00Z"
+    }
+  ]
+}

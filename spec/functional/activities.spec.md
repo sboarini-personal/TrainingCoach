@@ -15,9 +15,27 @@ deduplication (FR-ACT-007, FR-ACT-008) in
 | EFFECTIVE | NORMALIZED with DataOverrides applied at read time | View, never stored as a replacement |
 | DERIVED | `DerivedMetricValue` records (metrics spec) | Append-only; superseded, never updated |
 
-`RawSource`: `rawSourceId`, `athleteId`, `origin` (FILE_UPLOAD, GARMIN_PERSONAL_API,
-MANUAL_ENTRY), `provider`, `providerObjectId`, `category`, `receivedAt`, `sha256`, `byteSize`,
-`detectedType`, `originalFilename` (sanitised, display only, untrusted), `ingestionStatus`.
+`RawSource` (contract [../contracts/raw-source.schema.json](../contracts/raw-source.schema.json)):
+`rawSourceId`, `athleteId`, `origin` (FILE_UPLOAD, GARMIN_PERSONAL_API, MANUAL_ENTRY),
+`provider`, `providerObjectId`, `category`, `receivedAt`, `sha256`, `byteSize`, `detectedType`,
+`originalFilename` (sanitised, display only, untrusted), `malwareScan`.
+
+RAW rules (P3):
+
+- A RawSource record is **fully immutable**, like its bytes. The processing outcome of an
+  import is tracked by a separate ingestion record (P6), so no RAW field ever changes. This
+  replaces the earlier `ingestionStatus` field (intentional spec change, P3).
+- Origin rules: GARMIN_PERSONAL_API names provider `garmin`; FILE_UPLOAD and MANUAL_ENTRY
+  have no provider. `malwareScan` is CLEAN or NOT_SCANNED for uploaded files and
+  NOT_APPLICABLE for provider payloads and manual entries (SEC-UPL-006).
+- Bytes are stored content-addressed in a blob store **partitioned per athlete**:
+  `<data_dir>/raw/<athleteId>/<sha256[0:2]>/<sha256>`. Partitioning means one athlete can never
+  learn whether another athlete stored the same file, and deletion of one athlete's data
+  never touches another's.
+- Storing the same bytes twice for the same athlete returns the existing RawSource
+  (deduplication tier 1, NFR-REL-001). Blobs are verified against their hash when read.
+- The original filename keeps only its last path component, without control characters, at
+  most 255 characters. It never influences storage paths (SEC-UPL-005).
 
 ## 2. Time model (FR-ACT-003, FR-ACT-004)
 

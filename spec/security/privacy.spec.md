@@ -59,7 +59,23 @@ never sent to the LLM). The system does not infer unnecessary sensitive attribut
 - **Correct:** profile fields through allow-listed updates; activity data through
   DataOverride (FR-ACT-006), keeping the original.
 
-## 5. Deletion (PRIV-DEL-001 to PRIV-DEL-003)
+## 5. Storage location (PRIV-STO-001, PROPOSED)
+
+Athlete data and secrets are stored outside folders synchronised to cloud storage (ADR-014,
+threat model R-01):
+
+- The data directory is `COACH_DATA_DIR` when set, otherwise `%LOCALAPPDATA%\CoachDeportivo`
+  on Windows or `$XDG_DATA_HOME/CoachDeportivo` (default `~/.local/share/CoachDeportivo`)
+  elsewhere.
+- The application refuses a data directory equal to or inside a synced folder: the roots
+  named by `OneDrive`, `OneDriveCommercial` and `OneDriveConsumer`, and any path with a
+  component that starts with `OneDrive`, or is `Dropbox`, `Google Drive`, `My Drive` or
+  `iCloudDrive` (case-insensitive).
+- The refusal can only be overridden by setting `COACH_ALLOW_SYNCED_DATA_DIR=1`; the override
+  is logged as a security event.
+- Secrets are never stored in the data directory (SEC-SEC-001).
+
+## 6. Deletion (PRIV-DEL-001 to PRIV-DEL-003)
 
 The deletion workflow covers, in order:
 

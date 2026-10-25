@@ -45,6 +45,7 @@ def test_expected_contracts_exist() -> None:
     expected = {
         "common", "activity", "workout", "training-plan", "insight", "consent",
         "athlete-profile", "availability", "goal", "sport-event",
+        "raw-source", "derived-metric-value", "consent-ledger", "coaching-state",
     }  # fmt: skip
     assert expected <= SCHEMAS.keys(), sorted(expected - SCHEMAS.keys())
 
@@ -333,3 +334,84 @@ def test_consent_types_include_ai_processing_and_are_closed() -> None:
     consent = _example("consent.grant.example.json")
     consent["consentType"] = "EVERYTHING"
     assert _errors("consent", consent)
+
+
+# --------------------------------------------------------------------------- raw sources
+
+
+@pytest.mark.req("FR-ACT-002", "SEC-UPL-006")
+@pytest.mark.parametrize(
+    ("origin", "provider", "scan"),
+    [
+        ("GARMIN_PERSONAL_API", None, "NOT_APPLICABLE"),
+        ("GARMIN_PERSONAL_API", "garmin", "NOT_SCANNED"),
+        ("FILE_UPLOAD", "garmin", "NOT_SCANNED"),
+        ("FILE_UPLOAD", None, "NOT_APPLICABLE"),
+        ("MANUAL_ENTRY", None, "CLEAN"),
+    ],
+)
+def test_raw_source_origin_rules(origin: str, provider: str | None, scan: str) -> None:
+    raw = _example("raw-source.example.json")
+    raw.update(origin=origin, provider=provider, malwareScan=scan)
+    assert _errors("raw-source", raw)
+
+
+@pytest.mark.req("SEC-UPL-005")
+def test_raw_source_filename_is_capped() -> None:
+    raw = _example("raw-source.example.json")
+    raw["originalFilename"] = "x" * 256
+    assert _errors("raw-source", raw)
+
+
+# --------------------------------------------------------------------------- derived values
+
+
+@pytest.mark.req("FR-MET-004")
+def test_computed_value_needs_a_number_and_no_missing_inputs() -> None:
+    value = _example("derived-metric-value.example.json")
+    value["value"] = None
+    assert _errors("derived-metric-value", value)
+    value = _example("derived-metric-value.example.json")
+    value["missingInputs"] = ["rpe"]
+    assert _errors("derived-metric-value", value)
+
+
+@pytest.mark.req("FR-MET-004", "FR-ACT-010")
+def test_missing_input_is_unknown_and_explained() -> None:
+    value = _example("derived-metric-value.example.json")
+    value.update(
+        status="MISSING_INPUT", value=None, missingInputs=["rpe"], inputs=value["inputs"][1:]
+    )
+    assert _errors("derived-metric-value", value)  # MISSING_DATA reason absent
+    value["uncertaintyReasons"] = ["MISSING_DATA"]
+    assert _errors("derived-metric-value", value) == []
+    value["value"] = 310
+    assert _errors("derived-metric-value", value)
+
+
+@pytest.mark.req("FR-MET-004")
+@pytest.mark.parametrize(
+    ("kind", "key"),
+    [
+        ("ACTIVITY", "not-a-uuid"),
+        ("DAY", "2026-13-45"),
+        ("WEEK", "2026-W54"),
+        ("EXERCISE", "Squat"),
+    ],
+)
+def test_subject_keys_are_typed(kind: str, key: str) -> None:
+    value = _example("derived-metric-value.example.json")
+    value["subject"] = {"kind": kind, "key": key}
+    assert _errors("derived-metric-value", value)
+
+
+# --------------------------------------------------------------------------- coaching state
+
+
+@pytest.mark.req("FR-ONB-006")
+def test_coaching_state_conditions_are_closed_and_unique() -> None:
+    state = _example("coaching-state.example.json")
+    state["conditions"] = ["INTEGRATION_ERROR", "INTEGRATION_ERROR"]
+    assert _errors("coaching-state", state)
+    state["conditions"] = ["BEAST_MODE"]
+    assert _errors("coaching-state", state)

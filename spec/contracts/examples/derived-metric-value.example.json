@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0.0",
+  "valueId": "0193b2a0-0000-7000-8000-000000000903",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "metricId": "any.srpe_load",
+  "calculationVersion": "1.0.0",
+  "subject": { "kind": "ACTIVITY", "key": "0193b2a0-0000-7000-8000-000000000101" },
+  "status": "COMPUTED",
+  "value": 310,
+  "unit": "AU",
+  "inputs": [
+    {
+      "name": "rpe",
+      "value": 5,
+      "evidence": { "kind": "ACTIVITY", "id": "0193b2a0-0000-7000-8000-000000000101", "field": "subjective.rpe" },
+      "confidence": "HIGH"
+    },
+    {
+      "name": "session_duration_seconds",
+      "value": 3720,
+      "evidence": {
+        "kind": "ACTIVITY",
+        "id": "0193b2a0-0000-7000-8000-000000000101",
+        "field": "timing.elapsedSeconds"
+      },
+      "confidence": "MEDIUM"
+    }
+  ],
+  "missingInputs": [],
+  "inputConfidence": "MEDIUM",
+  "uncertaintyReasons": [],
+  "computedAt": "2026-10-21T08:00:05Z",
+  "supersededBy": null
+}

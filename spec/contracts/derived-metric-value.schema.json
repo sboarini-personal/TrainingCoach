@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:derived-metric-value:1",
+  "title": "DerivedMetricValue",
+  "description": "Append-only value of an application metric with its method version and input snapshot (FR-MET-004). Owner spec: spec/functional/metrics.spec.md section 4.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "valueId",
+    "athleteId",
+    "metricId",
+    "calculationVersion",
+    "subject",
+    "status",
+    "value",
+    "unit",
+    "inputs",
+    "missingInputs",
+    "inputConfidence",
+    "uncertaintyReasons",
+    "computedAt",
+    "supersededBy"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "valueId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "metricId": { "$ref": "urn:coach:schema:common:1#/$defs/metricId" },
+    "calculationVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "subject": { "$ref": "#/$defs/subject" },
+    "status": { "enum": ["COMPUTED", "MISSING_INPUT", "BELOW_MINIMUM_QUALITY"] },
+    "value": { "type": ["number", "null"] },
+    "unit": { "type": "string", "minLength": 1, "maxLength": 20 },
+    "inputs": { "type": "array", "items": { "$ref": "#/$defs/input" } },
+    "missingInputs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/inputName" }
+    },
+    "inputConfidence": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/confidence" }, { "type": "null" }]
+    },
+    "uncertaintyReasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/uncertaintyReason" }
+    },
+    "computedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "supersededBy": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "COMPUTED" } } },
+      "then": {
+        "properties": {
+          "value": { "type": "number" },
+          "missingInputs": { "maxItems": 0 },
+          "inputConfidence": { "$ref": "urn:coach:schema:common:1#/$defs/confidence" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "MISSING_INPUT" } } },
+      "then": {
+        "properties": {
+          "value": { "type": "null" },
+          "missingInputs": { "minItems": 1 },
+          "uncertaintyReasons": { "contains": { "const": "MISSING_DATA" } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "BELOW_MINIMUM_QUALITY" } } },
+      "then": {
+        "properties": {
+          "value": { "type": "null" },
+          "missingInputs": { "maxItems": 0 },
+          "inputConfidence": { "$ref": "urn:coach:schema:common:1#/$defs/confidence" }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "inputName": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 64 },
+    "input": {
+      "type": "object",
+      "required": ["name", "value", "evidence", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/inputName" },
+        "value": { "type": "number" },
+        "evidence": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" },
+        "confidence": { "$ref": "urn:coach:schema:common:1#/$defs/confidence" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "required": ["kind", "key"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["ACTIVITY", "DAY", "WEEK", "EXERCISE"] },
+        "key": { "type": "string", "maxLength": 64 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "ACTIVITY" } } },
+          "then": { "properties": { "key": { "$ref": "urn:coach:schema:common:1#/$defs/id" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "DAY" } } },
+          "then": { "properties": { "key": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "WEEK" } } },
+          "then": { "properties": { "key": { "pattern": "^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$" } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "EXERCISE" } } },
+          "then": { "properties": { "key": { "pattern": "^ex\\.[a-z0-9_]+$" } } }
+        }
+      ]
+    }
+  }
+}
