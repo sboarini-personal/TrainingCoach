@@ -30,6 +30,10 @@ Contract: [../contracts/consent.schema.json](../contracts/consent.schema.json).
   Revoking a type that is not granted is an error.
 - Each record states `policyVersion` and `purpose`. A new privacy policy version requires
   re-consent for affected types.
+- Consent changes go through the application `ConsentService` (P4): each grant, revocation or
+  decline is audited (`consent.granted`, `consent.revoked`, `consent.declined`) and emitted as
+  an event. The privacy policy version in force is configuration; consent given under another
+  version does not count (OUTDATED_POLICY).
 - Enforcement points (all deterministic): ingestion (a category without consent is not
   fetched or stored), read paths used by analytics, agent context assembly, and the policy
   engine (POL-CONSENT). AT-CON-001.

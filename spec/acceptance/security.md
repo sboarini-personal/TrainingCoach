@@ -47,6 +47,29 @@
 **Then** no tool accepts an athlete identifier
 **And** every tool call is scoped to the session athlete.
 
+### AT-AUTH-001 — Authentication is required and brute force is throttled
+- Requirements: SEC-AUTH-001, SEC-AUTH-003, SEC-AUTHZ-001
+- Level: unit and integration. First executable: P4.
+
+**Given** an initialised installation
+**When** a request presents no token, a wrong token, or the token of before a rotation
+**Then** it fails with one generic error, is audited and emits `security.authn.failed`
+**And** after 5 failures within 60 seconds the client is locked out without the token being checked
+**And** each further lockout doubles in length, up to 1 hour
+**And** a correct token yields a principal whose owner scope is the linked athlete
+**And** a principal without an athlete link is denied.
+
+### AT-AUD-001 — The audit log is tamper-evident and survives deletion
+- Requirements: SEC-AUD-001, PRIV-DEL-003
+- Level: integration. First executable: P4.
+
+**Given** an audit log with several events
+**When** an event is edited, removed or reordered directly in storage
+**Then** verification reports the first broken sequence number
+**And** the database itself rejects updates and deletes of audit rows
+**When** an athlete is forgotten
+**Then** their plain ID disappears, every remaining identifier is a salted hash, and verification still passes.
+
 ### AT-XXE-001 — Hostile XML is rejected
 - Requirements: SEC-UPL-002
 - Level: security. First executable: P6.

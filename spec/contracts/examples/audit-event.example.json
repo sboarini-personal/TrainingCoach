@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0.0",
+  "eventId": "0193b2a0-0000-7000-8000-000000003002",
+  "sequence": 2,
+  "occurredAt": "2026-10-25T10:00:00Z",
+  "actor": "USER",
+  "action": "consent.revoked",
+  "outcome": "SUCCESS",
+  "athleteRef": "b3b462307486a5967d1b71ba31fc1babc09d7d3c91b3ac3d32eac436079bafec",
+  "target": {
+    "type": "HRV",
+    "ref": "4769d5c5fd7d22f56c5ebb12dc2cbc19a069cfe64cadbca0aef4385767d6c2af"
+  },
+  "reasonCodes": [],
+  "correlationId": "0193b2a0-0000-7000-8000-000000002001",
+  "previousHash": "740f8755c506b31e0e9ebe5c6048172d1092f1cb894c61cf0f41c6672c2b2662",
+  "hash": "b298a6f1d18e08ae4932bb4678324bef071951c11504cfb8d8dbf7e28ea68e86"
+}

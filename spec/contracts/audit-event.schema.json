@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:audit-event:1",
+  "title": "AuditEvent",
+  "description": "Hash-chained audit event (SEC-AUD-001, ADR-023). Identifiers are salted hashes; there are no free-text fields. hash = SHA-256 of the canonical JSON of every other field. Owner spec: spec/security/audit.spec.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "eventId",
+    "sequence",
+    "occurredAt",
+    "actor",
+    "action",
+    "outcome",
+    "athleteRef",
+    "target",
+    "reasonCodes",
+    "correlationId",
+    "previousHash",
+    "hash"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "eventId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "actor": { "enum": ["USER", "AGENT", "SYSTEM"] },
+    "action": { "type": "string", "pattern": "^[a-z]+(\\.[a-z_]+)+$", "maxLength": 64 },
+    "outcome": { "enum": ["SUCCESS", "DENIED", "FAILED"] },
+    "athleteRef": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/sha256" }, { "type": "null" }]
+    },
+    "target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "ref"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 64 },
+            "ref": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "reasonCodes": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 20,
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 64 }
+    },
+    "correlationId": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "previousHash": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" },
+    "hash": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" }
+  }
+}

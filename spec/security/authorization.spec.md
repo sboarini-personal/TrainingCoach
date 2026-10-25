@@ -14,6 +14,10 @@ AUTHENTICATED USER -> ATHLETE IDENTITY -> RESOURCE OWNERSHIP -> REQUESTED RESOUR
 The interface layer only authenticates. Ownership is enforced by the application layer and
 the repositories, so it cannot be skipped by a new endpoint, CLI command or agent tool.
 
+`AuthorizationService.scope_for(principal)` turns an authenticated principal into an
+`OwnerScope` (P4). Application services receive that scope; they never take an athlete ID
+from request input.
+
 ## 2. Owner-scoped repositories (SEC-IDOR-001)
 
 - Repository methods take an `OwnerScope` (the authenticated athlete) as a required argument.
@@ -21,8 +25,11 @@ the repositories, so it cannot be skipped by a new endpoint, CLI command or agen
 - Queries always filter by `athlete_id = scope.athlete_id`.
 - A resource that exists but belongs to another athlete is reported exactly like a missing
   one (`NOT_FOUND`, HTTP 404). The response does not reveal existence.
-- Denials emit `security.authz.denied` with the requested type and ID, never the other
-  athlete's data.
+- A lookup by ID cannot tell a missing resource from a foreign one (by design: the query is
+  owner-scoped). The interface layer reports both as `NOT_FOUND` and emits
+  `security.lookup.not_found` with the requested type and ID (P13).
+- `security.authz.denied` is emitted for authorization-chain failures and policy denials,
+  never with the other athlete's data.
 - AT-IDOR-001: athlete A requesting athlete B's activity ID is rejected at the API, the
   application and the repository level.
 

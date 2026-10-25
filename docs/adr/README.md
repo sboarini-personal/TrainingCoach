@@ -27,3 +27,4 @@ change is a new ADR that supersedes the old one (status `Superseded by ADR-NNN`)
 | [ADR-020](ADR-020-toolchain-quality-gates.md) | Toolchain, quality gates and GitHub CI | Accepted |
 | [ADR-021](ADR-021-coaching-state-conditions.md) | Coaching state: lifecycle state plus conditions | Accepted |
 | [ADR-022](ADR-022-sqlite-document-persistence.md) | SQLite document persistence with the standard library (amends ADR-013) | Accepted |
+| [ADR-023](ADR-023-audit-chain-pseudonymous.md) | Hash-chained audit log with pseudonymous identifiers | Accepted |

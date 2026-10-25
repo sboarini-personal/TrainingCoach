@@ -37,7 +37,27 @@ PolicyDecision = ALLOW
 | POL-EXTERNAL-WRITE | an external write lacks a valid human confirmation (ADR-005): REQUIRE_CONFIRMATION |
 | POL-DESTRUCTIVE | a destructive operation (data deletion) lacks confirmation: REQUIRE_CONFIRMATION |
 
-## 3. AI cannot bypass (FR-POL-002)
+## 3. Core implemented in P4
+
+`policySetVersion` 1.0.0. An `Action` states its kind (READ, WRITE_INTERNAL, PROPOSE,
+EXECUTE_EXTERNAL, DELETE), the owner of the resource it touches, the consent types it needs,
+whether it recommends or activates intensive training, and whether a verified human
+confirmation is attached. The `PolicyContext` holds the acting athlete, the consent types
+currently granted under the active privacy policy version, and the active coaching
+conditions. Implemented policies and reason codes:
+
+| Policy | Outcome | Reason code |
+|---|---|---|
+| POL-OWNERSHIP | DENY when the resource owner differs from the acting athlete | `OWNERSHIP_MISMATCH` |
+| POL-CONSENT | DENY for each required consent type that is not granted | `CONSENT_REQUIRED` (parameter `consentType`) |
+| POL-SAFETY-HOLD | DENY intensive training while SAFETY_HOLD is active | `SAFETY_HOLD_ACTIVE` |
+| POL-EXTERNAL-WRITE | REQUIRE_CONFIRMATION for unconfirmed EXECUTE_EXTERNAL actions | `CONFIRMATION_REQUIRED` |
+| POL-DESTRUCTIVE | REQUIRE_CONFIRMATION for unconfirmed DELETE actions | `CONFIRMATION_REQUIRED` |
+
+The remaining policies need the planning model and arrive in P12. Confirmation tokens arrive
+with the first external write or deletion workflow; until then nothing sets `confirmed`.
+
+## 4. AI cannot bypass (FR-POL-002)
 
 - AI proposals (plans, workouts, adaptations, tool calls) are data submitted to the engine.
   The AI has no tool that skips evaluation, and no tool that issues confirmations.

@@ -20,6 +20,15 @@ Owner of SEC-SEC-001 to SEC-SEC-006. Master spec §13, §14, §61. ADR-001, ADR-
   value is exposed only through an explicit method used by the HTTP client at request time.
 - Secrets are never hardcoded, never in `.env` files inside the repository, never in source
   control.
+- `keyring` adapter (P4): service name `CoachDeportivo`, user name = handle. The handle is
+  `<kind>/<athleteId>` with kind `local_api_token`, `garmin_personal_api_key` or
+  `llm_api_key`. Handles are validated before they reach the store.
+- The database stores a `CredentialRecord` per secret (contract
+  [../contracts/credential-record.schema.json](../contracts/credential-record.schema.json)):
+  kind, handle, creation and rotation times and the expiry date. Never the value or a hash of
+  it.
+- Secrets are entered through `coach secret set <kind>` with hidden input; the value is
+  never echoed, printed, logged or passed on the command line.
 
 ## 3. Never exposed (SEC-SEC-002, SEC-SEC-003)
 
@@ -61,6 +70,10 @@ hashes as their first 12 hexadecimal characters (`sha256:1a2b3c4d5e6f`).
 - The Garmin key expiry date (entered by the athlete at storage time) is tracked; reminder 7
   days before; IntegrationStatus shows expiry.
 - Recommended Garmin key expiry: 90 days.
+- Expiry status per credential: `NO_EXPIRY`, `VALID`, `EXPIRING` (expires within 7 days,
+  inclusive) or `EXPIRED` (expiry date before today). `coach secret list` shows it.
+- Storing a secret whose kind already has a record is a rotation: the record keeps its ID,
+  gets `rotatedAt`, and the event is `credential.rotated` instead of `credential.stored`.
 
 ## 5. Accidental disclosure (SEC-SEC-005)
 
@@ -77,7 +90,11 @@ API key, client secret, password, token, cookie or recovery code:
    secure storage command.
 5. `security.secret_detected` is emitted (without the value).
 
-AT-SEC-001 verifies all five steps.
+The detector is the redaction rule set of section 3.1. Named assignments also cover the
+Spanish names `contraseña` and `contrasena`. The athlete notice is fixed text in the athlete's
+language (Spanish and English in V1), produced in code, not by the LLM.
+
+AT-SEC-001 verifies all five steps (detector and notice in P4, agent behaviour in P13).
 
 ## 6. Repository scanning (SEC-SEC-006)
 

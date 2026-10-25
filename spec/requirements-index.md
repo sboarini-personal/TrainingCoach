@@ -121,9 +121,9 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 
 | ID | Title | Owner | Acceptance | Status |
 |---|---|---|---|---|
-| SEC-AUTH-001 | Authentication required for all private athlete data | security/authentication.spec.md | AT-IDOR-001 | ACCEPTED |
+| SEC-AUTH-001 | Authentication required for all private athlete data | security/authentication.spec.md | AT-IDOR-001, AT-AUTH-001 | ACCEPTED |
 | SEC-AUTH-002 | Loopback binding, Host validation, cross-origin rejection | security/authentication.spec.md | - | ACCEPTED |
-| SEC-AUTH-003 | Rate limiting of authentication and API | security/authentication.spec.md | - | ACCEPTED |
+| SEC-AUTH-003 | Rate limiting of authentication and API | security/authentication.spec.md | AT-AUTH-001 | ACCEPTED |
 | SEC-AUTHZ-001 | User to athlete to ownership to resource chain on every operation | security/authorization.spec.md | AT-IDOR-001 | ACCEPTED |
 | SEC-AUTHZ-002 | Least-privilege agent tool permissions | security/authorization.spec.md | AT-IDOR-002 | ACCEPTED |
 | SEC-AUTHZ-003 | Allow-listed command fields prevent mass assignment | security/authorization.spec.md | - | ACCEPTED |
@@ -145,7 +145,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | SEC-UPL-004 | Parsers run with timeout and resource limits and fail safely | security/uploads.spec.md | AT-UPL-001 | ACCEPTED |
 | SEC-UPL-005 | Filenames never determine storage paths | security/uploads.spec.md | AT-UPL-001 | ACCEPTED |
 | SEC-UPL-006 | Malware-scan hook; unscanned imports flagged | security/uploads.spec.md | - | ACCEPTED |
-| SEC-AUD-001 | Append-only audit events for security-relevant actions | security/audit.spec.md | AT-DEL-001 | ACCEPTED |
+| SEC-AUD-001 | Append-only audit events for security-relevant actions | security/audit.spec.md | AT-AUD-001, AT-DEL-001 | ACCEPTED |
 
 ## Privacy
 
@@ -160,7 +160,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | PRIV-STO-001 | Athlete data stored outside synced folders by default | security/privacy.spec.md | AT-STO-001 | PROPOSED |
 | PRIV-DEL-001 | Deletion workflow covers every data store | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
 | PRIV-DEL-002 | Provider access revoked where supported, otherwise instructions given | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
-| PRIV-DEL-003 | Retained audit information minimised | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
+| PRIV-DEL-003 | Retained audit information minimised | security/privacy.spec.md | AT-AUD-001, AT-DEL-001 | ACCEPTED |
 
 ## Safety
 

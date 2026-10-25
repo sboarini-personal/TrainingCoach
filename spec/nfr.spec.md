@@ -46,8 +46,8 @@ Database migration rules (P3, ADR-022):
   `destructive` flag. Applied migrations are recorded with the SHA-256 of their SQL.
 - Opening a database applies pending non-destructive migrations, each in its own transaction.
 - A pending destructive migration (dropping or deleting anything) is refused unless the caller
-  passes explicit approval (AT-MIG-001). A test checks that any migration containing `DROP` or
-  `DELETE` is flagged destructive.
+  passes explicit approval (AT-MIG-001). A test checks that any migration that drops an object (`DROP ...`)
+  or deletes rows (`DELETE FROM`) is flagged destructive.
 - A database whose recorded schema version is newer than the code, or whose applied migration
   SQL differs from the code (checksum mismatch), is refused: no downgrade, no silent edit.
 
@@ -70,9 +70,10 @@ Structured (JSON) events are emitted for at least:
 | Data quality | `quality.issue.raised`, `quality.issue.resolved` |
 | Planning | `plan.generated`, `plan.proposed`, `plan.activated`, `plan.superseded` |
 | External writes | `external_write.proposed`, `.confirmed`, `.executed`, `.refused` |
-| Consent | `consent.granted`, `consent.revoked` |
+| Consent | `consent.granted`, `consent.revoked`, `consent.declined` |
+| Credentials | `credential.stored`, `credential.rotated` (never the value) |
 | Deletion | `deletion.requested`, `deletion.completed`, `deletion.failed` |
-| Security | `security.authn.failed`, `security.authz.denied`, `security.secret_detected`, `security.rate_limited` |
+| Security | `security.authn.failed`, `security.authz.denied`, `security.secret_detected`, `security.rate_limited`, `security.lookup.not_found` |
 | Safety | `safety.hold.activated`, `safety.hold.released` |
 
 Events contain identifiers, counts, codes and durations, not health values or free text.
