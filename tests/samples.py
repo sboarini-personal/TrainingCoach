@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, time
 from typing import Any
 from uuid import UUID
 
+from coach.application.credentials import CredentialKind, CredentialRecord
 from coach.domain.athlete.experience import (
     CyclingExperience,
     FtpValue,
@@ -286,4 +287,15 @@ def sample_derived_value(
         athlete_id=athlete_id,
         subject=subject or MetricSubject.activity(ACTIVITY),
         computed_at=NOW,
+    )
+
+
+def sample_credential_record(athlete_id: UUID = ATHLETE) -> CredentialRecord:
+    return CredentialRecord(
+        credential_id=UUID("0193b2a0-0000-7000-8000-000000001101"),
+        athlete_id=athlete_id,
+        kind=CredentialKind.GARMIN_PERSONAL_API_KEY,
+        created_at=NOW,
+        rotated_at=None,
+        expires_on=date(2027, 1, 23),
     )

@@ -78,6 +78,53 @@ BEGIN
 END;
 """
 
+_SECURITY_SCHEMA: Final = """
+CREATE TABLE identities (
+    user_id TEXT PRIMARY KEY,
+    athlete_id TEXT NOT NULL UNIQUE,
+    is_owner INTEGER NOT NULL CHECK (is_owner IN (0, 1)),
+    created_at TEXT NOT NULL
+) STRICT;
+CREATE UNIQUE INDEX identities_single_owner ON identities (is_owner) WHERE is_owner = 1;
+
+CREATE TABLE audit_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+) STRICT;
+CREATE TRIGGER audit_settings_immutable BEFORE UPDATE ON audit_settings
+BEGIN
+    SELECT RAISE(ABORT, 'audit settings are immutable');
+END;
+CREATE TRIGGER audit_settings_no_delete BEFORE DELETE ON audit_settings
+BEGIN
+    SELECT RAISE(ABORT, 'audit settings are immutable');
+END;
+
+CREATE TABLE audit_log (
+    sequence INTEGER PRIMARY KEY CHECK (sequence >= 1),
+    event_id TEXT NOT NULL UNIQUE,
+    athlete_id TEXT,
+    document TEXT NOT NULL CHECK (json_valid(document)),
+    hash TEXT NOT NULL CHECK (length(hash) = 64)
+) STRICT;
+CREATE INDEX audit_log_by_athlete ON audit_log (athlete_id) WHERE athlete_id IS NOT NULL;
+CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
+BEGIN
+    SELECT RAISE(ABORT, 'audit log is append-only');
+END;
+CREATE TRIGGER audit_log_only_forget BEFORE UPDATE ON audit_log
+WHEN OLD.athlete_id IS NULL
+    OR NEW.athlete_id IS NOT NULL
+    OR NEW.sequence IS NOT OLD.sequence
+    OR NEW.event_id IS NOT OLD.event_id
+    OR NEW.document IS NOT OLD.document
+    OR NEW.hash IS NOT OLD.hash
+BEGIN
+    SELECT RAISE(ABORT, 'audit log is append-only');
+END;
+"""
+
 MIGRATIONS: Final[tuple[Migration, ...]] = (
     Migration(1, "aggregates, raw sources and derived metric values", _INITIAL_SCHEMA),
+    Migration(2, "identities and hash-chained audit log", _SECURITY_SCHEMA),
 )

@@ -11,6 +11,7 @@ from coach.application.contracts import (
     AVAILABILITY_CODEC,
     COACHING_STATE_CODEC,
     CONSENT_LEDGER_CODEC,
+    CREDENTIAL_RECORD_CODEC,
     GOAL_CODEC,
     PROFILE_CODEC,
     SPORT_EVENT_CODEC,
@@ -25,6 +26,7 @@ from samples import (
     sample_availability,
     sample_coaching_state,
     sample_consent_ledger,
+    sample_credential_record,
     sample_event,
     sample_goal,
 )
@@ -38,6 +40,7 @@ CASES: list[tuple[DocumentCodec[Any], Any]] = [
     (SPORT_EVENT_CODEC, sample_event()),
     (CONSENT_LEDGER_CODEC, sample_consent_ledger()),
     (COACHING_STATE_CODEC, sample_coaching_state()),
+    (CREDENTIAL_RECORD_CODEC, sample_credential_record()),
 ]
 
 

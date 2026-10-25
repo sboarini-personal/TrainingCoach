@@ -7,12 +7,16 @@ athlete is reported exactly like a missing one.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from typing import Protocol, Self
 from uuid import UUID
 
+from coach.application.audit import AuditEvent, AuditRecord, AuditVerification
+from coach.application.events import EventName
+from coach.application.identity import Identity
 from coach.application.ownership import OwnerScope
+from coach.application.secrets import SecretValue
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import DerivedMetricValue, MetricSubject
 
@@ -85,3 +89,41 @@ class BlobStore(Protocol):
     def get(self, scope: OwnerScope, sha256: str) -> bytes: ...
 
     def exists(self, scope: OwnerScope, sha256: str) -> bool: ...
+
+
+class CredentialProvider(Protocol):
+    """OS or managed secret store, addressed by derived handles only (SEC-SEC-001)."""
+
+    def get(self, handle: str) -> SecretValue | None: ...
+
+    def put(self, handle: str, value: SecretValue) -> None: ...
+
+    def delete(self, handle: str) -> None: ...
+
+
+class IdentityDirectory(Protocol):
+    """User to athlete links; V1 has one installation owner (SEC-AUTHZ-001)."""
+
+    def owner(self) -> Identity | None: ...
+
+    def athlete_for(self, user_id: UUID) -> UUID | None: ...
+
+    def register_owner(self, identity: Identity) -> Identity: ...
+
+
+class AuditLog(Protocol):
+    """Append-only, hash-chained audit log; record reads are owner-scoped (SEC-AUD-001)."""
+
+    def append(self, event: AuditEvent) -> AuditRecord: ...
+
+    def events_for(self, scope: OwnerScope) -> Sequence[AuditRecord]: ...
+
+    def verify(self) -> AuditVerification: ...
+
+    def forget(self, scope: OwnerScope) -> int: ...
+
+
+class EventSink(Protocol):
+    """Structured observability events: codes and identifiers only (NFR-OBS-001)."""
+
+    def emit(self, name: EventName, fields: Mapping[str, str]) -> None: ...

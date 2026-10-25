@@ -6,12 +6,27 @@ against both.
 
 from __future__ import annotations
 
+import secrets
 import threading
+from collections.abc import Mapping
 from uuid import UUID
 
+from coach.application.audit import (
+    GENESIS_HASH,
+    AuditEvent,
+    AuditRecord,
+    AuditVerification,
+    seal,
+    verify_chain,
+)
+from coach.application.credentials import check_handle
 from coach.application.errors import ConcurrencyConflictError, NotFoundError
+from coach.application.events import EventName, check_fields
+from coach.application.identity import Identity, OwnerAlreadyRegisteredError
+from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope, check_owner
-from coach.application.ports import OwnedAggregate
+from coach.application.ports import IdFactory, OwnedAggregate
+from coach.application.secrets import SecretValue
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import (
     DerivedMetricValue,
@@ -175,3 +190,93 @@ class InMemoryDerivedValueRepository:
         if item is None or item.athlete_id != scope.athlete_id:
             raise NotFoundError
         return item
+
+
+class InMemoryCredentialProvider:
+    """Secret store test double; accepts only derived handles, like the keyring adapter."""
+
+    def __init__(self) -> None:
+        self._values: dict[str, SecretValue] = {}
+
+    def get(self, handle: str) -> SecretValue | None:
+        return self._values.get(check_handle(handle))
+
+    def put(self, handle: str, value: SecretValue) -> None:
+        self._values[check_handle(handle)] = value
+
+    def delete(self, handle: str) -> None:
+        self._values.pop(check_handle(handle), None)
+
+
+class InMemoryIdentityDirectory:
+    def __init__(self) -> None:
+        self._owner: Identity | None = None
+        self._lock = threading.Lock()
+
+    def owner(self) -> Identity | None:
+        return self._owner
+
+    def athlete_for(self, user_id: UUID) -> UUID | None:
+        owner = self._owner
+        return owner.athlete_id if owner is not None and owner.user_id == user_id else None
+
+    def register_owner(self, identity: Identity) -> Identity:
+        with self._lock:
+            if self._owner is not None:
+                raise OwnerAlreadyRegisteredError
+            self._owner = identity
+            return identity
+
+
+class InMemoryAuditLog:
+    def __init__(self, salt: str | None = None, ids: IdFactory = new_id) -> None:
+        self._salt = salt or secrets.token_hex(32)
+        self._ids = ids
+        self._records: list[AuditRecord] = []
+        self._lock = threading.Lock()
+
+    def append(self, event: AuditEvent) -> AuditRecord:
+        with self._lock:
+            previous = self._records[-1].hash if self._records else GENESIS_HASH
+            record = seal(
+                event,
+                event_id=self._ids(),
+                sequence=len(self._records) + 1,
+                previous_hash=previous,
+                salt=self._salt,
+            )
+            self._records.append(record)
+            return record
+
+    def events_for(self, scope: OwnerScope) -> list[AuditRecord]:
+        with self._lock:
+            return [record for record in self._records if record.athlete_id == scope.athlete_id]
+
+    def verify(self) -> AuditVerification:
+        with self._lock:
+            return verify_chain(list(self._records), self._salt)
+
+    def forget(self, scope: OwnerScope) -> int:
+        with self._lock:
+            forgotten = 0
+            for index, record in enumerate(self._records):
+                if record.athlete_id == scope.athlete_id:
+                    self._records[index] = AuditRecord(record.document, None)
+                    forgotten += 1
+            return forgotten
+
+    def all_records(self) -> list[AuditRecord]:
+        """Every record, unscoped: for tests only."""
+        with self._lock:
+            return list(self._records)
+
+
+class RecordingEventSink:
+    def __init__(self) -> None:
+        self.events: list[tuple[EventName, dict[str, str]]] = []
+
+    def emit(self, name: EventName, fields: Mapping[str, str]) -> None:
+        self.events.append((name, check_fields(fields)))
+
+    def names(self) -> list[EventName]:
+        return [name for name, _ in self.events]

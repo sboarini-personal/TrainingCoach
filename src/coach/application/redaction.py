@@ -22,7 +22,7 @@ _PREFIXED = re.compile(
 )
 _NAMED = re.compile(
     r"(?i)(?P<keep>\b(?:api[_-]?key|client[_-]?secret|secret|password|passwd|pwd"
-    r"|access[_-]?token|refresh[_-]?token|token|cookie|authorization)\b[\"']?\s*[:=]\s*[\"']?)"
+    r"|contrase(?:ñ|n)a|access[_-]?token|refresh[_-]?token|token|cookie|authorization)\b[\"']?\s*[:=]\s*[\"']?)"
     r"(?!(?:Bearer|ApiKey|Basic)\b|\[REDACTED)"
     r"(?P<value>[^\s\"',;}]+)"
 )

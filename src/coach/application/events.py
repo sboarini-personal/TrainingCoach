@@ -1,0 +1,36 @@
+"""Structured observability events (NFR-OBS-001; spec/nfr.spec.md).
+
+Events carry only codes and identifiers: field values are restricted to a short code-like
+alphabet, so free text (and with it secrets or health values) cannot be emitted.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping
+from enum import StrEnum
+from typing import Final
+
+_FIELD_NAME: Final = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+_FIELD_VALUE: Final = re.compile(r"^[A-Za-z0-9._:/-]{0,128}$")
+
+
+class EventName(StrEnum):
+    AUTHN_FAILED = "security.authn.failed"
+    AUTHZ_DENIED = "security.authz.denied"
+    SECRET_DETECTED = "security.secret_detected"  # noqa: S105  # pragma: allowlist secret
+    RATE_LIMITED = "security.rate_limited"
+    LOOKUP_NOT_FOUND = "security.lookup.not_found"
+    CONSENT_GRANTED = "consent.granted"
+    CONSENT_REVOKED = "consent.revoked"
+    CONSENT_DECLINED = "consent.declined"
+    CREDENTIAL_STORED = "credential.stored"
+    CREDENTIAL_ROTATED = "credential.rotated"
+
+
+def check_fields(fields: Mapping[str, str]) -> dict[str, str]:
+    """Return the fields if every name and value is a code; raise otherwise."""
+    for name, value in fields.items():
+        if not _FIELD_NAME.match(name) or not _FIELD_VALUE.match(value):
+            raise ValueError(f"invalid event field {name!r}")
+    return dict(fields)

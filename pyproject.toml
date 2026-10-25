@@ -5,8 +5,12 @@ description = "Personal Multisport Performance Coach: spec-driven, data-driven c
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "keyring>=25.5",
     "tzdata>=2025.2",
 ]
+
+[project.scripts]
+coach = "coach.cli.main:main"
 
 [dependency-groups]
 dev = [
@@ -52,6 +56,8 @@ select = [
 # Synthetic secret fixtures (by design) need their detect-secrets pragma on the same line.
 "tests/unit/test_redaction.py" = ["S101", "S105", "E501"]
 "tests/unit/test_log_redaction.py" = ["S101", "S105", "E501"]
+"tests/security/test_secret_leakage.py" = ["S101", "S105", "E501"]
+"tests/unit/test_secret_screening.py" = ["S101", "S105", "E501"]
 "tools/**" = ["T20"]
 
 # ---------------------------------------------------------------- mypy

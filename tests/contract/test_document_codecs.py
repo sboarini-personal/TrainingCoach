@@ -7,9 +7,11 @@ from typing import Any
 import pytest
 
 from coach.application.contracts import (
+    ALL_CODECS,
     AVAILABILITY_CODEC,
     COACHING_STATE_CODEC,
     CONSENT_LEDGER_CODEC,
+    CREDENTIAL_RECORD_CODEC,
     DERIVED_VALUE_CODEC,
     GOAL_CODEC,
     PROFILE_CODEC,
@@ -27,6 +29,7 @@ from samples import (
     sample_availability,
     sample_coaching_state,
     sample_consent_ledger,
+    sample_credential_record,
     sample_derived_value,
     sample_event,
     sample_goal,
@@ -34,16 +37,7 @@ from samples import (
 )
 from schemas import EXAMPLES_DIR, load_json, validation_errors
 
-CODECS: list[DocumentCodec[Any]] = [
-    PROFILE_CODEC,
-    AVAILABILITY_CODEC,
-    GOAL_CODEC,
-    SPORT_EVENT_CODEC,
-    CONSENT_LEDGER_CODEC,
-    COACHING_STATE_CODEC,
-    RAW_SOURCE_CODEC,
-    DERIVED_VALUE_CODEC,
-]
+CODECS: list[DocumentCodec[Any]] = list(ALL_CODECS)
 ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
     (PROFILE_CODEC, full_profile()),
     (PROFILE_CODEC, AthleteProfile.new(ATHLETE)),
@@ -56,6 +50,7 @@ ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
     (COACHING_STATE_CODEC, CoachingState.new(ATHLETE)),
     (RAW_SOURCE_CODEC, sample_raw_source()),
     (DERIVED_VALUE_CODEC, sample_derived_value()),
+    (CREDENTIAL_RECORD_CODEC, sample_credential_record()),
 ]
 
 

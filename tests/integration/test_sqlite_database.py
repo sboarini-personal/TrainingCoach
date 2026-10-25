@@ -90,7 +90,7 @@ def test_migration_versions_must_be_consecutive() -> None:
 
 @pytest.mark.parametrize("migration", MIGRATIONS, ids=lambda migration: migration.name)
 def test_any_drop_or_delete_is_flagged_destructive(migration: Migration) -> None:
-    removes_data = re.search(r"\b(DROP|DELETE)\b", migration.sql, re.IGNORECASE)
+    removes_data = re.search(r"\b(DROP\s+\w+|DELETE\s+FROM)\b", migration.sql, re.IGNORECASE)
     assert migration.destructive or not removes_data
 
 

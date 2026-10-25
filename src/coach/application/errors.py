@@ -18,3 +18,11 @@ class ConcurrencyConflictError(ApplicationError):
 
 class OwnershipError(ApplicationError):
     """An entity's owner does not match the authenticated owner scope."""
+
+
+class RateLimitedError(ApplicationError):
+    """Too many requests or failed authentications; retry later (SEC-AUTH-003)."""
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        super().__init__(f"rate limited; retry after {retry_after_seconds} s")
+        self.retry_after_seconds = retry_after_seconds

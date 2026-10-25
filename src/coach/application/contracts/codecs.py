@@ -19,6 +19,10 @@ from coach.application.contracts.consent import (
     consent_ledger_from_contract,
     consent_ledger_to_contract,
 )
+from coach.application.contracts.credentials import (
+    credential_record_from_contract,
+    credential_record_to_contract,
+)
 from coach.application.contracts.derived import (
     derived_value_from_contract,
     derived_value_to_contract,
@@ -31,6 +35,7 @@ from coach.application.contracts.goals import (
 )
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
+from coach.application.credentials import CredentialRecord
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.availability.availability import Availability
 from coach.domain.coaching.state import CoachingState
@@ -88,6 +93,12 @@ DERIVED_VALUE_CODEC: Final[DocumentCodec[DerivedMetricValue]] = DocumentCodec(
     derived_value_to_contract,
     derived_value_from_contract,
 )
+CREDENTIAL_RECORD_CODEC: Final[DocumentCodec[CredentialRecord]] = DocumentCodec(
+    "credential_record",
+    "credential-record",
+    credential_record_to_contract,
+    credential_record_from_contract,
+)
 ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     PROFILE_CODEC,
     AVAILABILITY_CODEC,
@@ -97,4 +108,5 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     COACHING_STATE_CODEC,
     RAW_SOURCE_CODEC,
     DERIVED_VALUE_CODEC,
+    CREDENTIAL_RECORD_CODEC,
 )
