@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:data-override:1",
+  "title": "DataOverride",
+  "description": "Append-only athlete correction of one field, applied at read time; RAW and NORMALIZED values are never modified (FR-ACT-006). Owner spec: spec/functional/activities.spec.md section 4.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "overrideId",
+    "athleteId",
+    "entityType",
+    "entityId",
+    "field",
+    "originalValue",
+    "correctedValue",
+    "reason",
+    "correctedAt",
+    "correctedBy",
+    "supersedesOverrideId"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "overrideId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "entityType": { "enum": ["ACTIVITY"] },
+    "entityId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "field": {
+      "description": "Field path of a correctable field.",
+      "enum": [
+        "classification.sport",
+        "classification.subtype",
+        "timing.trainingDay",
+        "timing.elapsedSeconds",
+        "timing.movingSeconds",
+        "distance.meters",
+        "elevation.gainMeters",
+        "elevation.lossMeters",
+        "cardiovascular.averageHr",
+        "cardiovascular.maxHr",
+        "performance.averageSpeedMps",
+        "performance.maxSpeedMps",
+        "swimming.lengthCount",
+        "swimming.strokeType",
+        "subjective.rpe",
+        "subjective.soreness",
+        "environment.temperatureC",
+        "environment.humidityPct",
+        "environment.windMps",
+        "environment.altitudeMeters",
+        "environment.terrain",
+        "environment.surface",
+        "environment.poolLengthMeters",
+        "metadata.name",
+        "metadata.description"
+      ]
+    },
+    "originalValue": {
+      "description": "NORMALIZED value when the correction was made; null when it was UNKNOWN or absent. Validated per field in code.",
+      "$ref": "#/$defs/scalar"
+    },
+    "correctedValue": {
+      "description": "Value applied in the EFFECTIVE view; null marks the value UNKNOWN. Validated per field in code.",
+      "$ref": "#/$defs/scalar"
+    },
+    "reason": {
+      "description": "Athlete's reason. UNTRUSTED text, never instructions (SEC-INJ-001); never copied to audit or log events.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "correctedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "correctedBy": {
+      "description": "User ID of the principal who made the correction.",
+      "$ref": "urn:coach:schema:common:1#/$defs/id"
+    },
+    "supersedesOverrideId": {
+      "description": "The field's current override when this one was made; null for the first correction of the field.",
+      "oneOf": [
+        { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "$defs": {
+    "scalar": {
+      "oneOf": [
+        { "type": "string", "maxLength": 4000 },
+        { "type": "number" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

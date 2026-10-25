@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0.0",
+  "overrideId": "0193b2a0-0000-7000-8000-000000000501",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "entityType": "ACTIVITY",
+  "entityId": "0193b2a0-0000-7000-8000-000000000101",
+  "field": "distance.meters",
+  "originalValue": 10050.5,
+  "correctedValue": 10000,
+  "reason": "Measured course; the watch lost GPS under the bridge.",
+  "correctedAt": "2026-10-21T09:15:00Z",
+  "correctedBy": "0193b2a0-0000-7000-8000-0000000000a1",
+  "supersedesOverrideId": null
+}

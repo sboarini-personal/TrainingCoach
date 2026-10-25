@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:data-quality-issue:1",
+  "title": "DataQualityIssue",
+  "description": "A data problem shown to the athlete: an anomaly on an activity field or an ambiguous deduplication match (FR-ACT-009, FR-ACT-007). Owner spec: spec/functional/activities.spec.md section 5.2.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "issueId",
+    "athleteId",
+    "version",
+    "kind",
+    "activityId",
+    "code",
+    "field",
+    "status",
+    "createdAt",
+    "closedAt",
+    "resolution"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "issueId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "kind": { "enum": ["ANOMALY", "AMBIGUOUS_MATCH"] },
+    "activityId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 64 },
+    "field": {
+      "type": ["string", "null"],
+      "pattern": "^[a-zA-Z]+(\\.[a-zA-Z]+)*$",
+      "maxLength": 100
+    },
+    "detail": { "type": "string", "maxLength": 300 },
+    "relatedActivityId": {
+      "description": "AMBIGUOUS_MATCH: the existing activity the source may belong to.",
+      "$ref": "urn:coach:schema:common:1#/$defs/id"
+    },
+    "matchScore": {
+      "description": "AMBIGUOUS_MATCH: the deduplication score.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "dedupRulesVersion": { "type": "string", "maxLength": 20 },
+    "status": { "enum": ["OPEN", "CLOSED"] },
+    "createdAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "closedAt": {
+      "oneOf": [
+        { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        { "type": "null" }
+      ]
+    },
+    "resolution": {
+      "enum": ["MERGED", "KEPT_SEPARATE", "NO_LONGER_DETECTED", "ACKNOWLEDGED", null]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "AMBIGUOUS_MATCH" } }, "required": ["kind"] },
+      "then": {
+        "required": ["relatedActivityId", "matchScore", "dedupRulesVersion"],
+        "properties": {
+          "code": { "const": "AMBIGUOUS_MATCH" },
+          "field": { "type": "null" },
+          "resolution": { "enum": ["MERGED", "KEPT_SEPARATE", null] }
+        }
+      },
+      "else": {
+        "required": ["field"],
+        "properties": {
+          "field": { "type": "string" },
+          "resolution": { "enum": ["NO_LONGER_DETECTED", "ACKNOWLEDGED", null] }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["relatedActivityId"] },
+            { "required": ["matchScore"] },
+            { "required": ["dedupRulesVersion"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "OPEN" } }, "required": ["status"] },
+      "then": {
+        "properties": { "closedAt": { "type": "null" }, "resolution": { "type": "null" } }
+      },
+      "else": {
+        "properties": {
+          "closedAt": { "type": "string" },
+          "resolution": { "type": "string" }
+        }
+      }
+    }
+  ]
+}

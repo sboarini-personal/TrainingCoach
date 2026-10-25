@@ -52,3 +52,8 @@ Codes used from P4: `auth.authenticate`, `auth.authorize`, `credential.stored`,
 `credential.rotated` (target type = credential kind, so a token rotation is
 `credential.rotated` on `LOCAL_API_TOKEN`), `consent.granted`, `consent.revoked`,
 `consent.declined`, `policy.evaluate`.
+
+Codes added in P5: `activity.corrected` (target type `DATA_OVERRIDE`), `dedup.merged`
+(target the Activity that received the sources), `dedup.kept_separate` and `dedup.split`
+(target the Activity that stays or becomes separate). The override reason, field values and
+activity names never enter the audit log.

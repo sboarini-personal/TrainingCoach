@@ -66,7 +66,8 @@ Structured (JSON) events are emitted for at least:
 |---|---|
 | Integration | `integration.sync.started`, `.succeeded`, `.failed`, `integration.capability.observed` |
 | Ingestion | `ingestion.file.received`, `.rejected`, `.parsed`, `.failed`, `ingestion.duplicate` |
-| Deduplication | `dedup.linked`, `dedup.ambiguous`, `dedup.merged`, `dedup.split` |
+| Activities | `activity.created`, `activity.corrected` (field path only) |
+| Deduplication | `dedup.linked`, `dedup.ambiguous`, `dedup.merged`, `dedup.kept_separate`, `dedup.split` |
 | Data quality | `quality.issue.raised`, `quality.issue.resolved` |
 | Planning | `plan.generated`, `plan.proposed`, `plan.activated`, `plan.superseded` |
 | External writes | `external_write.proposed`, `.confirmed`, `.executed`, `.refused` |

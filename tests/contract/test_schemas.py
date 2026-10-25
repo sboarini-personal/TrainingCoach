@@ -46,6 +46,7 @@ def test_expected_contracts_exist() -> None:
         "common", "activity", "workout", "training-plan", "insight", "consent",
         "athlete-profile", "availability", "goal", "sport-event",
         "raw-source", "derived-metric-value", "consent-ledger", "coaching-state",
+        "data-override", "data-quality-issue", "source-observation",
     }  # fmt: skip
     assert expected <= SCHEMAS.keys(), sorted(expected - SCHEMAS.keys())
 
@@ -415,3 +416,178 @@ def test_coaching_state_conditions_are_closed_and_unique() -> None:
     assert _errors("coaching-state", state)
     state["conditions"] = ["BEAST_MODE"]
     assert _errors("coaching-state", state)
+
+
+# --------------------------------------------------------------------------- activity status (P5)
+
+
+@pytest.mark.req("FR-ACT-007")
+def test_merged_activity_names_its_target_and_only_merged_does() -> None:
+    activity = _example("activity.example.json")
+    activity["status"] = "MERGED"
+    assert _errors("activity", activity)
+    activity["mergedIntoId"] = "0193b2a0-0000-7000-8000-000000000102"
+    assert _errors("activity", activity) == []
+    activity["status"] = "PENDING_REVIEW"
+    assert _errors("activity", activity)
+
+
+@pytest.mark.req("FR-ACT-005", "FR-ACT-009")
+@pytest.mark.parametrize("key", ["resolutionRulesVersion", "qualityRulesVersion"])
+def test_activity_records_its_rule_versions(key: str) -> None:
+    activity = _example("activity.example.json")
+    del activity["provenance"][key]
+    assert _errors("activity", activity)
+    activity["provenance"][key] = "latest"
+    assert _errors("activity", activity)
+
+
+@pytest.mark.req("FR-ACT-007")
+def test_source_link_names_the_part_of_its_raw_source() -> None:
+    activity = _example("activity.example.json")
+    del activity["provenance"]["sources"][0]["part"]
+    assert _errors("activity", activity)
+    activity["provenance"]["sources"][0]["part"] = -1
+    assert _errors("activity", activity)
+
+
+@pytest.mark.req("FR-ACT-009")
+def test_heart_rate_sensor_is_a_closed_vocabulary() -> None:
+    activity = _example("activity.example.json")
+    activity["cardiovascular"]["hrSensor"] = "MAGIC_RING"
+    assert _errors("activity", activity)
+    activity["cardiovascular"]["hrSensor"] = None
+    assert _errors("activity", activity) == []
+
+
+# --------------------------------------------------------------------------- data overrides
+
+
+@pytest.mark.req("FR-ACT-006")
+@pytest.mark.parametrize(
+    "field", ["timing.startTimeUtc", "provenance.sources", "training.aerobicEffect", "version"]
+)
+def test_only_correctable_fields_can_be_overridden(field: str) -> None:
+    override = _example("data-override.example.json")
+    override["field"] = field
+    assert _errors("data-override", override)
+
+
+@pytest.mark.req("FR-ACT-006")
+@pytest.mark.parametrize("reason", [None, ""])
+def test_override_requires_a_reason(reason: str | None) -> None:
+    override = _example("data-override.example.json")
+    override["reason"] = reason
+    assert _errors("data-override", override)
+
+
+@pytest.mark.req("FR-ACT-006")
+@pytest.mark.parametrize(
+    "key", ["originalValue", "correctedValue", "correctedAt", "correctedBy", "supersedesOverrideId"]
+)
+def test_override_records_original_correction_time_author_and_chain(key: str) -> None:
+    override = _example("data-override.example.json")
+    del override[key]
+    assert _errors("data-override", override)
+
+
+@pytest.mark.req("FR-ACT-006")
+def test_override_values_are_scalars_or_unknown() -> None:
+    override = _example("data-override.example.json")
+    override["correctedValue"] = None
+    assert _errors("data-override", override) == []
+    override["correctedValue"] = {"meters": 10000}
+    assert _errors("data-override", override)
+
+
+# --------------------------------------------------------------------------- data quality issues
+
+
+@pytest.mark.req("FR-ACT-007")
+@pytest.mark.parametrize("key", ["relatedActivityId", "matchScore", "dedupRulesVersion"])
+def test_ambiguous_match_issue_names_candidate_score_and_rules(key: str) -> None:
+    issue = _example("data-quality-issue.ambiguous.example.json")
+    del issue[key]
+    assert _errors("data-quality-issue", issue)
+
+
+@pytest.mark.req("FR-ACT-009")
+def test_anomaly_issue_names_a_field_and_no_candidate() -> None:
+    issue = _example("data-quality-issue.example.json")
+    issue["field"] = None
+    assert _errors("data-quality-issue", issue)
+    issue["field"] = "cardiovascular.maxHr"
+    issue["relatedActivityId"] = "0193b2a0-0000-7000-8000-000000000102"
+    assert _errors("data-quality-issue", issue)
+
+
+@pytest.mark.req("FR-ACT-009")
+def test_issue_status_and_resolution_agree() -> None:
+    issue = _example("data-quality-issue.example.json")
+    issue["resolution"] = "ACKNOWLEDGED"
+    assert _errors("data-quality-issue", issue)
+    issue["status"] = "CLOSED"
+    assert _errors("data-quality-issue", issue)
+    issue["closedAt"] = "2026-10-21T09:00:00Z"
+    assert _errors("data-quality-issue", issue) == []
+    issue["resolution"] = "MERGED"
+    assert _errors("data-quality-issue", issue)
+
+
+# --------------------------------------------------------------------------- source observations
+
+
+@pytest.mark.req("FR-ACT-005")
+@pytest.mark.parametrize("kind", ["FIT_FILE", "OTHER_FILE"])
+def test_only_athlete_entries_carry_subjective_values(kind: str) -> None:
+    observation = _example("source-observation.example.json")
+    observation["sourceKind"] = kind
+    observation["values"]["subjective.rpe"] = 6
+    assert _errors("source-observation", observation)
+
+
+@pytest.mark.req("FR-ACT-005")
+def test_athlete_entry_may_carry_subjective_values() -> None:
+    observation = _example("source-observation.example.json")
+    observation.update(origin="MANUAL_ENTRY", sourceKind="ATHLETE_ENTRY", streams=[])
+    observation["values"]["subjective.rpe"] = 6
+    assert _errors("source-observation", observation) == []
+
+
+@pytest.mark.req("FR-ACT-007")
+@pytest.mark.parametrize("kind", ["FIT_FILE", "OTHER_FILE", "ATHLETE_ENTRY"])
+def test_only_provider_records_carry_provider_identifiers(kind: str) -> None:
+    observation = _example("source-observation.example.json")
+    origin = "MANUAL_ENTRY" if kind == "ATHLETE_ENTRY" else "FILE_UPLOAD"
+    observation.update(origin=origin, sourceKind=kind, streams=[])
+    observation["providerActivityId"] = "synthetic-1001"
+    assert _errors("source-observation", observation)
+
+
+@pytest.mark.req("FR-ACT-001", "FR-ACT-003")
+@pytest.mark.parametrize("path", ["classification.sport", "timing.startTimeUtc"])
+def test_observation_requires_sport_and_start(path: str) -> None:
+    observation = _example("source-observation.example.json")
+    del observation["values"][path]
+    assert _errors("source-observation", observation)
+
+
+@pytest.mark.req("FR-ACT-001")
+@pytest.mark.parametrize(
+    "path", ["timing.trainingDay", "performance.averagePaceSecondsPerKm", "isAdmin"]
+)
+def test_observation_cannot_provide_computed_or_unknown_fields(path: str) -> None:
+    observation = _example("source-observation.example.json")
+    observation["values"][path] = "2026-10-20"
+    assert _errors("source-observation", observation)
+
+
+@pytest.mark.req("FR-ACT-007")
+def test_provider_record_observation_names_provider_and_record() -> None:
+    observation = _example("source-observation.example.json")
+    observation.update(origin="GARMIN_PERSONAL_API", sourceKind="PROVIDER_RECORD")
+    assert _errors("source-observation", observation)
+    observation.update(provider="garmin", providerActivityId="synthetic-1001")
+    assert _errors("source-observation", observation) == []
+    observation["origin"] = "FILE_UPLOAD"
+    assert _errors("source-observation", observation)

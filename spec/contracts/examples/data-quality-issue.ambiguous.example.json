@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0.0",
+  "issueId": "0193b2a0-0000-7000-8000-000000000602",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 2,
+  "kind": "AMBIGUOUS_MATCH",
+  "activityId": "0193b2a0-0000-7000-8000-000000000102",
+  "code": "AMBIGUOUS_MATCH",
+  "field": null,
+  "relatedActivityId": "0193b2a0-0000-7000-8000-000000000101",
+  "matchScore": 0.72,
+  "dedupRulesVersion": "1.0.0",
+  "status": "CLOSED",
+  "createdAt": "2026-10-21T08:00:00Z",
+  "closedAt": "2026-10-21T09:00:00Z",
+  "resolution": "MERGED"
+}

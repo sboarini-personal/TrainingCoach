@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0.0",
+  "rawSourceId": "0193b2a0-0000-7000-8000-000000000202",
+  "part": 0,
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "origin": "FILE_UPLOAD",
+  "sourceKind": "FIT_FILE",
+  "provider": null,
+  "providerActivityId": null,
+  "rawSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "receivedAt": "2026-10-21T08:00:00Z",
+  "normaliser": { "name": "fit", "version": "1.0.0" },
+  "values": {
+    "classification.sport": "RUNNING",
+    "classification.subtype": "ROAD",
+    "timing.startTimeUtc": "2026-10-20T21:00:02Z",
+    "timing.utcOffset": "-03:00",
+    "timing.elapsedSeconds": 3720,
+    "timing.movingSeconds": 3650,
+    "distance.meters": 10050.5,
+    "elevation.gainMeters": 85,
+    "elevation.lossMeters": 83,
+    "cardiovascular.averageHr": 148,
+    "cardiovascular.maxHr": 171,
+    "cardiovascular.hrSensor": "OPTICAL",
+    "performance.averageSpeedMps": 2.753,
+    "performance.maxSpeedMps": 3.9,
+    "performance.cadence": { "average": 172, "max": 184, "unit": "STEPS_PER_MIN" },
+    "performance.runningDynamics.strideLengthMeters": 0.96,
+    "training.aerobicEffect": {
+      "value": 3.4,
+      "provider": "garmin",
+      "metricName": "aerobic training effect",
+      "origin": "PROVIDER_DERIVED"
+    },
+    "environment.temperatureC": 21.5
+  },
+  "sourcePaths": {
+    "distance.meters": "session.total_distance",
+    "cardiovascular.averageHr": "session.avg_heart_rate"
+  },
+  "streams": [
+    {
+      "kind": "TIME_SERIES",
+      "blobSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "anomalies": []
+}

@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:source-observation:1",
+  "title": "SourceObservation",
+  "description": "Normalised content of one part of one RawSource: the fields that source provides, keyed by canonical field path (NORMALIZED layer, immutable). Activities are resolved from their sources' observations (FR-ACT-005). Owner spec: spec/integration/canonical-model.spec.md section 6.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "rawSourceId",
+    "part",
+    "athleteId",
+    "origin",
+    "sourceKind",
+    "provider",
+    "providerActivityId",
+    "rawSha256",
+    "receivedAt",
+    "normaliser",
+    "values",
+    "sourcePaths",
+    "streams",
+    "anomalies"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "rawSourceId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "part": { "type": "integer", "minimum": 0 },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "origin": { "$ref": "urn:coach:schema:common:1#/$defs/sourceOrigin" },
+    "sourceKind": { "enum": ["FIT_FILE", "PROVIDER_RECORD", "OTHER_FILE", "ATHLETE_ENTRY"] },
+    "provider": { "type": ["string", "null"], "pattern": "^[a-z0-9_]+$" },
+    "providerActivityId": { "type": ["string", "null"], "minLength": 1, "maxLength": 100 },
+    "rawSha256": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" },
+    "receivedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "normaliser": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9_]+$", "maxLength": 40 },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      }
+    },
+    "values": {
+      "description": "Field path -> value. Absent: the source does not provide the field; null: it provides the field as UNKNOWN.",
+      "type": "object",
+      "required": ["classification.sport", "timing.startTimeUtc"],
+      "additionalProperties": false,
+      "properties": {
+        "classification.sport": { "$ref": "urn:coach:schema:activity:1#/properties/classification/properties/sport" },
+        "classification.subtype": { "$ref": "urn:coach:schema:activity:1#/properties/classification/properties/subtype" },
+        "classification.providerType": { "$ref": "urn:coach:schema:activity:1#/properties/classification/properties/providerType" },
+        "metadata.name": { "$ref": "urn:coach:schema:activity:1#/properties/metadata/properties/name" },
+        "metadata.description": { "$ref": "urn:coach:schema:activity:1#/properties/metadata/properties/description" },
+        "timing.startTimeUtc": { "$ref": "urn:coach:schema:activity:1#/properties/timing/properties/startTimeUtc" },
+        "timing.originalTimezone": { "$ref": "urn:coach:schema:activity:1#/properties/timing/properties/originalTimezone" },
+        "timing.utcOffset": { "$ref": "urn:coach:schema:activity:1#/properties/timing/properties/utcOffset" },
+        "timing.elapsedSeconds": { "$ref": "urn:coach:schema:activity:1#/properties/timing/properties/elapsedSeconds" },
+        "timing.movingSeconds": { "$ref": "urn:coach:schema:activity:1#/properties/timing/properties/movingSeconds" },
+        "distance.meters": { "$ref": "urn:coach:schema:activity:1#/properties/distance/properties/meters" },
+        "elevation.gainMeters": { "$ref": "urn:coach:schema:activity:1#/properties/elevation/properties/gainMeters" },
+        "elevation.lossMeters": { "$ref": "urn:coach:schema:activity:1#/properties/elevation/properties/lossMeters" },
+        "cardiovascular.averageHr": { "$ref": "urn:coach:schema:activity:1#/properties/cardiovascular/properties/averageHr" },
+        "cardiovascular.maxHr": { "$ref": "urn:coach:schema:activity:1#/properties/cardiovascular/properties/maxHr" },
+        "cardiovascular.hrSensor": { "$ref": "urn:coach:schema:activity:1#/properties/cardiovascular/properties/hrSensor" },
+        "performance.averageSpeedMps": { "$ref": "urn:coach:schema:activity:1#/properties/performance/properties/averageSpeedMps" },
+        "performance.maxSpeedMps": { "$ref": "urn:coach:schema:activity:1#/properties/performance/properties/maxSpeedMps" },
+        "performance.cadence": { "$ref": "urn:coach:schema:activity:1#/properties/performance/properties/cadence" },
+        "performance.power": { "$ref": "urn:coach:schema:activity:1#/properties/performance/properties/power" },
+        "performance.runningDynamics.strideLengthMeters": { "$ref": "urn:coach:schema:activity:1#/properties/performance/properties/runningDynamics/properties/strideLengthMeters" },
+        "performance.runningDynamics.verticalOscillationMm": { "$ref": "urn:coach:schema:activity:1#/properties/performance/properties/runningDynamics/properties/verticalOscillationMm" },
+        "performance.runningDynamics.groundContactTimeMs": { "$ref": "urn:coach:schema:activity:1#/properties/performance/properties/runningDynamics/properties/groundContactTimeMs" },
+        "swimming.lengthCount": { "$ref": "urn:coach:schema:activity:1#/properties/swimming/properties/lengthCount" },
+        "swimming.strokeType": { "$ref": "urn:coach:schema:activity:1#/properties/swimming/properties/strokeType" },
+        "swimming.averageStrokeRate": { "$ref": "urn:coach:schema:activity:1#/properties/swimming/properties/averageStrokeRate" },
+        "swimming.swolf": { "$ref": "urn:coach:schema:activity:1#/properties/swimming/properties/swolf" },
+        "training.aerobicEffect": { "$ref": "urn:coach:schema:activity:1#/properties/training/properties/aerobicEffect" },
+        "training.anaerobicEffect": { "$ref": "urn:coach:schema:activity:1#/properties/training/properties/anaerobicEffect" },
+        "training.load.external.workKilojoules": { "$ref": "urn:coach:schema:activity:1#/properties/training/properties/load/properties/external/properties/workKilojoules" },
+        "training.load.external.volumeLoadKg": { "$ref": "urn:coach:schema:activity:1#/properties/training/properties/load/properties/external/properties/volumeLoadKg" },
+        "training.load.internal.providerLoad": { "$ref": "urn:coach:schema:activity:1#/properties/training/properties/load/properties/internal/properties/providerLoad" },
+        "subjective.rpe": { "$ref": "urn:coach:schema:activity:1#/properties/subjective/properties/rpe" },
+        "subjective.soreness": { "$ref": "urn:coach:schema:activity:1#/properties/subjective/properties/soreness" },
+        "subjective.pain": { "$ref": "urn:coach:schema:activity:1#/properties/subjective/properties/pain" },
+        "subjective.comments": { "$ref": "urn:coach:schema:activity:1#/properties/subjective/properties/comments" },
+        "environment.temperatureC": { "$ref": "urn:coach:schema:activity:1#/properties/environment/properties/temperatureC" },
+        "environment.humidityPct": { "$ref": "urn:coach:schema:activity:1#/properties/environment/properties/humidityPct" },
+        "environment.windMps": { "$ref": "urn:coach:schema:activity:1#/properties/environment/properties/windMps" },
+        "environment.altitudeMeters": { "$ref": "urn:coach:schema:activity:1#/properties/environment/properties/altitudeMeters" },
+        "environment.terrain": { "$ref": "urn:coach:schema:activity:1#/properties/environment/properties/terrain" },
+        "environment.surface": { "$ref": "urn:coach:schema:activity:1#/properties/environment/properties/surface" },
+        "environment.poolLengthMeters": { "$ref": "urn:coach:schema:activity:1#/properties/environment/properties/poolLengthMeters" }
+      }
+    },
+    "sourcePaths": {
+      "description": "Field path -> location of the value inside the source (for example 'session.total_distance').",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-zA-Z]+(\\.[a-zA-Z]+)*$" },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 300 }
+    },
+    "streams": { "$ref": "urn:coach:schema:activity:1#/properties/streams" },
+    "anomalies": {
+      "description": "Anomalies the normaliser detected in the source (for example DISTANCE_GPS_JUMP).",
+      "type": "array",
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/anomaly" }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "sourceKind": { "const": "ATHLETE_ENTRY" } },
+        "required": ["sourceKind"]
+      },
+      "else": {
+        "properties": {
+          "values": {
+            "not": {
+              "anyOf": [
+                { "required": ["subjective.rpe"] },
+                { "required": ["subjective.soreness"] },
+                { "required": ["subjective.pain"] },
+                { "required": ["subjective.comments"] }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "sourceKind": { "const": "PROVIDER_RECORD" } },
+        "required": ["sourceKind"]
+      },
+      "then": {
+        "properties": {
+          "origin": { "const": "GARMIN_PERSONAL_API" },
+          "provider": { "type": "string" },
+          "providerActivityId": { "type": "string" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "sourceKind": { "enum": ["FIT_FILE", "OTHER_FILE"] } },
+        "required": ["sourceKind"]
+      },
+      "then": {
+        "properties": {
+          "origin": { "const": "FILE_UPLOAD" },
+          "provider": { "type": "null" },
+          "providerActivityId": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "sourceKind": { "const": "ATHLETE_ENTRY" } },
+        "required": ["sourceKind"]
+      },
+      "then": {
+        "properties": {
+          "origin": { "const": "MANUAL_ENTRY" },
+          "provider": { "type": "null" },
+          "providerActivityId": { "type": "null" },
+          "streams": { "maxItems": 0 }
+        }
+      }
+    }
+  ]
+}

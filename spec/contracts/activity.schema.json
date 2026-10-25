@@ -9,6 +9,7 @@
     "id",
     "athleteId",
     "version",
+    "status",
     "provenance",
     "classification",
     "timing",
@@ -25,9 +26,20 @@
       "type": "integer",
       "minimum": 1
     },
+    "status": {
+      "description": "ACTIVE counts toward totals; PENDING_REVIEW awaits the athlete's decision on an ambiguous match; MERGED was absorbed into mergedIntoId and is kept for lineage (deduplication spec).",
+      "enum": ["ACTIVE", "PENDING_REVIEW", "MERGED"]
+    },
+    "mergedIntoId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
     "provenance": {
       "type": "object",
-      "required": ["sources", "importedAt", "fields"],
+      "required": [
+        "sources",
+        "importedAt",
+        "resolutionRulesVersion",
+        "qualityRulesVersion",
+        "fields"
+      ],
       "additionalProperties": false,
       "properties": {
         "sources": {
@@ -36,6 +48,8 @@
           "items": { "$ref": "#/$defs/sourceLink" }
         },
         "importedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        "resolutionRulesVersion": { "$ref": "#/$defs/rulesVersion" },
+        "qualityRulesVersion": { "$ref": "#/$defs/rulesVersion" },
         "fields": {
           "description": "Resolved field path (for example 'distance.meters') to its provenance (FR-ACT-005).",
           "type": "object",
@@ -136,6 +150,7 @@
       "properties": {
         "averageHr": { "type": ["integer", "null"], "minimum": 0, "maximum": 260 },
         "maxHr": { "type": ["integer", "null"], "minimum": 0, "maximum": 260 },
+        "hrSensor": { "enum": ["CHEST_STRAP", "OPTICAL", "OTHER", null] },
         "hrZones": {
           "oneOf": [
             {
@@ -342,11 +357,20 @@
     },
     "quality": { "$ref": "urn:coach:schema:common:1#/$defs/dataQuality" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "MERGED" } }, "required": ["status"] },
+      "then": { "required": ["mergedIntoId"] },
+      "else": { "not": { "required": ["mergedIntoId"] } }
+    }
+  ],
   "$defs": {
+    "rulesVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "sourceLink": {
       "type": "object",
       "required": [
         "sourceId",
+        "part",
         "origin",
         "provider",
         "providerActivityId",
@@ -356,7 +380,15 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "sourceId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+        "sourceId": {
+          "description": "The rawSourceId of the linked source.",
+          "$ref": "urn:coach:schema:common:1#/$defs/id"
+        },
+        "part": {
+          "description": "Session index inside the raw source; 0 unless one file holds several sessions.",
+          "type": "integer",
+          "minimum": 0
+        },
         "origin": { "$ref": "urn:coach:schema:common:1#/$defs/sourceOrigin" },
         "provider": { "type": ["string", "null"], "pattern": "^[a-z0-9_]+$" },
         "providerActivityId": { "type": ["string", "null"], "maxLength": 100 },
