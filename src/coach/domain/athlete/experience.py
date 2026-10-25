@@ -8,6 +8,7 @@ from datetime import date
 from enum import StrEnum
 
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.numbers import require_finite
 from coach.domain.common.provenance import ValueSource
 
 EXERCISE_ID = re.compile(r"^ex\.[a-z0-9_]+$")
@@ -16,6 +17,7 @@ EXERCISE_ID = re.compile(r"^ex\.[a-z0-9_]+$")
 def _check(value: float | None, name: str, *, low: float = 0.0, high: float | None = None) -> None:
     if value is None:
         return
+    require_finite(value, name)
     if value < low or (high is not None and value > high):
         bounds = f"{low} and {high}" if high is not None else f"at least {low}"
         raise DomainValidationError(f"{name} must be {bounds}")
@@ -28,7 +30,7 @@ class RaceResult:
     source: ValueSource
 
     def __post_init__(self) -> None:
-        if self.time_seconds <= 0:
+        if require_finite(self.time_seconds, "race time") <= 0:
             raise DomainValidationError("race time must be positive")
         if self.source is ValueSource.DERIVED:
             raise DomainValidationError("race results are declared or provider-reported")
@@ -88,7 +90,8 @@ class SwimmingExperience:
         _check(self.years_experience, "years of experience", high=80)
         _check(self.weekly_distance_m, "weekly distance")
         _check(self.longest_distance_m, "longest distance")
-        if self.typical_pace_100m_seconds is not None and self.typical_pace_100m_seconds <= 0:
+        pace = self.typical_pace_100m_seconds
+        if pace is not None and require_finite(pace, "pace") <= 0:
             raise DomainValidationError("pace must be positive")
         if self.pool_length_m is not None and not 0 < self.pool_length_m <= 100:
             raise DomainValidationError("pool length must be between 0 and 100 m")

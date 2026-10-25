@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.numbers import require_finite
 
 METERS_PER_KILOMETER = 1000.0
 SECONDS_PER_HOUR = 3600.0
 
 
 def _non_negative(value: float, name: str) -> float:
-    if value < 0:
+    if require_finite(value, name) < 0:
         raise DomainValidationError(f"{name} must not be negative")
+    return value
+
+
+def _positive_or_unknown(value: float | None, name: str) -> float | None:
+    """A positive finite number, or ``None`` (UNKNOWN) when absent or not positive."""
+    if value is None or require_finite(value, name) <= 0:
+        return None
     return value
 
 
@@ -32,18 +40,15 @@ def mps_to_kmh(meters_per_second: float) -> float:
 
 def pace_seconds_per_km(speed_mps: float | None) -> float | None:
     """Pace from speed; UNKNOWN (None) without a positive speed."""
-    if speed_mps is None or speed_mps <= 0:
-        return None
-    return METERS_PER_KILOMETER / speed_mps
+    speed = _positive_or_unknown(speed_mps, "speed")
+    return None if speed is None else METERS_PER_KILOMETER / speed
 
 
 def pace_seconds_per_100m(speed_mps: float | None) -> float | None:
-    if speed_mps is None or speed_mps <= 0:
-        return None
-    return 100.0 / speed_mps
+    speed = _positive_or_unknown(speed_mps, "speed")
+    return None if speed is None else 100.0 / speed
 
 
 def speed_from_pace_seconds_per_km(pace: float | None) -> float | None:
-    if pace is None or pace <= 0:
-        return None
-    return METERS_PER_KILOMETER / pace
+    positive_pace = _positive_or_unknown(pace, "pace")
+    return None if positive_pace is None else METERS_PER_KILOMETER / positive_pace

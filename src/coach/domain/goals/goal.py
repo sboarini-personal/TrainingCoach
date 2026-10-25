@@ -11,6 +11,7 @@ from uuid import UUID
 
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.common.evidence import EvidenceRef
+from coach.domain.common.numbers import require_finite
 from coach.domain.common.sport import Sport
 from coach.domain.common.text import clean_optional_text, clean_text
 from coach.domain.common.time import ensure_utc
@@ -40,7 +41,7 @@ _ALLOWED_TRANSITIONS: Final[dict[GoalStatus, frozenset[GoalStatus]]] = {
 
 
 def _positive(value: float | None, name: str) -> None:
-    if value is not None and value <= 0:
+    if value is not None and require_finite(value, name) <= 0:
         raise DomainValidationError(f"{name} must be positive")
 
 
