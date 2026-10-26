@@ -317,10 +317,12 @@ def _time_series(session: ParsedSession, fmt: DetectedType, sport: Sport) -> Tim
 
 def normalise(parsed: ParsedFile, *, received_at: datetime) -> list[DecodedSession]:
     """Canonical sessions of a parsed file; rejects the whole file on any problem."""
-    if not parsed.sessions:
-        raise _semantic("NO_SESSION")
+    # The file type is checked first: wellness files (monitoring, sleep, metrics) have no
+    # session either, and their type is the precise reason (files spec 8).
     if parsed.format is DetectedType.FIT and parsed.file_type != "activity":
         raise _semantic("NOT_AN_ACTIVITY")
+    if not parsed.sessions:
+        raise _semantic("NO_SESSION")
     decoded = []
     for part, session in enumerate(parsed.sessions):
         _check_session(session, received_at)

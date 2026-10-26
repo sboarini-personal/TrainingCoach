@@ -23,7 +23,16 @@ from coach.domain.ingestion.record import ActivityOutcome, IngestionOutcome, Rej
 from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
 from coach.infrastructure.sqlite.database import loads
 from coach.metrics.derived import DerivedStatus, MetricSubject
-from file_samples import START, csv_file, fit_file, fit_session, gpx_file, tcx_file, zip_file
+from file_samples import (
+    START,
+    csv_file,
+    fit_file,
+    fit_session,
+    gpx_file,
+    tcx_file,
+    wellness_fit,
+    zip_file,
+)
 from ingestion_world import IngestionWorld
 from samples import sample_observation
 
@@ -207,6 +216,20 @@ def test_zip_members_become_their_own_raw_sources(world: IngestionWorld) -> None
         (
             fit_file(file_type="course"),
             "c.fit",
+            None,
+            RejectionReason.SEMANTIC_INVALID,
+            "NOT_AN_ACTIVITY",
+        ),
+        (
+            wellness_fit(),
+            "monitoring.fit",
+            None,
+            RejectionReason.SEMANTIC_INVALID,
+            "NOT_AN_ACTIVITY",
+        ),
+        (
+            wellness_fit(44),
+            "metrics.fit",
             None,
             RejectionReason.SEMANTIC_INVALID,
             "NOT_AN_ACTIVITY",

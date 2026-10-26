@@ -99,6 +99,22 @@ def fit_file(
     return encoder.close()
 
 
+def wellness_fit(file_type: str | int = "monitoring_b") -> bytes:
+    """A FIT file without sessions, like the daily monitoring, sleep or metrics files of a
+    Garmin export (their proprietary types decode as numbers, for example 44)."""
+    encoder = Encoder()
+    encoder.write_mesg(
+        {
+            "mesg_num": NUMS["FILE_ID"],
+            "type": file_type,
+            "manufacturer": "garmin",
+            "product": 1,
+            "time_created": START,
+        }
+    )
+    return encoder.close()
+
+
 def _later(start: str, seconds: int) -> str:
     """``start`` plus ``seconds``, keeping its offset notation."""
     moment = datetime.fromisoformat(start) + timedelta(seconds=seconds)

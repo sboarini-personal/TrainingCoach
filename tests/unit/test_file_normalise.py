@@ -318,6 +318,19 @@ def test_a_file_without_sessions_is_refused() -> None:
     )
 
 
+@pytest.mark.req("INT-FIL-002")
+@pytest.mark.parametrize("file_type", ["monitoring_b", "44"])
+def test_file_type_is_checked_before_sessions(file_type: str) -> None:
+    # Garmin export wellness files have no session: the precise reason is their type.
+    response = _example()
+    response["output"].update(fileType=file_type, sessions=[])
+    parsed = decode_response(response, DetectedType.FIT, max_sessions=500)
+    assert _reason(lambda: normalise(parsed, received_at=NOW)) == (
+        RejectionReason.SEMANTIC_INVALID,
+        "NOT_AN_ACTIVITY",
+    )
+
+
 @pytest.mark.req("FR-ACT-009")
 def test_implausible_values_are_kept_for_the_quality_rules(tmp_path: Path) -> None:
     data = fit_file([fit_session(seconds=5, heart_rate=243)])

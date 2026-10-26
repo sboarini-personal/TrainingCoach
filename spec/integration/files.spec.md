@@ -138,8 +138,10 @@ Semantic validation (stage 10), for every format:
 - time series offsets are non-negative and never decrease; cumulative distances never
   decrease;
 - summary values are finite and non-negative, except UTC offsets;
-- a file without any activity session is `SEMANTIC_INVALID` (`NO_SESSION`); a FIT file whose
-  `file_id.type` is not `activity` is `SEMANTIC_INVALID` (`NOT_AN_ACTIVITY`);
+- a FIT file whose `file_id.type` is not `activity` is `SEMANTIC_INVALID` (`NOT_AN_ACTIVITY`),
+  checked before sessions: Garmin data exports hold mostly wellness files (monitoring, sleep,
+  metrics; their proprietary types decode as numbers) that have no session either; a file
+  without any activity session is `SEMANTIC_INVALID` (`NO_SESSION`);
 - implausible but well-formed values (heart rate 245, speed 40 m/s) are not rejected: they
   become quality anomalies (activities spec section 5.1).
 
