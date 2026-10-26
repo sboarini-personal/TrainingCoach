@@ -17,6 +17,13 @@ the real sandbox and SQLite (`tests/security/test_upload_security.py`) and at un
 is executed (`tests/unit/test_csv_export.py`, `tests/integration/test_cli_activities.py`).
 AT-SEC-001 covers secrets in activity corrections and imported file text.
 
+Implementation status (P7): AT-SEC-002 is extended to the Garmin sync
+(`tests/security/test_garmin_secret_leakage.py`): a planted key and planted access tokens go
+through successful syncs, a token renewal after a 401, server errors with retries, a rate
+limit, a failing token endpoint and a rejected key; none appears in command output, log
+records, the log file or any byte of the data directory. AT-SEC-001 covers text in Garmin
+activity records (`tests/unit/test_provider_ingestion.py`).
+
 ### AT-SEC-001 — Accidentally disclosed secret
 - Requirements: SEC-SEC-005
 - Level: security and agent evaluation. First executable: P4 (detector), P13 (agent).

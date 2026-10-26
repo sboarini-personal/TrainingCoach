@@ -147,7 +147,11 @@ Storage (P3, ADR-022): one SQLite file `<data_dir>/coach.sqlite3`.
 
 Data quality issues are aggregates in `aggregates` (kind `data_quality_issue`).
 
-| `ingestion_records` (P6) | one immutable record per upload attempt (outcome, reason, hashes, files, activities) | trigger rejects every update; unique idempotency key per athlete; indexes by hash and time |
+| `ingestion_records` (P6) | one immutable record per import attempt, upload or provider payload (origin, outcome, reason, hashes, files, activities) | trigger rejects every update; unique idempotency key per athlete; indexes by hash and time |
+
+Integration statuses (P7) are aggregates in `aggregates` (kind `integration_status`): the
+capability snapshot, sync state with reason codes, freshness, `notBefore` and the cursor. The
+coaching state with its conditions is kind `coaching_state`.
 
 Time series are content-addressed JSON blobs in the athlete's blob store, referenced from
 observations. Uploads wait in `<data_dir>/quarantine/` under random names only while they are
@@ -162,9 +166,16 @@ read-only, verified on read.
 schema and semantic validation -> normalisation -> deduplication -> one transaction
 persisting RawSource, blob, Activity and links -> events.
 
-**Garmin sync:** scheduler -> capability check -> TokenBroker (key from secret store, token in
-memory) -> windowed pull -> RAW persistence -> normalisation -> deduplication -> cursor
-update. Failures set INTEGRATION_ERROR and never block local features.
+**Garmin sync (P7, ADR-026):** `coach garmin sync` -> consent and capability checks (no
+request) -> `SyncService` splits the range into 7-day windows -> per window, search pages
+through the `FitnessProvider` port (Garmin adapter: TokenBroker with the key from the secret
+store and the token in memory, request budget, thin HTTPS transport without redirects) ->
+each page stored as RAW -> for each new activity: original file (ZIP) then details record
+(JSON) through the ingestion pipeline (archive controls and sandbox for the file, the
+`garmin_activity` normaliser for the record) -> deduplication links both to one activity ->
+cursor saved after every activity. Retries with backoff and `Retry-After` wrap every port
+call. Failures keep the progress, mark the sync PENDING, set INTEGRATION_ERROR and never block
+local features.
 
 **Adaptive loop:** activity ingested -> workout execution matching -> metrics -> recovery
 assessment -> insights -> decision (code thresholds plus AI interpretation) -> policy engine
@@ -196,7 +207,7 @@ engine for proposals -> AgentDecision audit.
 | A-02 | Local-first deployment on the athlete's PC; cloud optional later | Accepted (ADR-014) |
 | A-03 | Python stack | Resolved (ADR-013) |
 | A-04 | Garmin access through the Personal tier | Open, to confirm |
-| A-05 | Garmin facts as verified on 2026-10-24; re-verified before P7 | Rule |
+| A-05 | Garmin facts as verified on 2026-10-24; re-verified before P7 | Re-verified 2026-10-26, including the Swagger document (garmin spec section 1) |
 | A-06 | Garmin endpoints, headers and schemas only from the official client, Swagger documentation or real responses | Rule |
 | A-07 | Training day = local start date in the activity's timezone; athlete timezone with ESTIMATED_VALUE when unknown | Proposed |
 | A-08 | Canonical units metric/SI; display per athlete preference | Proposed |
@@ -213,7 +224,7 @@ engine for proposals -> AgentDecision audit.
 | A-19 | At most one ACTIVE priority-A goal | Proposed |
 | A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
 
-Open provider questions G-1 to G-7: `spec/integration/garmin.spec.md` section 8.
+Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md` section 8.
 
 ## 8. Delivery phases
 
@@ -227,8 +238,8 @@ Open provider questions G-1 to G-7: `spec/integration/garmin.spec.md` section 8.
 | P4 | Local token authentication with lockout and rate limiting; authorization chain and identity directory; credentials in the OS secret store; hash-chained audit log (ADR-023); consent service and gate; policy engine core; chat secret screening; `coach` CLI; threat model v1 | Done |
 | P5 | Canonical Activity and field catalogue, source observations and field-level resolution (ADR-024), time model, data quality rules and issues, deduplication tiers with merge, keep separate and split, DataOverride corrections and the effective view, weekly volume, activity storage (migration 3) | Done |
 | P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP): detection, archives, sandboxed parsers (ADR-025), normalisation rules 1.0.0, time series, ingestion records and failure issues, CSV export, CLI import | Done |
-| P7 | FitnessProvider, capabilities, Garmin Personal adapter, sync, degradation | Next |
-| P8 | Deterministic metrics engine | |
+| P7 | FitnessProvider port and fake provider, capability model and POL-CAPABILITY, IntegrationStatus, LocalWorkoutPublisher, Garmin Personal adapter (token broker, thin transport, request budget, `garmin_activity` normaliser 1.0.0), SyncService with windows, cursor, retries and degradation (ADR-026), provider payloads through the ingestion pipeline, CLI `garmin sync` and `garmin status` | Done |
+| P8 | Deterministic metrics engine | Next |
 | P9 | Running, cycling, swimming analytics; tennis load | |
 | P10 | Exercise catalogue, strength prescription and execution, interference | |
 | P11 | Check-in, recovery, patterns, insights, report data | |

@@ -103,8 +103,8 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P6 are done. Next: P7 (FitnessProvider, capabilities, Garmin Personal adapter, sync).
-See `docs/architecture.md` section 8.
+P0 to P7 are done. Next: P8 (deterministic metrics engine). See `docs/architecture.md`
+section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 `AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
@@ -125,3 +125,15 @@ from committed activity files; `tests/ingestion_world.py` runs the worker in-pro
 commands for the sandbox must use `sandbox.interpreter()`, not `sys.executable` (the Windows
 venv launcher is itself a child process). Files with backslashes in literals are written with
 the editor tool, never with shell heredocs.
+
+Provider sync (P7): `SyncService.sync` runs the algorithm of garmin spec 4.1 over the
+`FitnessProvider` port; provider payloads go through `IngestionService.import_provider_payload`
+(JSON records via `ProviderRecords`, ZIP downloads via archive controls and the sandbox).
+Garmin knowledge lives in `coach.integrations.garmin` (documented endpoints only; re-check
+them with `tools/garmin_openapi.py`). Capabilities gate features (`ProviderCapabilities`,
+POL-CAPABILITY); never infer one. Tests: `tests/fake_provider.py` (the port),
+`tests/sync_world.py` (sync with in-memory stores), `tests/garmin_world.py` (adapter over a
+scripted HTTP transport), payloads from `tests/garmin_samples.py`; nothing contacts Garmin.
+Scripts that write repository files from Python pass an explicit LF newline to
+`write_text`: Windows text mode writes CRLF otherwise (`.gitattributes` expects LF). Tokens in
+tests are built at run time (`garmin_samples.jwt`): detect-secrets blocks JWT-shaped literals.

@@ -13,7 +13,8 @@ context.
 | Recovery | resting HR, sleep, HRV, Body Battery, stress | Garmin, athlete | recovery assessment | RECOVERY, SLEEP, HRV, PROVIDER_RECOVERY_METRICS | local database | derived summaries |
 | Check-ins | sleep quality, fatigue, soreness, stress, motivation | athlete | recovery | onboarding | local database | yes, with AI_PROCESSING |
 | Plans, insights, decisions | plan versions, insights, AgentDecisions | system | coaching | none extra | local database | as needed |
-| Credentials | Garmin key, tokens | athlete, system | integration | none | OS secret store or memory | **never** |
+| Garmin payloads (P7) | activity details records, original activity files, activity list pages, sync status (codes, dates, activity IDs) | Garmin Personal API | activity synchronisation | ACTIVITIES | RAW blob store and local database | never as RAW; activities as above |
+| Credentials | Garmin key (OS secret store, with the expiry date in the database), access tokens (memory only, never written) | athlete, system | integration | none | OS secret store or memory | **never** |
 | Audit | event codes, IDs | system | security | none | local database | never |
 | Not collected by default | women's health, nutrition logs, weight goals | none | none | WOMENS_HEALTH not offered in V1 | none | none |
 
@@ -33,6 +34,15 @@ no athlete data. Backups are created only on request and go where the athlete ch
 Open question G-5: whether Garmin's Personal API terms allow processing Garmin data with a
 third-party AI. The athlete reviews the terms they accepted when creating the key before
 Garmin-sourced data is sent to the LLM.
+
+Garmin data minimisation (P7). The sync calls only the activity search, details and download
+endpoints; no wellness, sleep, Women's Health, nutrition or weight endpoint is called.
+Payloads are kept byte-exact as RAW (INT-GAR-009), so they hold everything Garmin puts in
+them: an activity record also carries proprietary metrics (stress, Body Battery change,
+SpO2), and a list page may carry social data (names of people who liked or commented). Those
+fields are never normalised, sent to the AI or exported; only the mapped activity fields
+(garmin spec section 10) reach the canonical activity. The deletion workflow removes RAW
+payloads with everything else.
 
 ## 4. Athlete rights
 

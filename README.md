@@ -48,11 +48,20 @@ uv run coach import run.fit ride.tcx export.zip     # FIT, TCX, GPX, CSV templat
 uv run coach activity list                          # most recent activities
 uv run coach activity export activities.csv         # CSV activity template
 uv run coach issue list                             # data problems and failed imports
+uv run coach garmin sync                            # pull new activities (Personal API)
+uv run coach garmin sync --since 2026-09-01         # re-scan from a date
+uv run coach garmin status                          # freshness, errors, capabilities, key expiry
 ```
 
 Imports run each file through a sandboxed parser; rejected files leave only an ingestion
 record and an issue (`coach issue list`). The CSV template header is documented in
 `spec/integration/files.spec.md` section 8.4.
+
+`coach garmin sync` uses the Garmin Personal API key stored with `coach secret set
+garmin-api-key` (create it in Garmin Connect, under Personal API key). It pulls the last 8
+weeks the first time, then what is new; it never writes to Garmin. When Garmin is
+unavailable the command says so, keeps what was already synced and leaves local history and
+file import working.
 
 Data goes to `COACH_DATA_DIR` (default `%LOCALAPPDATA%\CoachDeportivo`); the command refuses
 OneDrive, Dropbox and Google Drive folders. Secrets go to the Windows Credential Manager.
