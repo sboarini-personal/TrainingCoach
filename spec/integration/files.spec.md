@@ -262,3 +262,26 @@ malware scan result, outcome (IMPORTED, DUPLICATE, REJECTED, FAILED), reason cod
 code-like detail, the files (archive members) with their RawSource and sessions, the
 activities with their deduplication outcome, the record a duplicate refers to, and the
 idempotency key.
+
+### 9.1 Provider payloads (P7)
+
+The same pipeline imports provider payloads (garmin spec section 4.1), and each ends in an
+ingestion record with `origin` GARMIN_PERSONAL_API (contract 1.1.0, additive), `provider`
+and `providerObjectId`:
+
+- stages 1 and 3 (extension and declared MIME type) do not apply; the endpoint states the
+  media type. A details record is JSON; a download must be detected as a ZIP.
+- stage 5 does not apply: provider payloads are `NOT_APPLICABLE` for the malware scan
+  (garmin spec section 6).
+- a JSON provider record is decoded in process by the provider's record normaliser
+  (garmin spec section 10) and becomes a PROVIDER_RECORD observation naming the provider and
+  the record ID; ZIP members are decoded in the sandbox as uploads and become FIT_FILE or
+  OTHER_FILE observations of origin GARMIN_PERSONAL_API, without a provider record ID. A CSV
+  member is rejected (`CONTENT_MISMATCH`, `PROVIDER_CSV`): only the athlete's own files are
+  athlete entries.
+- the payload is stored as RAW before any check, rejected payloads included (INT-GAR-009);
+  a download that is not a ZIP is stored as `UNKNOWN`. A payload that never arrived whole
+  (over the size cap) leaves a REJECTED record (`TOO_LARGE`, `RESPONSE_LIMIT`) without a hash.
+- observations take their origin from the stored RawSource: bytes already stored by an
+  upload stay an upload's source, so the same file reached through Garmin is a tier-1
+  duplicate.

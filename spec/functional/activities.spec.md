@@ -68,6 +68,9 @@ depends on the order in which sources arrived.
 Source kinds, from the RawSource: `FIT_FILE` (uploaded FIT), `PROVIDER_RECORD` (provider API
 payload), `OTHER_FILE` (TCX, GPX and other uploads), `ATHLETE_ENTRY` (manual entry, and rows
 of the CSV activity template, which are the athlete's own declarations: files spec 8.4).
+Precision (P7): a file downloaded from a provider is a file: `FIT_FILE` or `OTHER_FILE` of
+origin GARMIN_PERSONAL_API, without a provider record ID; only the provider's JSON record is
+`PROVIDER_RECORD` (files spec 9.1).
 
 Resolution rules 1.0.0 (`resolutionRulesVersion`). For each field the first source in the
 group's order with a known value wins. When every source that provides the field has it

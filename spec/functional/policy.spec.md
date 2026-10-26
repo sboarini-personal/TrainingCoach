@@ -57,6 +57,14 @@ conditions. Implemented policies and reason codes:
 The remaining policies need the planning model and arrive in P12. Confirmation tokens arrive
 with the first external write or deletion workflow; until then nothing sets `confirmed`.
 
+Added in P7 (`policySetVersion` 1.1.0): an `Action` also states the provider capabilities it
+needs, and the `PolicyContext` holds the capabilities that are SUPPORTED (from the stored
+`IntegrationStatus`, never from the caller).
+
+| Policy | Outcome | Reason code |
+|---|---|---|
+| POL-CAPABILITY | DENY for each needed capability that is not SUPPORTED (UNKNOWN included) | `CAPABILITY_UNAVAILABLE` (parameter `capability`) |
+
 ## 4. AI cannot bypass (FR-POL-002)
 
 - AI proposals (plans, workouts, adaptations, tool calls) are data submitted to the engine.

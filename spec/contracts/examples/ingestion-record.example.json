@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "ingestionId": "0193b2a0-0000-7000-8000-000000000701",
   "athleteId": "0193b2a0-0000-7000-8000-000000000001",
   "receivedAt": "2026-10-21T08:00:00Z",
@@ -33,5 +33,8 @@
     }
   ],
   "duplicateOf": null,
-  "idempotencyKey": null
+  "idempotencyKey": null,
+  "origin": "FILE_UPLOAD",
+  "provider": null,
+  "providerObjectId": null
 }

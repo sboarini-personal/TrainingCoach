@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:integration-status:1",
+  "title": "IntegrationStatus",
+  "description": "Capability snapshot and synchronisation state of one provider for one athlete (INT-GAR-003, INT-GAR-004, INT-GAR-007, INT-GAR-008). Codes and identifiers only. Owner spec: spec/integration/provider-capabilities.spec.md section 5.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "integrationId",
+    "athleteId",
+    "version",
+    "provider",
+    "capabilities",
+    "syncState",
+    "reason",
+    "detail",
+    "lastAttemptAt",
+    "lastSuccessAt",
+    "notBefore",
+    "cursor"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "integrationId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "provider": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "capabilities": {
+      "type": "object",
+      "required": ["accessTier", "states"],
+      "additionalProperties": false,
+      "properties": {
+        "accessTier": { "enum": ["PERSONAL", "STARTER_BUSINESS", "ENTERPRISE", "UNKNOWN"] },
+        "states": {
+          "type": "object",
+          "required": [
+            "activityRead",
+            "healthRead",
+            "fitDownload",
+            "pullSupport",
+            "pushSupport",
+            "historicalData",
+            "trainingPublish",
+            "coursesPublish"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "activityRead": { "$ref": "#/$defs/capabilityState" },
+            "healthRead": { "$ref": "#/$defs/capabilityState" },
+            "fitDownload": { "$ref": "#/$defs/capabilityState" },
+            "pullSupport": { "$ref": "#/$defs/capabilityState" },
+            "pushSupport": { "$ref": "#/$defs/capabilityState" },
+            "historicalData": { "$ref": "#/$defs/capabilityState" },
+            "trainingPublish": { "$ref": "#/$defs/capabilityState" },
+            "coursesPublish": { "$ref": "#/$defs/capabilityState" }
+          }
+        }
+      }
+    },
+    "syncState": { "enum": ["NEVER_SYNCED", "SYNCED", "PENDING"] },
+    "reason": {
+      "enum": [
+        "PROVIDER_UNAVAILABLE",
+        "PROVIDER_AUTH_FAILED",
+        "PROVIDER_RATE_LIMITED",
+        "PROVIDER_PROTOCOL_ERROR",
+        "CAPABILITY_UNAVAILABLE",
+        null
+      ]
+    },
+    "detail": { "type": ["string", "null"], "pattern": "^[A-Z][A-Z0-9_]*$", "maxLength": 64 },
+    "lastAttemptAt": { "$ref": "#/$defs/optionalInstant" },
+    "lastSuccessAt": { "$ref": "#/$defs/optionalInstant" },
+    "notBefore": { "$ref": "#/$defs/optionalInstant" },
+    "cursor": {
+      "type": "object",
+      "required": ["completedThrough", "window", "processed"],
+      "additionalProperties": false,
+      "properties": {
+        "completedThrough": {
+          "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/localDate" }, { "type": "null" }]
+        },
+        "window": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["start", "end"],
+              "additionalProperties": false,
+              "properties": {
+                "start": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+                "end": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+              }
+            },
+            { "type": "null" }
+          ]
+        },
+        "processed": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "syncState": { "const": "PENDING" } } },
+      "then": { "properties": { "reason": { "type": "string" } } },
+      "else": { "properties": { "reason": { "type": "null" }, "detail": { "type": "null" } } }
+    },
+    {
+      "if": { "properties": { "syncState": { "const": "SYNCED" } } },
+      "then": { "properties": { "lastSuccessAt": { "type": "string" } } }
+    },
+    {
+      "if": { "properties": { "syncState": { "const": "NEVER_SYNCED" } } },
+      "then": { "properties": { "lastSuccessAt": { "type": "null" } } }
+    }
+  ],
+  "$defs": {
+    "optionalInstant": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" }, { "type": "null" }]
+    },
+    "capabilityState": {
+      "type": "object",
+      "required": ["value", "basis", "source", "observedAt"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "enum": ["SUPPORTED", "UNSUPPORTED", "UNKNOWN"] },
+        "basis": { "enum": ["CONFIGURED", "OBSERVED"] },
+        "source": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "observedAt": { "$ref": "#/$defs/optionalInstant" }
+      },
+      "if": { "properties": { "basis": { "const": "OBSERVED" } } },
+      "then": {
+        "properties": {
+          "value": { "enum": ["SUPPORTED", "UNSUPPORTED"] },
+          "observedAt": { "type": "string" }
+        }
+      },
+      "else": { "properties": { "observedAt": { "type": "null" } } }
+    }
+  }
+}

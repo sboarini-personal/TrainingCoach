@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "1.0.0",
+  "integrationId": "0193b2a0-0000-7000-8000-000000001301",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 4,
+  "provider": "garmin",
+  "capabilities": {
+    "accessTier": "PERSONAL",
+    "states": {
+      "activityRead": {
+        "value": "SUPPORTED",
+        "basis": "CONFIGURED",
+        "source": "https://developer.garmin.com/gc-developer-program/overview/ (checked 2026-10-26)",
+        "observedAt": null
+      },
+      "healthRead": {
+        "value": "SUPPORTED",
+        "basis": "CONFIGURED",
+        "source": "https://developer.garmin.com/gc-developer-program/overview/ (checked 2026-10-26)",
+        "observedAt": null
+      },
+      "fitDownload": {
+        "value": "SUPPORTED",
+        "basis": "OBSERVED",
+        "source": "activity file downloaded during a sync",
+        "observedAt": "2026-10-26T20:03:11Z"
+      },
+      "pullSupport": {
+        "value": "SUPPORTED",
+        "basis": "CONFIGURED",
+        "source": "https://developer.garmin.com/gc-developer-program/overview/ (checked 2026-10-26)",
+        "observedAt": null
+      },
+      "pushSupport": {
+        "value": "UNSUPPORTED",
+        "basis": "CONFIGURED",
+        "source": "https://developer.garmin.com/gc-developer-program/overview/ (checked 2026-10-26)",
+        "observedAt": null
+      },
+      "historicalData": {
+        "value": "UNKNOWN",
+        "basis": "CONFIGURED",
+        "source": "not documented by Garmin (checked 2026-10-26)",
+        "observedAt": null
+      },
+      "trainingPublish": {
+        "value": "UNSUPPORTED",
+        "basis": "CONFIGURED",
+        "source": "https://developer.garmin.com/gc-developer-program/overview/ (checked 2026-10-26)",
+        "observedAt": null
+      },
+      "coursesPublish": {
+        "value": "UNSUPPORTED",
+        "basis": "CONFIGURED",
+        "source": "https://developer.garmin.com/gc-developer-program/overview/ (checked 2026-10-26)",
+        "observedAt": null
+      }
+    }
+  },
+  "syncState": "PENDING",
+  "reason": "PROVIDER_RATE_LIMITED",
+  "detail": "HTTP_429",
+  "lastAttemptAt": "2026-10-27T07:15:00Z",
+  "lastSuccessAt": "2026-10-26T20:04:02Z",
+  "notBefore": "2026-10-27T08:15:00Z",
+  "cursor": {
+    "completedThrough": "2026-10-24",
+    "window": { "start": "2026-10-25", "end": "2026-10-28" },
+    "processed": ["21004587311", "21004587312"]
+  }
+}

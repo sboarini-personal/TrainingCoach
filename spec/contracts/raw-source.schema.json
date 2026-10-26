@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:raw-source:1",
   "title": "RawSource",
-  "description": "Immutable metadata of raw bytes received from a file or provider (FR-ACT-002). The bytes are stored content-addressed per athlete. Owner spec: spec/functional/activities.spec.md section 1.",
+  "description": "Immutable metadata of raw bytes received from a file or provider (FR-ACT-002, INT-GAR-009). The bytes are stored content-addressed per athlete. Owner spec: spec/functional/activities.spec.md section 1.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -37,7 +37,22 @@
       "type": ["string", "null"],
       "maxLength": 255
     },
-    "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED", "NOT_APPLICABLE"] }
+    "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED", "NOT_APPLICABLE"] },
+    "requestWindow": {
+      "description": "Dates a provider list was requested for (INT-GAR-009). Added in 1.1.0.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["start", "end"],
+          "additionalProperties": false,
+          "properties": {
+            "start": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+            "end": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+          }
+        },
+        { "type": "null" }
+      ]
+    }
   },
   "allOf": [
     {
@@ -54,7 +69,8 @@
       "then": {
         "properties": {
           "provider": { "type": "null" },
-          "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED"] }
+          "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED"] },
+          "requestWindow": { "type": "null" }
         }
       }
     },
@@ -63,7 +79,8 @@
       "then": {
         "properties": {
           "provider": { "type": "null" },
-          "malwareScan": { "const": "NOT_APPLICABLE" }
+          "malwareScan": { "const": "NOT_APPLICABLE" },
+          "requestWindow": { "type": "null" }
         }
       }
     }

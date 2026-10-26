@@ -24,6 +24,39 @@ interface FitnessProvider:
 - Only one provider (Garmin) is implemented in V1. Another provider implements the same
   port.
 
+### 1.1 Precision (P7)
+
+The port as implemented in P7 (the master interface above is the target):
+
+```
+interface FitnessProvider:
+    provider: str                                     # "garmin"
+    get_capabilities() -> ProviderCapabilities        # configured snapshot, no request
+    get_activities(window: DateRange, offset: int, limit: int) -> ActivityPage
+                                                      # refs plus the page's RawPayload
+    get_activity_details(ref) -> RawPayload | None    # provider record (JSON); None: gone
+    get_activity_file(ref) -> RawPayload | None       # original file (ZIP); None: no file
+```
+
+- `sync_activities` is not an adapter method: the application `SyncService` implements the
+  orchestration once over the port (garmin spec section 4.1), so adapters stay free of
+  storage, normalisation and retries, and every provider gets the same cursor, retry and
+  degradation behaviour.
+- Pagination is an offset with a limit (the only pagination Garmin documents); the cursor is
+  the application's.
+- `get_recovery_metrics` and `get_user_profile` are added with their first consumers
+  (recovery in P11, profile import with onboarding). P7 collects no data that nothing reads
+  (data minimisation, PRIV-CON-004).
+- `RawPayload`: provider, endpoint category, media type, bytes, provider object ID, request
+  window. The normaliser of provider records is a separate component of the integration
+  package, run by the ingestion pipeline (files spec section 9).
+- `ProviderError(code, detail, retryAfter?)`: `code` is one of the five codes above, `detail`
+  an upper-case code (garmin spec section 11), `retryAfter` seconds when the provider sent
+  `Retry-After`. `PROVIDER_UNAVAILABLE` and `PROVIDER_RATE_LIMITED` are transient.
+- A fake provider (`tests/fake_provider.py`) implements the port for contract, integration
+  and degradation tests; the same contract suite runs against the Garmin adapter over a fake
+  HTTP transport with synthetic payloads built from the Swagger schemas.
+
 ## 2. WorkoutPublisher (INT-GAR-002)
 
 ```
@@ -37,6 +70,14 @@ interface WorkoutPublisher:
   and the `trainingPublish` capability (POL-CAPABILITY). It is idempotent per proposal.
 - V1 ships `LocalWorkoutPublisher`: `publish_workout` always returns
   `CAPABILITY_UNAVAILABLE` without any network call (AT-GAR-001).
+
+Precision (P7): until the planning model exists (P12), a proposal holds the workout as its
+contract document (`urn:coach:schema:workout:1`), checked for its identity fields; the
+proposal ID is derived from the athlete, the workout ID and the document's SHA-256, so
+proposing the same workout twice gives the same proposal. Publication asks the policy engine
+first: POL-CAPABILITY denies it (`CAPABILITY_UNAVAILABLE`, parameter `trainingPublish`)
+before confirmation is even considered, so a missing capability is never turned into a
+confirmation request. `LocalWorkoutPublisher` holds no HTTP client at all.
 
 ## 3. Capability model (INT-GAR-003)
 
@@ -67,3 +108,18 @@ Feature gating:
 - The current capability snapshot is stored in `IntegrationStatus` and shown to the athlete.
 - If a feature's capability is not SUPPORTED, the feature degrades gracefully (for example,
   the workout stays local).
+
+## 5. IntegrationStatus (P7 precision)
+
+One per athlete and provider (`urn:coach:schema:integration-status:1`, owner-scoped,
+versioned): `provider`, `capabilities` (the snapshot of section 3, with basis, source and
+`observedAt`), `syncState` (NEVER_SYNCED, SYNCED, PENDING), `reason` and `detail` of the last
+failure (codes), `lastAttemptAt`, `lastSuccessAt` (freshness), `notBefore` (no request before
+it, after a rate limit), and the `cursor`: `completedThrough` (date), the `window` in
+progress and the activity IDs already processed in it.
+
+- A configured capability is re-applied from the adapter's configuration on every sync; an
+  OBSERVED value always wins over a CONFIGURED one, and the change emits
+  `integration.capability.observed`.
+- SYNCED and PENDING carry the reasons shown to the athlete (`coach garmin status`); SYNCED
+  has no reason.

@@ -30,3 +30,4 @@ change is a new ADR that supersedes the old one (status `Superseded by ADR-NNN`)
 | [ADR-023](ADR-023-audit-chain-pseudonymous.md) | Hash-chained audit log with pseudonymous identifiers | Accepted |
 | [ADR-024](ADR-024-source-observations-resolution.md) | Source observations and pure field-level resolution | Accepted |
 | [ADR-025](ADR-025-file-ingestion-mechanism.md) | File ingestion mechanism: sandbox process, FIT SDK, archives and streams | Accepted |
+| [ADR-026](ADR-026-garmin-sync-mechanism.md) | Garmin sync mechanism: thin transport, application orchestration, shared pipeline | Accepted |

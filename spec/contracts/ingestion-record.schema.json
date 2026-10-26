@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:ingestion-record:1",
   "title": "IngestionRecord",
-  "description": "Immutable record of one file upload attempt and its outcome (INT-FIL-002, INT-FIL-004, NFR-REL-001). Holds codes, hashes and identifiers; the original filename is sanitised, untrusted display text. Owner spec: spec/integration/files.spec.md section 9.",
+  "description": "Immutable record of one import attempt, a file upload or a provider payload, and its outcome (INT-FIL-002, INT-FIL-004, NFR-REL-001, INT-GAR-009). Holds codes, hashes and identifiers; the original filename is sanitised, untrusted display text. Owner spec: spec/integration/files.spec.md sections 9 and 9.1.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -42,7 +42,7 @@
       "type": ["string", "null"],
       "pattern": "^[A-Za-z0-9!#$&^_.+-]{1,64}/[A-Za-z0-9!#$&^_.+-]{1,64}$"
     },
-    "detectedType": { "enum": ["FIT", "TCX", "GPX", "CSV", "ZIP", "UNKNOWN"] },
+    "detectedType": { "enum": ["FIT", "TCX", "GPX", "CSV", "ZIP", "JSON", "UNKNOWN"] },
     "byteSize": {
       "description": "Bytes read; for a TOO_LARGE rejection at stage 1, the bytes read before stopping.",
       "type": "integer",
@@ -52,7 +52,7 @@
       "description": "Null when the upload was not read completely (stage 1).",
       "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/sha256" }, { "type": "null" }]
     },
-    "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED", null] },
+    "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED", "NOT_APPLICABLE", null] },
     "outcome": { "enum": ["IMPORTED", "DUPLICATE", "REJECTED", "FAILED"] },
     "reasonCode": {
       "enum": [
@@ -84,7 +84,7 @@
         "additionalProperties": false,
         "properties": {
           "index": { "type": "integer", "minimum": 0 },
-          "detectedType": { "enum": ["FIT", "TCX", "GPX", "CSV"] },
+          "detectedType": { "enum": ["FIT", "TCX", "GPX", "CSV", "JSON"] },
           "byteSize": { "type": "integer", "minimum": 0 },
           "sha256": { "$ref": "urn:coach:schema:common:1#/$defs/sha256" },
           "rawSourceId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
@@ -109,9 +109,38 @@
     "duplicateOf": {
       "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
     },
-    "idempotencyKey": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9._:-]{1,128}$" }
+    "idempotencyKey": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "origin": {
+      "description": "Added in 1.1.0; absent means FILE_UPLOAD.",
+      "enum": ["FILE_UPLOAD", "GARMIN_PERSONAL_API"]
+    },
+    "provider": { "type": ["string", "null"], "pattern": "^[a-z0-9_]+$" },
+    "providerObjectId": { "type": ["string", "null"], "pattern": "^[A-Za-z0-9._:-]{1,100}$" }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": { "origin": { "const": "GARMIN_PERSONAL_API" } },
+        "required": ["origin"]
+      },
+      "then": {
+        "properties": {
+          "provider": { "const": "garmin" },
+          "providerObjectId": { "type": "string" },
+          "malwareScan": { "const": "NOT_APPLICABLE" },
+          "originalFilename": { "type": "null" },
+          "idempotencyKey": { "type": "null" }
+        }
+      },
+      "else": {
+        "properties": {
+          "provider": { "type": "null" },
+          "providerObjectId": { "type": "null" },
+          "malwareScan": { "enum": ["CLEAN", "NOT_SCANNED", null] },
+          "files": { "items": { "properties": { "detectedType": { "not": { "const": "JSON" } } } } }
+        }
+      }
+    },
     {
       "if": {
         "properties": { "outcome": { "enum": ["IMPORTED", "DUPLICATE"] } },
