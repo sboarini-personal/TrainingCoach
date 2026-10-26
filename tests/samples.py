@@ -80,6 +80,15 @@ from coach.domain.common.sport import Sport
 from coach.domain.common.time import Weekday
 from coach.domain.consent.ledger import ConsentLedger, ConsentType
 from coach.domain.goals.goal import Goal, GoalBaseline, GoalPriority, GoalStatus, SportEvent
+from coach.domain.integration.capabilities import (
+    AccessTier,
+    Capability,
+    CapabilityBasis,
+    CapabilityState,
+    CapabilityValue,
+    ProviderCapabilities,
+)
+from coach.domain.integration.status import IntegrationStatus
 from coach.domain.raw.source import DetectedType, MalwareScan, RawSource, SourceOrigin
 from coach.metrics.catalog import SRPE_LOAD
 from coach.metrics.derived import DerivedMetricValue, MetricInput, MetricSubject, derive
@@ -533,4 +542,28 @@ def sample_issue(athlete_id: UUID = ATHLETE) -> DataQualityIssue:
         activity_id=ACTIVITY,
         anomaly=Anomaly("HR_OUT_OF_RANGE", "cardiovascular.maxHr", "245 above 230"),
         created_at=NOW,
+    )
+
+
+def sample_capabilities(**values: CapabilityValue) -> ProviderCapabilities:
+    """Configured capabilities, UNKNOWN unless given (keyword: capability name)."""
+    states = {
+        capability: CapabilityState(
+            values.get(capability.value, CapabilityValue.UNKNOWN),
+            CapabilityBasis.CONFIGURED,
+            "synthetic configuration",
+        )
+        for capability in Capability
+    }
+    return ProviderCapabilities("garmin", AccessTier.PERSONAL, states)
+
+
+def sample_integration_status(athlete_id: UUID = ATHLETE) -> IntegrationStatus:
+    return IntegrationStatus(
+        integration_id=UUID("0193b2a0-0000-7000-8000-000000000301"),
+        athlete_id=athlete_id,
+        provider="garmin",
+        capabilities=sample_capabilities(
+            activityRead=CapabilityValue.SUPPORTED, pullSupport=CapabilityValue.SUPPORTED
+        ),
     )

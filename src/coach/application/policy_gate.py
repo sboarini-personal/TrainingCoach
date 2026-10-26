@@ -1,7 +1,7 @@
 """Applies the policy engine before an action is executed or persisted (FR-POL-002, ADR-017).
 
-The context comes from stored state (consents, coaching conditions), never from the caller,
-so neither an interface nor the AI can loosen it.
+The context comes from stored state (consents, coaching conditions, provider capabilities),
+never from the caller, so neither an interface nor the AI can loosen it.
 """
 
 from __future__ import annotations
@@ -13,6 +13,8 @@ from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
 from coach.application.ports import AuditLog, Clock, EventSink, OwnedRepository
 from coach.domain.coaching.state import CoachingState, Condition
+from coach.domain.integration.capabilities import Capability
+from coach.domain.integration.status import IntegrationStatus
 from coach.policy.engine import Action, Outcome, PolicyContext, PolicyDecision, evaluate
 
 
@@ -37,9 +39,11 @@ class PolicyGate:
         audit: AuditLog,
         events: EventSink,
         clock: Clock,
+        integrations: OwnedRepository[IntegrationStatus] | None = None,
     ) -> None:
         self._consents = consents
         self._states = states
+        self._integrations = integrations
         self._audit = audit
         self._events = events
         self._clock = clock
@@ -58,7 +62,18 @@ class PolicyGate:
             conditions: frozenset[Condition] = self._states.get(scope, scope.athlete_id).conditions
         except NotFoundError:
             conditions = frozenset()
-        return PolicyContext(scope.athlete_id, self._consents.granted(scope), conditions)
+        return PolicyContext(
+            scope.athlete_id,
+            self._consents.granted(scope),
+            conditions,
+            supported_capabilities=self._supported(scope),
+        )
+
+    def _supported(self, scope: OwnerScope) -> frozenset[Capability]:
+        if self._integrations is None:
+            return frozenset()
+        statuses = self._integrations.list_all(scope)
+        return frozenset().union(*(status.capabilities.supported for status in statuses))
 
     def _record_denial(self, scope: OwnerScope, action: Action, decision: PolicyDecision) -> None:
         codes = tuple(dict.fromkeys(reason.code for reason in decision.reasons))

@@ -52,7 +52,12 @@ from coach.domain.activity.matching import (
     MatchFacts,
     best_match,
 )
-from coach.domain.activity.observation import Observation, SourceKey, source_kind_of
+from coach.domain.activity.observation import (
+    Observation,
+    SourceKey,
+    SourceKind,
+    source_kind_of,
+)
 from coach.domain.activity.overrides import (
     SUBTYPE_FIELD,
     DataOverride,
@@ -147,14 +152,18 @@ def build_activity(
 
 
 def _check_observation_source(observation: Observation, raw: RawSource) -> None:
-    expected = (raw.sha256, raw.origin, raw.provider, raw.received_at)
+    kind = source_kind_of(raw.origin, raw.detected_type)
+    # Only provider records name the provider and its record (files spec 9.1).
+    record = (raw.provider, raw.provider_object_id) if kind is SourceKind.PROVIDER_RECORD else None
+    expected = (raw.sha256, raw.origin, kind, record, raw.received_at)
     actual = (
         observation.raw_sha256,
         observation.origin,
-        observation.provider,
+        observation.kind,
+        observation.provider_record,
         observation.received_at,
     )
-    if actual != expected or observation.kind is not source_kind_of(raw.origin, raw.detected_type):
+    if actual != expected:
         raise DomainValidationError("observation does not describe its raw source")
 
 

@@ -41,6 +41,9 @@ class LocalFileFormats:
     def detect(self, filename: str | None, data: bytes) -> DetectedType:
         return detection.detect(filename, data)
 
+    def check_content(self, detected_type: DetectedType, data: bytes) -> None:
+        detection.check_content(detected_type, data)
+
     def member_type(self, member: ArchiveMember) -> DetectedType:
         detected = detection.EXTENSIONS[member.extension]
         detection.check_content(detected, member.data)

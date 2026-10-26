@@ -46,18 +46,29 @@ class SourceKind(StrEnum):
     ATHLETE_ENTRY = "ATHLETE_ENTRY"
 
 
+_FILE_ORIGINS: Final = frozenset({SourceOrigin.FILE_UPLOAD, SourceOrigin.GARMIN_PERSONAL_API})
 _ORIGINS: Final = {
-    SourceKind.FIT_FILE: frozenset({SourceOrigin.FILE_UPLOAD}),
-    SourceKind.OTHER_FILE: frozenset({SourceOrigin.FILE_UPLOAD}),
+    # A file downloaded from a provider is still a file (files spec 9.1).
+    SourceKind.FIT_FILE: _FILE_ORIGINS,
+    SourceKind.OTHER_FILE: _FILE_ORIGINS,
     SourceKind.PROVIDER_RECORD: frozenset({SourceOrigin.GARMIN_PERSONAL_API}),
     # The CSV activity template holds the athlete's own declarations (files spec 8.4).
     SourceKind.ATHLETE_ENTRY: frozenset({SourceOrigin.MANUAL_ENTRY, SourceOrigin.FILE_UPLOAD}),
+}
+_PROVIDER_KINDS: Final = {
+    DetectedType.JSON: SourceKind.PROVIDER_RECORD,
+    DetectedType.FIT: SourceKind.FIT_FILE,
+    DetectedType.TCX: SourceKind.OTHER_FILE,
+    DetectedType.GPX: SourceKind.OTHER_FILE,
 }
 
 
 def source_kind_of(origin: SourceOrigin, detected_type: DetectedType) -> SourceKind:
     if origin is SourceOrigin.GARMIN_PERSONAL_API:
-        return SourceKind.PROVIDER_RECORD
+        kind = _PROVIDER_KINDS.get(detected_type)
+        if kind is None:
+            raise DomainValidationError(f"a provider does not supply {detected_type} sources")
+        return kind
     if origin is SourceOrigin.MANUAL_ENTRY or detected_type is DetectedType.CSV:
         return SourceKind.ATHLETE_ENTRY
     return SourceKind.FIT_FILE if detected_type is DetectedType.FIT else SourceKind.OTHER_FILE

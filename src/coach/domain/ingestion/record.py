@@ -1,7 +1,8 @@
-"""Ingestion records: one immutable record per upload attempt (INT-FIL-002, INT-FIL-004).
+"""Ingestion records: one immutable record per import attempt (INT-FIL-002, INT-FIL-004).
 
-Records hold codes, hashes and identifiers only; the original filename is sanitised display
-text (spec/integration/files.spec.md section 9).
+An attempt is an upload or a provider payload (files spec 9.1). Records hold codes, hashes
+and identifiers only; the original filename is sanitised display text
+(spec/integration/files.spec.md section 9).
 """
 
 from __future__ import annotations
@@ -16,8 +17,10 @@ from uuid import UUID
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.time import ensure_utc
 from coach.domain.raw.source import (
+    PROVIDER_OF,
     DetectedType,
     MalwareScan,
+    SourceOrigin,
     clean_filename,
     require_sha256,
 )
@@ -28,6 +31,9 @@ _IDEMPOTENCY_KEY: Final = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 FILE_TYPES: Final = frozenset(
     {DetectedType.FIT, DetectedType.TCX, DetectedType.GPX, DetectedType.CSV}
 )
+# A provider record (JSON) is stored like a file of its payload (files spec 9.1).
+STORED_TYPES: Final = FILE_TYPES | {DetectedType.JSON}
+_PROVIDER_ID: Final = re.compile(r"^[A-Za-z0-9._:-]{1,100}$")
 
 
 class RejectionReason(StrEnum):
@@ -93,8 +99,8 @@ class StoredFile:
     def __post_init__(self) -> None:
         if self.index < 0 or self.byte_size < 0 or self.sessions < 0:
             raise DomainValidationError("file index, size and sessions are not negative")
-        if self.detected_type not in FILE_TYPES:
-            raise DomainValidationError("stored files are FIT, TCX, GPX or CSV")
+        if self.detected_type not in STORED_TYPES:
+            raise DomainValidationError("stored files are FIT, TCX, GPX, CSV or JSON")
         require_sha256(self.sha256)
 
 
@@ -130,6 +136,9 @@ class IngestionRecord:
     activities: tuple[ImportedActivity, ...] = ()
     duplicate_of: UUID | None = None
     idempotency_key: str | None = None
+    origin: SourceOrigin = SourceOrigin.FILE_UPLOAD
+    provider: str | None = None
+    provider_object_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "received_at", ensure_utc(self.received_at))
@@ -140,8 +149,7 @@ class IngestionRecord:
             raise DomainValidationError("byte size must not be negative")
         if self.sha256 is not None:
             require_sha256(self.sha256)
-        if self.malware_scan is MalwareScan.NOT_APPLICABLE:
-            raise DomainValidationError("uploads are CLEAN or NOT_SCANNED")
+        self._check_origin()
         object.__setattr__(self, "original_filename", clean_filename(self.original_filename))
         object.__setattr__(self, "declared_mime_type", clean_mime_type(self.declared_mime_type))
         check_code(self.detail, "detail")
@@ -149,6 +157,24 @@ class IngestionRecord:
         if self.failed_file_index is not None and self.failed_file_index < 0:
             raise DomainValidationError("failed file index must not be negative")
         self._check_outcome()
+
+    def _check_origin(self) -> None:
+        if self.origin is SourceOrigin.MANUAL_ENTRY:
+            raise DomainValidationError("manual entries are not imported")
+        if self.origin is SourceOrigin.FILE_UPLOAD:
+            if self.malware_scan is MalwareScan.NOT_APPLICABLE:
+                raise DomainValidationError("uploads are CLEAN or NOT_SCANNED")
+            if (self.provider, self.provider_object_id) != (None, None):
+                raise DomainValidationError("uploads name no provider")
+            return
+        if self.provider != PROVIDER_OF[self.origin] or self.provider_object_id is None:
+            raise DomainValidationError("provider payloads name their provider and object")
+        if not _PROVIDER_ID.match(self.provider_object_id):
+            raise DomainValidationError("invalid provider object id")
+        if self.malware_scan is not MalwareScan.NOT_APPLICABLE:
+            raise DomainValidationError("provider payloads are not malware-scanned")
+        if (self.original_filename, self.idempotency_key) != (None, None):
+            raise DomainValidationError("provider payloads have no filename or idempotency key")
 
     def _check_outcome(self) -> None:
         succeeded = self.outcome in {IngestionOutcome.IMPORTED, IngestionOutcome.DUPLICATE}

@@ -1,4 +1,4 @@
-"""Deterministic policy engine, core set 1.0.0 (FR-POL-001; spec/functional/policy.spec.md).
+"""Deterministic policy engine, core set 1.1.0 (FR-POL-001; spec/functional/policy.spec.md).
 
 Pure function of an action and a context assembled by the application. Deny overrides
 confirmation, which overrides allow. Reasons are produced in a fixed order so equal inputs
@@ -16,8 +16,9 @@ from uuid import UUID
 from coach.domain.coaching.state import Condition
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.consent.ledger import ConsentType
+from coach.domain.integration.capabilities import Capability
 
-POLICY_SET_VERSION: Final = "1.0.0"
+POLICY_SET_VERSION: Final = "1.1.0"
 _ACTION_NAME: Final = re.compile(r"^[a-z]+(\.[a-z_]+)+$")
 
 
@@ -44,6 +45,7 @@ class Action:
     resource_owner: UUID | None = None
     consents: frozenset[ConsentType] = frozenset()
     intensive_training: bool = False
+    capabilities: frozenset[Capability] = frozenset()
     confirmed: bool = False
 
     def __post_init__(self) -> None:
@@ -56,6 +58,7 @@ class PolicyContext:
     athlete_id: UUID
     granted_consents: frozenset[ConsentType]
     conditions: frozenset[Condition]
+    supported_capabilities: frozenset[Capability] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +85,13 @@ def _denials(action: Action, context: PolicyContext) -> list[PolicyReason]:
         )
     if action.intensive_training and Condition.SAFETY_HOLD in context.conditions:
         reasons.append(PolicyReason("POL-SAFETY-HOLD", "SAFETY_HOLD_ACTIVE"))
+    missing = action.capabilities - context.supported_capabilities
+    for capability in sorted(missing, key=lambda item: item.value):
+        reasons.append(
+            PolicyReason(
+                "POL-CAPABILITY", "CAPABILITY_UNAVAILABLE", (("capability", capability.value),)
+            )
+        )
     return reasons
 
 

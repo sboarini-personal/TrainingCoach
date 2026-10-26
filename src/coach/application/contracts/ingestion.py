@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from coach.application.contracts._json import (
@@ -24,12 +24,15 @@ from coach.domain.ingestion.record import (
     RejectionReason,
     StoredFile,
 )
-from coach.domain.raw.source import DetectedType, MalwareScan
+from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
+
+# 1.1.0 added the origin of provider payloads (files spec 9.1).
+INGESTION_RECORD_SCHEMA_VERSION: Final = "1.1.0"
 
 
 def ingestion_record_to_contract(record: IngestionRecord) -> Json:
     return {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": INGESTION_RECORD_SCHEMA_VERSION,
         "ingestionId": str(record.ingestion_id),
         "athleteId": str(record.athlete_id),
         "receivedAt": instant(record.received_at),
@@ -66,6 +69,9 @@ def ingestion_record_to_contract(record: IngestionRecord) -> Json:
         ],
         "duplicateOf": optional_uuid(record.duplicate_of),
         "idempotencyKey": record.idempotency_key,
+        "origin": record.origin.value,
+        "provider": record.provider,
+        "providerObjectId": record.provider_object_id,
     }
 
 
@@ -109,6 +115,9 @@ def ingestion_record_from_contract(document: Document) -> IngestionRecord:
         ),
         duplicate_of=parse_optional_uuid(document["duplicateOf"]),
         idempotency_key=document["idempotencyKey"],
+        origin=SourceOrigin(document.get("origin", SourceOrigin.FILE_UPLOAD.value)),
+        provider=document.get("provider"),
+        provider_object_id=document.get("providerObjectId"),
     )
 
 

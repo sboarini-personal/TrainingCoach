@@ -1,4 +1,4 @@
-"""Immutable file ingestion records (INT-FIL-004; migration 4). A trigger rejects updates."""
+"""Immutable ingestion records (INT-FIL-004; migration 4). A trigger rejects updates."""
 
 from __future__ import annotations
 
@@ -80,5 +80,18 @@ class SqliteIngestionRecordRepository:
                 "SELECT document FROM ingestion_records WHERE athlete_id = ? "
                 "ORDER BY received_at DESC, rowid DESC LIMIT ?",
                 (str(scope.athlete_id), limit),
+            ).fetchall()
+        return [_load(row) for row in rows]
+
+    def for_provider_object(
+        self, scope: OwnerScope, provider: str, provider_object_id: str
+    ) -> list[IngestionRecord]:
+        with self._database.read() as connection:
+            rows = connection.execute(
+                "SELECT document FROM ingestion_records WHERE athlete_id = ? "
+                "AND json_extract(document, '$.provider') = ? "
+                "AND json_extract(document, '$.providerObjectId') = ? "
+                "ORDER BY received_at, rowid",
+                (str(scope.athlete_id), provider, provider_object_id),
             ).fetchall()
         return [_load(row) for row in rows]

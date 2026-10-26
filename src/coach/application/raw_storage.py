@@ -11,6 +11,7 @@ from uuid import UUID
 
 from coach.application.ownership import OwnerScope
 from coach.application.ports import BlobStore, Clock, IdFactory, RawSourceRepository
+from coach.domain.common.time import DateRange
 from coach.domain.raw.source import DetectedType, MalwareScan, RawSource, SourceOrigin
 
 
@@ -41,6 +42,7 @@ class RawStorage:
         provider: str | None = None,
         provider_object_id: str | None = None,
         original_filename: str | None = None,
+        request_window: DateRange | None = None,
     ) -> StoredRaw:
         digest = self._blobs.put(scope, data)
         candidate = RawSource(
@@ -56,6 +58,7 @@ class RawStorage:
             detected_type=detected_type,
             original_filename=original_filename,
             malware_scan=malware_scan,
+            request_window=request_window,
         )
         source, created = self._sources.add(scope, candidate)
         return StoredRaw(source, created)

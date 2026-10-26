@@ -1,11 +1,18 @@
 from dataclasses import replace
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 import pytest
 
 from coach.domain.common.errors import DomainValidationError
-from coach.domain.raw.source import MalwareScan, RawSource, SourceOrigin, clean_filename
+from coach.domain.common.time import DateRange
+from coach.domain.raw.source import (
+    DetectedType,
+    MalwareScan,
+    RawSource,
+    SourceOrigin,
+    clean_filename,
+)
 from samples import sample_raw_source
 
 
@@ -83,3 +90,19 @@ def test_long_filenames_are_truncated() -> None:
     name = clean_filename("x" * 300 + ".fit")
     assert name is not None
     assert len(name) == 255
+
+
+@pytest.mark.req("INT-GAR-009")
+def test_provider_payloads_record_their_request_window() -> None:
+    window = DateRange(date(2026, 10, 1), date(2026, 10, 7))
+    page = _with(
+        origin=SourceOrigin.GARMIN_PERSONAL_API,
+        provider="garmin",
+        malware_scan=MalwareScan.NOT_APPLICABLE,
+        detected_type=DetectedType.JSON,
+        category="GARMIN_ACTIVITY_LIST",
+        request_window=window,
+    )
+    assert page.request_window == window
+    with pytest.raises(DomainValidationError, match="window"):
+        _with(request_window=window)

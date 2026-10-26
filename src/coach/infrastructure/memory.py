@@ -390,6 +390,16 @@ class InMemoryIngestionRecordRepository:
         with self._lock:
             return list(reversed(self._owned(scope)))[:limit]
 
+    def for_provider_object(
+        self, scope: OwnerScope, provider: str, provider_object_id: str
+    ) -> list[IngestionRecord]:
+        with self._lock:
+            return [
+                item
+                for item in self._owned(scope)
+                if (item.provider, item.provider_object_id) == (provider, provider_object_id)
+            ]
+
     def _owned(self, scope: OwnerScope) -> list[IngestionRecord]:
         return [item for item in self._items if item.athlete_id == scope.athlete_id]
 

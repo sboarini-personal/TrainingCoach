@@ -11,6 +11,7 @@ import argparse
 import getpass
 import os
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -27,10 +28,12 @@ from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.secrets import SecretValue
 from coach.cli import activities as activity_commands
+from coach.cli import garmin as garmin_commands
 from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.common.errors import DomainValidationError
 from coach.infrastructure.datadir import SyncedDataDirError, ensure_layout, resolve_data_dir
 from coach.infrastructure.logs import attach_file_log, detach_file_log
+from coach.integrations.garmin.transport import HttpTransport
 
 SECRET_KINDS: Final = {
     "garmin-api-key": CredentialKind.GARMIN_PERSONAL_API_KEY,
@@ -88,6 +91,14 @@ def _parser() -> argparse.ArgumentParser:
     issue.add_parser("list", help="open issues")
     acknowledge = issue.add_parser("ack", help="acknowledge an issue")
     acknowledge.add_argument("issue_id", type=UUID)
+    garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
+        dest="action", required=True
+    )
+    garmin.add_parser("status", help="sync state, freshness, capabilities and key expiry")
+    synchronise = garmin.add_parser("sync", help="pull new activities from Garmin")
+    synchronise.add_argument(
+        "--since", type=date.fromisoformat, help="re-scan from this date, YYYY-MM-DD"
+    )
     return parser
 
 
@@ -178,6 +189,8 @@ def main(
     read_secret: Callable[[str], str] = getpass.getpass,
     out: TextIO | None = None,
     clock: Clock | None = None,
+    transport: HttpTransport | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> int:
     stream = out if out is not None else sys.stdout
     args = _parser().parse_args(argv)
@@ -196,7 +209,13 @@ def main(
             from coach.infrastructure.keyring_credentials import KeyringCredentialProvider
 
             credentials = KeyringCredentialProvider()
-        runtime = build_runtime(layout, credentials, clock or (lambda: datetime.now(UTC)))
+        runtime = build_runtime(
+            layout,
+            credentials,
+            clock or (lambda: datetime.now(UTC)),
+            transport=transport,
+            sleep=sleep or time.sleep,
+        )
         match (args.command, getattr(args, "action", None)):
             case ("init", _):
                 return _init(runtime, args, stream)
@@ -224,6 +243,10 @@ def main(
                 return activity_commands.list_issues(runtime, _session(runtime), stream)
             case ("issue", "ack"):
                 return activity_commands.acknowledge_issue(runtime, _session(runtime), args, stream)
+            case ("garmin", "status"):
+                return garmin_commands.status(runtime, _session(runtime), stream)
+            case ("garmin", "sync"):
+                return garmin_commands.sync(runtime, _session(runtime), args, stream)
             case _:  # pragma: no cover - argparse rejects anything else
                 return 2
     except (CliError, activity_commands.CommandError) as error:

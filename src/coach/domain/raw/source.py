@@ -15,7 +15,7 @@ from uuid import UUID
 
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.text import clean_optional_text
-from coach.domain.common.time import ensure_utc
+from coach.domain.common.time import DateRange, ensure_utc
 
 SHA256: Final = re.compile(r"^[a-f0-9]{64}$")
 _CATEGORY = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -46,12 +46,20 @@ class MalwareScan(StrEnum):
     NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
-_ORIGIN_PROVIDER: Final = {SourceOrigin.GARMIN_PERSONAL_API: "garmin"}
+PROVIDER_OF: Final = {SourceOrigin.GARMIN_PERSONAL_API: "garmin"}
 _ORIGIN_SCANS: Final = {
     SourceOrigin.FILE_UPLOAD: frozenset({MalwareScan.CLEAN, MalwareScan.NOT_SCANNED}),
     SourceOrigin.GARMIN_PERSONAL_API: frozenset({MalwareScan.NOT_APPLICABLE}),
     SourceOrigin.MANUAL_ENTRY: frozenset({MalwareScan.NOT_APPLICABLE}),
 }
+
+
+def provider_origin(provider: str) -> SourceOrigin:
+    """The origin of payloads received from ``provider``."""
+    for origin, name in PROVIDER_OF.items():
+        if name == provider:
+            return origin
+    raise DomainValidationError(f"no source origin for provider {provider!r}")
 
 
 def require_sha256(value: str) -> str:
@@ -85,6 +93,7 @@ class RawSource:
     provider: str | None = None
     provider_object_id: str | None = None
     original_filename: str | None = None
+    request_window: DateRange | None = None
 
     def __post_init__(self) -> None:
         require_sha256(self.sha256)
@@ -95,9 +104,9 @@ class RawSource:
             raise DomainValidationError(f"invalid category: {self.category!r}")
         if self.provider is not None and not _PROVIDER.match(self.provider):
             raise DomainValidationError(f"invalid provider: {self.provider!r}")
-        if self.provider != _ORIGIN_PROVIDER.get(self.origin):
+        if self.provider != PROVIDER_OF.get(self.origin):
             raise DomainValidationError(
-                f"{self.origin} has provider {_ORIGIN_PROVIDER.get(self.origin)}"
+                f"{self.origin} has provider {PROVIDER_OF.get(self.origin)}"
             )
         if self.malware_scan not in _ORIGIN_SCANS[self.origin]:
             raise DomainValidationError(f"{self.malware_scan} is not valid for {self.origin}")
@@ -109,6 +118,8 @@ class RawSource:
             ),
         )
         object.__setattr__(self, "original_filename", clean_filename(self.original_filename))
+        if self.request_window is not None and self.provider is None:
+            raise DomainValidationError("only provider payloads have a request window")
 
     @property
     def entity_id(self) -> UUID:

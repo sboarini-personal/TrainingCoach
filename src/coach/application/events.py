@@ -40,6 +40,15 @@ class EventName(StrEnum):
     DEDUP_SPLIT = "dedup.split"
     QUALITY_ISSUE_RAISED = "quality.issue.raised"
     QUALITY_ISSUE_RESOLVED = "quality.issue.resolved"
+    INTEGRATION_RETRY = "integration.request.retried"
+    INTEGRATION_SYNC_STARTED = "integration.sync.started"
+    INTEGRATION_SYNC_SUCCEEDED = "integration.sync.succeeded"
+    INTEGRATION_SYNC_FAILED = "integration.sync.failed"
+    INTEGRATION_CAPABILITY_OBSERVED = "integration.capability.observed"
+    EXTERNAL_WRITE_PROPOSED = "external_write.proposed"
+    EXTERNAL_WRITE_REFUSED = "external_write.refused"
+    CONDITION_ACTIVATED = "coaching.condition.activated"
+    CONDITION_CLEARED = "coaching.condition.cleared"
 
 
 def check_fields(fields: Mapping[str, str]) -> dict[str, str]:

@@ -40,6 +40,9 @@ OTHER_ID = UUID("0193b2a0-0000-7000-8000-000000000999")
         (SourceOrigin.FILE_UPLOAD, DetectedType.GPX, SourceKind.OTHER_FILE),
         (SourceOrigin.FILE_UPLOAD, DetectedType.TCX, SourceKind.OTHER_FILE),
         (SourceOrigin.GARMIN_PERSONAL_API, DetectedType.JSON, SourceKind.PROVIDER_RECORD),
+        (SourceOrigin.GARMIN_PERSONAL_API, DetectedType.FIT, SourceKind.FIT_FILE),
+        (SourceOrigin.GARMIN_PERSONAL_API, DetectedType.TCX, SourceKind.OTHER_FILE),
+        (SourceOrigin.GARMIN_PERSONAL_API, DetectedType.GPX, SourceKind.OTHER_FILE),
         (SourceOrigin.MANUAL_ENTRY, DetectedType.JSON, SourceKind.ATHLETE_ENTRY),
     ],
 )
@@ -47,6 +50,23 @@ def test_source_kind_follows_the_raw_source(
     origin: SourceOrigin, detected: DetectedType, kind: SourceKind
 ) -> None:
     assert source_kind_of(origin, detected) is kind
+
+
+@pytest.mark.req("FR-ACT-002", "INT-GAR-007")
+def test_a_provider_never_supplies_athlete_entries_or_unknown_payloads() -> None:
+    for detected in (DetectedType.CSV, DetectedType.ZIP, DetectedType.UNKNOWN):
+        with pytest.raises(DomainValidationError):
+            source_kind_of(SourceOrigin.GARMIN_PERSONAL_API, detected)
+
+
+@pytest.mark.req("FR-ACT-002", "INT-GAR-007")
+def test_a_file_downloaded_from_a_provider_is_a_file_without_a_record_id() -> None:
+    downloaded = replace(
+        sample_observation(SourceKind.FIT_FILE), origin=SourceOrigin.GARMIN_PERSONAL_API
+    )
+    assert (downloaded.kind, downloaded.provider_record) == (SourceKind.FIT_FILE, None)
+    with pytest.raises(DomainValidationError):
+        replace(downloaded, provider="garmin", provider_activity_id="21004587311")
 
 
 # --------------------------------------------------------------------------- observations

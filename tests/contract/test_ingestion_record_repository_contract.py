@@ -18,7 +18,7 @@ from coach.domain.ingestion.record import (
     IngestionRecord,
     RejectionReason,
 )
-from coach.domain.raw.source import DetectedType, MalwareScan
+from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
 from coach.infrastructure.memory import InMemoryIngestionRecordRepository
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from coach.infrastructure.sqlite.ingestion import SqliteIngestionRecordRepository
@@ -99,6 +99,35 @@ def test_records_are_owner_scoped(repository: IngestionRecordRepository) -> None
     assert repository.recent(SCOPE_A, 10) == []
     with pytest.raises(OwnershipError):
         repository.add(SCOPE_A, _record(2, athlete_id=OTHER_ATHLETE))
+
+
+def _provider(number: int, object_id: str, **changes: Any) -> IngestionRecord:
+    return _record(
+        number,
+        origin=SourceOrigin.GARMIN_PERSONAL_API,
+        provider="garmin",
+        provider_object_id=object_id,
+        malware_scan=MalwareScan.NOT_APPLICABLE,
+        detected_type=DetectedType.JSON,
+        **changes,
+    )
+
+
+@pytest.mark.req("INT-GAR-007", "NFR-REL-001")
+def test_records_of_a_provider_object_are_found_oldest_first(
+    repository: IngestionRecordRepository,
+) -> None:
+    rejected = _provider(
+        1, "1001", outcome=IngestionOutcome.REJECTED, reason=RejectionReason.SCHEMA_INVALID
+    )
+    other = _provider(2, "1002")
+    again = _provider(3, "1001", sha256=SHA_B)
+    for record in (rejected, other, again):
+        repository.add(SCOPE_A, record)
+    repository.add(SCOPE_A, _record(4))
+    assert repository.for_provider_object(SCOPE_A, "garmin", "1001") == [rejected, again]
+    assert repository.for_provider_object(SCOPE_A, "garmin", "9999") == []
+    assert repository.for_provider_object(SCOPE_B, "garmin", "1001") == []
 
 
 @pytest.mark.req("INT-FIL-004")

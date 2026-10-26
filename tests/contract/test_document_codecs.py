@@ -21,6 +21,7 @@ from coach.application.contracts import (
     DERIVED_VALUE_CODEC,
     GOAL_CODEC,
     INGESTION_RECORD_CODEC,
+    INTEGRATION_STATUS_CODEC,
     OBSERVATION_CODEC,
     PROFILE_CODEC,
     RAW_SOURCE_CODEC,
@@ -51,6 +52,7 @@ from samples import (
     sample_derived_value,
     sample_event,
     sample_goal,
+    sample_integration_status,
     sample_issue,
     sample_observation,
     sample_override,
@@ -120,9 +122,20 @@ ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
         ),
     ),
     (
+        INGESTION_RECORD_CODEC,
+        INGESTION_RECORD_CODEC.load(
+            load_json(EXAMPLES_DIR / "ingestion-record.provider.example.json")
+        ),
+    ),
+    (
         TIME_SERIES_CODEC,
         TIME_SERIES_CODEC.load(load_json(EXAMPLES_DIR / "time-series.example.json")),
     ),
+    (
+        INTEGRATION_STATUS_CODEC,
+        INTEGRATION_STATUS_CODEC.load(load_json(EXAMPLES_DIR / "integration-status.example.json")),
+    ),
+    (INTEGRATION_STATUS_CODEC, sample_integration_status()),
     (
         TIME_SERIES_CODEC,
         TimeSeries(start_time_utc=NOW, offset_seconds=(0.0, 1.5), power_watts=(None, 250.0)),

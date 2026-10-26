@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 from zoneinfo import ZoneInfo
@@ -13,11 +15,14 @@ from coach.application.authentication import (
     LocalTokenAuthenticator,
 )
 from coach.application.authorization import AuthorizationService
+from coach.application.coaching import CoachingConditions
 from coach.application.consent import ConsentGate, ConsentService
 from coach.application.contracts import (
+    COACHING_STATE_CODEC,
     CONSENT_LEDGER_CODEC,
     CREDENTIAL_RECORD_CODEC,
     DATA_QUALITY_ISSUE_CODEC,
+    INTEGRATION_STATUS_CODEC,
     PROFILE_CODEC,
 )
 from coach.application.credentials import CredentialService
@@ -27,10 +32,14 @@ from coach.application.ids import new_id
 from coach.application.ingestion import IngestionService
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
+from coach.application.providers import FitnessProvider
+from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
+from coach.application.sync import SyncService
 from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.common.time import parse_timezone
+from coach.domain.integration.status import IntegrationStatus
 from coach.infrastructure.blobs import FileBlobStore
 from coach.infrastructure.datadir import DataLayout
 from coach.infrastructure.events import LoggingEventSink
@@ -49,6 +58,15 @@ from coach.infrastructure.sqlite.ingestion import SqliteIngestionRecordRepositor
 from coach.infrastructure.sqlite.raw_sources import SqliteRawSourceRepository
 from coach.integrations.files.formats import LocalFileFormats
 from coach.integrations.files.sandbox import ParserSandbox
+from coach.integrations.garmin.normalise import GarminActivityRecords
+from coach.integrations.garmin.provider import (
+    SERVERS,
+    GarminPersonalProvider,
+    credential_key,
+)
+from coach.integrations.garmin.throttle import RequestBudget
+from coach.integrations.garmin.token import TokenBroker
+from coach.integrations.garmin.transport import HttpTransport, UrllibTransport
 from coach.metrics.catalog import CATALOG
 
 PRIVACY_POLICY_VERSION: Final = "1.0"
@@ -91,10 +109,41 @@ class Runtime:
     ingestion_records: SqliteIngestionRecordRepository
     activities: ActivityService
     ingestion: IngestionService
+    integrations: SqliteAggregateRepository[IntegrationStatus]
+    conditions: CoachingConditions
+    sync: SyncService
     clock: Clock
 
 
-def build_runtime(layout: DataLayout, provider: CredentialProvider, clock: Clock) -> Runtime:
+def garmin_providers(
+    credentials: CredentialService, transport: HttpTransport, clock: Clock
+) -> Callable[[OwnerScope], FitnessProvider]:
+    """One Garmin adapter per sync: its token lives in memory for that run only."""
+    budget = RequestBudget()
+
+    def build(scope: OwnerScope) -> FitnessProvider:
+        broker = TokenBroker(
+            base_url=SERVERS["global"],
+            key_source=credential_key(credentials, scope),
+            transport=transport,
+            clock=clock,
+            budget=budget,
+        )
+        return GarminPersonalProvider(
+            broker=broker, transport=transport, budget=budget, clock=clock
+        )
+
+    return build
+
+
+def build_runtime(
+    layout: DataLayout,
+    provider: CredentialProvider,
+    clock: Clock,
+    *,
+    transport: HttpTransport | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Runtime:
     database = SqliteDatabase.open(layout.database)
     identities = SqliteIdentityDirectory(database)
     audit = SqliteAuditLog(database)
@@ -164,6 +213,29 @@ def build_runtime(layout: DataLayout, provider: CredentialProvider, clock: Clock
         events=events,
         clock=clock,
         ids=new_id,
+        provider_records={"garmin": GarminActivityRecords()},
+    )
+    integrations = SqliteAggregateRepository(database, INTEGRATION_STATUS_CODEC)
+    conditions = CoachingConditions(
+        SqliteAggregateRepository(database, COACHING_STATE_CODEC),
+        audit=audit,
+        events=events,
+        clock=clock,
+    )
+    sync = SyncService(
+        providers=garmin_providers(credentials, transport or UrllibTransport(), clock),
+        statuses=integrations,
+        blobs=blobs,
+        raw_sources=raw_sources,
+        ingestion=ingestion,
+        activities=activity_store,
+        records=ingestion_records,
+        consents=gate,
+        conditions=conditions,
+        retrier=Retrier(RetryPolicy(), events=events, sleep=sleep),
+        events=events,
+        clock=clock,
+        ids=new_id,
     )
     return Runtime(
         layout=layout,
@@ -181,5 +253,8 @@ def build_runtime(layout: DataLayout, provider: CredentialProvider, clock: Clock
         ingestion_records=ingestion_records,
         activities=activities,
         ingestion=ingestion,
+        integrations=integrations,
+        conditions=conditions,
+        sync=sync,
         clock=clock,
     )

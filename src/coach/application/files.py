@@ -72,6 +72,10 @@ class FileFormats(Protocol):
         """Stages 2 and 3: allowed extension and matching content."""
         ...
 
+    def check_content(self, detected_type: DetectedType, data: bytes) -> None:
+        """Stage 3 for a payload whose type its source states (a provider download)."""
+        ...
+
     def members(self, data: bytes, limits: IngestionLimits) -> Sequence[ArchiveMember]:
         """Archive members read in memory within the archive limits."""
         ...

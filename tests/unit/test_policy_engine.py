@@ -7,6 +7,7 @@ import pytest
 from coach.domain.coaching.state import Condition
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.consent.ledger import ConsentType
+from coach.domain.integration.capabilities import Capability
 from coach.policy.engine import (
     POLICY_SET_VERSION,
     Action,
@@ -34,7 +35,7 @@ def test_compliant_action_is_allowed_with_version() -> None:
         action(resource_owner=ATHLETE, consents=frozenset({ConsentType.HRV})), CONTEXT
     )
     assert (decision.outcome, decision.reasons) == (Outcome.ALLOW, ())
-    assert decision.policy_set_version == POLICY_SET_VERSION == "1.0.0"
+    assert decision.policy_set_version == POLICY_SET_VERSION == "1.1.0"
 
 
 @pytest.mark.req("FR-POL-001", "SEC-AUTHZ-001")
@@ -78,6 +79,43 @@ def test_external_writes_and_deletions_need_confirmation(kind: ActionKind, polic
     assert unconfirmed.reasons == (PolicyReason(policy, "CONFIRMATION_REQUIRED"),)
     confirmed = evaluate(action(kind=kind, name="garmin.publish_workout", confirmed=True), CONTEXT)
     assert confirmed.outcome is Outcome.ALLOW
+
+
+@pytest.mark.req("FR-POL-001", "INT-GAR-003", "INT-GAR-004")
+def test_each_capability_that_is_not_supported_is_a_reason() -> None:
+    publish = action(
+        kind=ActionKind.EXECUTE_EXTERNAL,
+        name="workout.publish",
+        capabilities=frozenset({Capability.TRAINING_PUBLISH, Capability.ACTIVITY_READ}),
+    )
+    decision = evaluate(publish, CONTEXT)
+    assert decision.outcome is Outcome.DENY
+    assert decision.reasons == (
+        PolicyReason("POL-CAPABILITY", "CAPABILITY_UNAVAILABLE", (("capability", "activityRead"),)),
+        PolicyReason(
+            "POL-CAPABILITY", "CAPABILITY_UNAVAILABLE", (("capability", "trainingPublish"),)
+        ),
+    )
+    supported = PolicyContext(
+        ATHLETE,
+        ALL_CONSENTS,
+        frozenset(),
+        supported_capabilities=frozenset({Capability.TRAINING_PUBLISH, Capability.ACTIVITY_READ}),
+    )
+    assert evaluate(publish, supported).outcome is Outcome.REQUIRE_CONFIRMATION
+
+
+@pytest.mark.req("FR-POL-001", "INT-GAR-002", "INT-GAR-003")
+def test_a_missing_capability_is_denied_even_when_confirmed() -> None:
+    publish = action(
+        kind=ActionKind.EXECUTE_EXTERNAL,
+        name="workout.publish",
+        capabilities=frozenset({Capability.TRAINING_PUBLISH}),
+        confirmed=True,
+    )
+    decision = evaluate(publish, CONTEXT)
+    assert decision.outcome is Outcome.DENY
+    assert [reason.code for reason in decision.reasons] == ["CAPABILITY_UNAVAILABLE"]
 
 
 @pytest.mark.req("FR-POL-001")

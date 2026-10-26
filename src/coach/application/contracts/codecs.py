@@ -49,6 +49,10 @@ from coach.application.contracts.ingestion import (
     time_series_from_contract,
     time_series_to_contract,
 )
+from coach.application.contracts.integration import (
+    integration_status_from_contract,
+    integration_status_to_contract,
+)
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
 from coach.application.credentials import CredentialRecord
@@ -63,6 +67,7 @@ from coach.domain.coaching.state import CoachingState
 from coach.domain.consent.ledger import ConsentLedger
 from coach.domain.goals.goal import Goal, SportEvent
 from coach.domain.ingestion.record import IngestionRecord
+from coach.domain.integration.status import IntegrationStatus
 from coach.domain.raw.source import RawSource
 from coach.metrics.derived import DerivedMetricValue
 
@@ -142,6 +147,12 @@ INGESTION_RECORD_CODEC: Final[DocumentCodec[IngestionRecord]] = DocumentCodec(
 TIME_SERIES_CODEC: Final[DocumentCodec[TimeSeries]] = DocumentCodec(
     "time_series", "time-series", time_series_to_contract, time_series_from_contract
 )
+INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
+    "integration_status",
+    "integration-status",
+    integration_status_to_contract,
+    integration_status_from_contract,
+)
 ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     PROFILE_CODEC,
     AVAILABILITY_CODEC,
@@ -158,4 +169,5 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     DATA_QUALITY_ISSUE_CODEC,
     INGESTION_RECORD_CODEC,
     TIME_SERIES_CODEC,
+    INTEGRATION_STATUS_CODEC,
 )

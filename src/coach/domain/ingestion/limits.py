@@ -20,6 +20,7 @@ class IngestionLimits:
     xml_bytes: int = 64 * MIB
     csv_bytes: int = 16 * MIB
     zip_bytes: int = 64 * MIB
+    json_bytes: int = 4 * MIB
     zip_uncompressed_bytes: int = 256 * MIB
     zip_ratio: int = 100
     zip_members: int = 50
@@ -45,6 +46,7 @@ class IngestionLimits:
             DetectedType.GPX: self.xml_bytes,
             DetectedType.CSV: self.csv_bytes,
             DetectedType.ZIP: self.zip_bytes,
+            DetectedType.JSON: self.json_bytes,
         }
         if detected_type not in sizes:
             raise DomainValidationError(f"no size limit for {detected_type}")

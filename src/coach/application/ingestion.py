@@ -5,13 +5,17 @@ quarantine, malware scan, hash and duplicate check, sandboxed parsing, schema an
 validation, normalisation (all sessions before anything is stored), then persistence through
 the RAW store and the activity service, which deduplicates. Every attempt ends with one
 immutable ingestion record; a rejection or failure also opens an IMPORT_FAILED issue.
+
+Provider payloads take the same path (files spec 9.1): the endpoint states their type, they
+are not malware-scanned, a JSON record is decoded by the provider's record normaliser, and a
+downloaded archive is stored as RAW besides its members.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -40,11 +44,17 @@ from coach.application.ports import (
     OwnedRepository,
     RawSourceRepository,
 )
+from coach.application.providers import (
+    JSON_MEDIA_TYPE,
+    ZIP_MEDIA_TYPE,
+    ProviderRecords,
+    RawPayload,
+)
 from coach.application.raw_storage import RawStorage
 from coach.application.screening import SecretScreen
 from coach.domain.activity.fields import FieldKind, StreamKind, StreamRef, field_spec
 from coach.domain.activity.issues import DataQualityIssue
-from coach.domain.activity.observation import Observation, source_kind_of
+from coach.domain.activity.observation import Observation, SourceKind, source_kind_of
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.ingestion.limits import IngestionLimits
@@ -57,11 +67,19 @@ from coach.domain.ingestion.record import (
     StoredFile,
     check_idempotency_key,
 )
-from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
+from coach.domain.raw.source import (
+    PROVIDER_OF,
+    DetectedType,
+    MalwareScan,
+    RawSource,
+    SourceOrigin,
+    provider_origin,
+)
 
 CHUNK: Final = 1024 * 1024
 CATEGORY: Final = "ACTIVITY_FILE"
 SCREEN_SOURCE: Final = "file_import"
+_PAYLOAD_TYPES: Final = {JSON_MEDIA_TYPE: DetectedType.JSON, ZIP_MEDIA_TYPE: DetectedType.ZIP}
 
 
 class IdempotencyConflictError(ApplicationError):
@@ -83,13 +101,13 @@ class _File:
     detected_type: DetectedType
     data: bytes
     sha256: str
-    path: Path
+    path: Path | None
     sessions: list[DecodedSession] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class _Attempt:
-    """What is known about an upload so far; becomes its ingestion record."""
+    """What is known about an import so far; becomes its ingestion record."""
 
     ingestion_id: UUID
     athlete_id: UUID
@@ -97,11 +115,18 @@ class _Attempt:
     filename: str | None
     mime_type: str | None
     idempotency_key: str | None
+    origin: SourceOrigin = SourceOrigin.FILE_UPLOAD
+    provider_object_id: str | None = None
+    category: str = CATEGORY
     byte_size: int = 0
     sha256: str | None = None
     detected_type: DetectedType = DetectedType.UNKNOWN
     malware_scan: MalwareScan | None = None
     notice: str | None = None
+
+    @property
+    def provider(self) -> str | None:
+        return PROVIDER_OF.get(self.origin)
 
 
 def read_capped(stream: BinaryIO, limit: int) -> tuple[bytes, bool]:
@@ -133,6 +158,7 @@ class IngestionService:
         clock: Clock,
         ids: IdFactory,
         limits: IngestionLimits | None = None,
+        provider_records: Mapping[str, ProviderRecords] | None = None,
     ) -> None:
         self._formats = formats
         self._quarantine = quarantine
@@ -148,6 +174,7 @@ class IngestionService:
         self._clock = clock
         self._ids = ids
         self.limits = limits or IngestionLimits()
+        self._provider_records = dict(provider_records or {})
 
     def import_file(
         self,
@@ -185,32 +212,118 @@ class IngestionService:
             for path in quarantined:
                 self._quarantine.discard(path)
 
+    def import_provider_payload(self, scope: OwnerScope, payload: RawPayload) -> ImportResult:
+        """Import a provider record or download (files spec 9.1); problems end in the record."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        detected = _PAYLOAD_TYPES.get(payload.media_type)
+        if detected is DetectedType.JSON and payload.provider not in self._provider_records:
+            raise LookupError(f"no record normaliser for provider {payload.provider!r}")
+        if payload.provider_object_id is None:
+            raise DomainValidationError("a provider payload names its object")
+        attempt = _Attempt(
+            self._ids(),
+            scope.athlete_id,
+            self._clock(),
+            None,
+            payload.media_type,
+            None,
+            origin=provider_origin(payload.provider),
+            provider_object_id=payload.provider_object_id,
+            category=payload.category,
+            byte_size=len(payload.data),
+            sha256=hashlib.sha256(payload.data).hexdigest(),
+            detected_type=detected or DetectedType.UNKNOWN,
+            malware_scan=MalwareScan.NOT_APPLICABLE,
+        )
+        self._events.emit(EventName.INGESTION_RECEIVED, {})
+        # Every provider response is kept unmodified before it is examined (INT-GAR-009), so a
+        # rejected payload can be reprocessed once the rules learn its shape.
+        self._raw.store(
+            scope,
+            payload.data,
+            origin=attempt.origin,
+            category=payload.category,
+            detected_type=self._stored_type(detected, payload.data),
+            malware_scan=MalwareScan.NOT_APPLICABLE,
+            provider=payload.provider,
+            provider_object_id=payload.provider_object_id,
+            request_window=payload.window,
+        )
+        quarantined: list[Path] = []
+        try:
+            if detected is None:
+                raise FileRejectedError(RejectionReason.CONTENT_MISMATCH, "MEDIA_TYPE")
+            return self._pipeline(scope, attempt, payload.data, quarantined)
+        except FileRejectedError as rejection:
+            return self._reject(scope, attempt, rejection)
+        finally:
+            for path in quarantined:
+                self._quarantine.discard(path)
+
+    def reject_provider_payload(
+        self,
+        scope: OwnerScope,
+        *,
+        provider: str,
+        provider_object_id: str,
+        media_type: str,
+        rejection: FileRejectedError,
+    ) -> ImportResult:
+        """Record a provider payload that never arrived whole (for example, over the size cap)."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        attempt = _Attempt(
+            self._ids(),
+            scope.athlete_id,
+            self._clock(),
+            None,
+            media_type,
+            None,
+            origin=provider_origin(provider),
+            provider_object_id=provider_object_id,
+            detected_type=_PAYLOAD_TYPES.get(media_type, DetectedType.UNKNOWN),
+            malware_scan=MalwareScan.NOT_APPLICABLE,
+        )
+        return self._reject(scope, attempt, rejection)
+
+    def _stored_type(self, detected: DetectedType | None, data: bytes) -> DetectedType:
+        if detected is DetectedType.ZIP:
+            try:
+                self._formats.check_content(DetectedType.ZIP, data)
+            except FileRejectedError:
+                return DetectedType.UNKNOWN
+        return detected or DetectedType.UNKNOWN
+
     # ------------------------------------------------------------------ stages
 
     def _pipeline(
         self, scope: OwnerScope, attempt: _Attempt, data: bytes, quarantined: list[Path]
     ) -> ImportResult:
-        detected = self._formats.detect(attempt.filename, data)
+        uploaded = attempt.origin is SourceOrigin.FILE_UPLOAD
+        if uploaded:
+            detected = self._formats.detect(attempt.filename, data)
+        else:
+            detected = attempt.detected_type
+            if detected is not DetectedType.JSON:
+                self._formats.check_content(detected, data)
         if len(data) > self.limits.max_bytes(detected):
             raise FileRejectedError(RejectionReason.TOO_LARGE, "FORMAT_LIMIT")
         attempt.detected_type = detected
-        path = self._quarantine.put(data)
-        quarantined.append(path)
-        attempt.malware_scan = self._scanner.scan(path)
+        path = None
+        if detected is not DetectedType.JSON:
+            path = self._quarantine.put(data)
+            quarantined.append(path)
+        if uploaded and path is not None:
+            attempt.malware_scan = self._scanner.scan(path)
         sha256 = attempt.sha256 or ""
         earlier = self._records.find_imported(scope, sha256)
         if earlier is not None:
             return self._duplicate(scope, attempt, earlier)
-        files = self._files(detected, data, sha256, path, quarantined)
+        files = self._files(attempt, detected, data, sha256, path, quarantined)
         total = 0
         for item in files:
             try:
-                item.sessions = list(
-                    self._formats.decode(
-                        item.path, item.detected_type, self.limits, received_at=attempt.received_at
-                    )
-                )
-                self._check_observations(scope, item)
+                item.sessions = list(self._decode(attempt, item))
+                self._check_observations(scope, attempt, item)
             except FileRejectedError as rejection:
                 if detected is DetectedType.ZIP:
                     raise rejection.in_member(item.index) from None
@@ -228,10 +341,11 @@ class IngestionService:
 
     def _files(
         self,
+        attempt: _Attempt,
         detected: DetectedType,
         data: bytes,
         sha256: str,
-        path: Path,
+        path: Path | None,
         quarantined: list[Path],
     ) -> list[_File]:
         if detected is not DetectedType.ZIP:
@@ -240,6 +354,12 @@ class IngestionService:
         for member in self._formats.members(data, self.limits):
             try:
                 member_type = self._formats.member_type(member)
+                if (
+                    member_type is DetectedType.CSV
+                    and attempt.origin is not SourceOrigin.FILE_UPLOAD
+                ):
+                    # Only the athlete's own files are athlete entries (files spec 9.1).
+                    raise FileRejectedError(RejectionReason.CONTENT_MISMATCH, "PROVIDER_CSV")
             except FileRejectedError as rejection:
                 raise rejection.in_member(member.index) from None
             member_path = self._quarantine.put(member.data)
@@ -255,11 +375,34 @@ class IngestionService:
             )
         return files
 
-    def _check_observations(self, scope: OwnerScope, item: _File) -> None:
+    def _decode(self, attempt: _Attempt, item: _File) -> Sequence[DecodedSession]:
+        if item.detected_type is DetectedType.JSON:
+            records = self._provider_records[attempt.provider or ""]
+            return records.decode(
+                item.data,
+                provider_object_id=attempt.provider_object_id or "",
+                received_at=attempt.received_at,
+            )
+        if item.path is None:  # pragma: no cover - every file but a JSON record is quarantined
+            raise FileRejectedError(RejectionReason.PARSE_FAILED)
+        return self._formats.decode(
+            item.path, item.detected_type, self.limits, received_at=attempt.received_at
+        )
+
+    def _check_observations(self, scope: OwnerScope, attempt: _Attempt, item: _File) -> None:
         """Stage 11: every session must make a valid observation before anything is stored."""
+        trial = _Source(
+            raw_source_id=uuid4(),
+            origin=attempt.origin,
+            detected_type=item.detected_type,
+            provider=attempt.provider,
+            provider_object_id=attempt.provider_object_id,
+            sha256=item.sha256,
+            received_at=self._clock(),
+        )
         for session in item.sessions:
             try:
-                self._observation(scope, item, session, uuid4(), self._clock(), streams=())
+                self._observation(scope, trial, session, streams=())
             except DomainValidationError:
                 raise FileRejectedError(
                     RejectionReason.NORMALIZATION_FAILED, "OBSERVATION"
@@ -280,28 +423,48 @@ class IngestionService:
     def _observation(
         self,
         scope: OwnerScope,
-        item: _File,
+        source: _Source,
         session: DecodedSession,
-        raw_source_id: UUID,
-        received_at: datetime,
         *,
         streams: tuple[StreamRef, ...],
     ) -> Observation:
+        """The observation of a stored source; its origin is the source's, not the attempt's."""
+        kind = source_kind_of(source.origin, source.detected_type)
+        record = kind is SourceKind.PROVIDER_RECORD
         return Observation(
-            raw_source_id=raw_source_id,
+            raw_source_id=source.raw_source_id,
             part=session.part,
             athlete_id=scope.athlete_id,
-            origin=SourceOrigin.FILE_UPLOAD,
-            kind=source_kind_of(SourceOrigin.FILE_UPLOAD, item.detected_type),
-            raw_sha256=item.sha256,
-            received_at=received_at,
+            origin=source.origin,
+            kind=kind,
+            raw_sha256=source.sha256,
+            received_at=source.received_at,
             normaliser=session.normaliser,
             normaliser_version=session.normaliser_version,
             values=session.values,
+            provider=source.provider if record else None,
+            provider_activity_id=source.provider_object_id if record else None,
             source_paths=session.source_paths,
             streams=streams,
             anomalies=session.anomalies,
         )
+
+    def _store(
+        self, scope: OwnerScope, attempt: _Attempt, item: _File, *, single: bool
+    ) -> RawSource:
+        # A provider record keeps its endpoint category; files are activity files.
+        record = item.detected_type is DetectedType.JSON
+        return self._raw.store(
+            scope,
+            item.data,
+            origin=attempt.origin,
+            category=attempt.category if record else CATEGORY,
+            detected_type=item.detected_type,
+            malware_scan=attempt.malware_scan or MalwareScan.NOT_SCANNED,
+            provider=attempt.provider,
+            provider_object_id=attempt.provider_object_id,
+            original_filename=attempt.filename if single else None,
+        ).source
 
     def _persist(
         self, scope: OwnerScope, attempt: _Attempt, files: Sequence[_File]
@@ -310,15 +473,7 @@ class IngestionService:
         imported: list[ImportedActivity] = []
         try:
             for item in files:
-                stored = self._raw.store(
-                    scope,
-                    item.data,
-                    origin=SourceOrigin.FILE_UPLOAD,
-                    category=CATEGORY,
-                    detected_type=item.detected_type,
-                    malware_scan=attempt.malware_scan or MalwareScan.NOT_SCANNED,
-                    original_filename=attempt.filename if len(files) == 1 else None,
-                ).source
+                stored = self._store(scope, attempt, item, single=len(files) == 1)
                 for session in item.sessions:
                     streams: tuple[StreamRef, ...] = ()
                     if session.time_series is not None:
@@ -326,12 +481,7 @@ class IngestionService:
                         digest = self._blobs.put(scope, _canonical(document))
                         streams = (StreamRef(StreamKind.TIME_SERIES, digest),)
                     observation = self._observation(
-                        scope,
-                        item,
-                        session,
-                        stored.raw_source_id,
-                        stored.received_at,
-                        streams=streams,
+                        scope, _Source.of(stored), session, streams=streams
                     )
                     result = self._activities.ingest(scope, observation)
                     imported.append(
@@ -449,6 +599,34 @@ class IngestionService:
             activities=activities,
             duplicate_of=duplicate_of,
             idempotency_key=attempt.idempotency_key,
+            origin=attempt.origin,
+            provider=attempt.provider,
+            provider_object_id=attempt.provider_object_id,
+        )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _Source:
+    """What an observation needs to know about its RawSource (stored, or about to be)."""
+
+    raw_source_id: UUID
+    origin: SourceOrigin
+    detected_type: DetectedType
+    provider: str | None
+    provider_object_id: str | None
+    sha256: str
+    received_at: datetime
+
+    @classmethod
+    def of(cls, source: RawSource) -> _Source:
+        return cls(
+            raw_source_id=source.raw_source_id,
+            origin=source.origin,
+            detected_type=source.detected_type,
+            provider=source.provider,
+            provider_object_id=source.provider_object_id,
+            sha256=source.sha256,
+            received_at=source.received_at,
         )
 
 

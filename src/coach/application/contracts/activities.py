@@ -66,7 +66,7 @@ from coach.domain.common.quality import (
 from coach.domain.raw.source import SourceOrigin
 
 # Contract versions written by this code (spec/README.md change process).
-OBSERVATION_SCHEMA_VERSION: Final = "1.1.0"
+OBSERVATION_SCHEMA_VERSION: Final = "1.2.0"
 ISSUE_SCHEMA_VERSION: Final = "1.1.0"
 
 

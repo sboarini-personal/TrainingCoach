@@ -15,9 +15,11 @@ from coach.application.policy_gate import (
 )
 from coach.domain.coaching.state import CoachingState, Condition, LifecycleState
 from coach.domain.consent.ledger import ConsentLedger, ConsentType
+from coach.domain.integration.capabilities import Capability, CapabilityValue
+from coach.domain.integration.status import IntegrationStatus
 from coach.infrastructure.memory import InMemoryAuditLog, InMemoryRepository, RecordingEventSink
 from coach.policy.engine import Action, ActionKind, Outcome
-from samples import ATHLETE, OTHER_ATHLETE
+from samples import ATHLETE, OTHER_ATHLETE, sample_integration_status
 
 SCOPE = OwnerScope(ATHLETE)
 NOW = datetime(2026, 10, 25, 10, 0, tzinfo=UTC)
@@ -30,6 +32,7 @@ class World:
     def __init__(self) -> None:
         self.ledgers = InMemoryRepository[ConsentLedger]()
         self.states = InMemoryRepository[CoachingState]()
+        self.integrations = InMemoryRepository[IntegrationStatus]()
         self.audit, self.events = InMemoryAuditLog(), RecordingEventSink()
         counter = iter(range(1, 100))
         self.consents = ConsentService(
@@ -46,6 +49,7 @@ class World:
             audit=self.audit,
             events=self.events,
             clock=lambda: NOW,
+            integrations=self.integrations,
         )
 
 
@@ -106,3 +110,27 @@ def test_unconfirmed_external_write_is_not_executed() -> None:
     with pytest.raises(ConfirmationRequiredError) as needed:
         world.gate.enforce(SCOPE, publish)
     assert needed.value.decision.outcome is Outcome.REQUIRE_CONFIRMATION
+
+
+@pytest.mark.req("FR-POL-002", "INT-GAR-003", "INT-GAR-004")
+def test_capabilities_come_from_the_stored_integration_status() -> None:
+    world = World()
+    needs = Action(
+        kind=ActionKind.READ,
+        name="garmin.read_activities",
+        capabilities=frozenset({Capability.ACTIVITY_READ}),
+    )
+    with pytest.raises(PolicyDeniedError) as denied:
+        world.gate.enforce(SCOPE, needs)
+    assert [reason.code for reason in denied.value.decision.reasons] == ["CAPABILITY_UNAVAILABLE"]
+    world.integrations.add(SCOPE, sample_integration_status())
+    assert world.gate.enforce(SCOPE, needs).outcome is Outcome.ALLOW
+    unknown = Action(
+        kind=ActionKind.READ,
+        name="garmin.read_history",
+        capabilities=frozenset({Capability.HISTORICAL_DATA}),
+    )
+    status = world.integrations.list_all(SCOPE)[0]
+    assert status.capabilities.value(Capability.HISTORICAL_DATA) is CapabilityValue.UNKNOWN
+    with pytest.raises(PolicyDeniedError):
+        world.gate.enforce(SCOPE, unknown)

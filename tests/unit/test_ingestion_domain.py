@@ -8,7 +8,12 @@ from uuid import UUID
 
 import pytest
 
-from coach.application.contracts import DATA_QUALITY_ISSUE_CODEC, OBSERVATION_CODEC
+from coach.application.contracts import (
+    DATA_QUALITY_ISSUE_CODEC,
+    INGESTION_RECORD_CODEC,
+    OBSERVATION_CODEC,
+    RAW_SOURCE_CODEC,
+)
 from coach.domain.activity.fields import CadenceUnit
 from coach.domain.activity.issues import DataQualityIssue, IssueKind, IssueResolution
 from coach.domain.activity.observation import SourceKind, source_kind_of
@@ -112,6 +117,44 @@ def test_record_outcome_rules() -> None:
         detail="STREAM_LIMIT",
     )
     assert not rejected.succeeded
+
+
+@pytest.mark.req("INT-GAR-007", "INT-GAR-009")
+def test_provider_payload_records_name_their_provider_and_object() -> None:
+    record = _record(
+        origin=SourceOrigin.GARMIN_PERSONAL_API,
+        provider="garmin",
+        provider_object_id="21004587311",
+        malware_scan=MalwareScan.NOT_APPLICABLE,
+        detected_type=DetectedType.JSON,
+        declared_mime_type="application/json",
+        files=(StoredFile(0, DetectedType.JSON, 1024, SHA_A, FIT_SOURCE, 1),),
+    )
+    assert (record.origin, record.provider, record.provider_object_id) == (
+        SourceOrigin.GARMIN_PERSONAL_API,
+        "garmin",
+        "21004587311",
+    )
+    provider = {
+        "origin": SourceOrigin.GARMIN_PERSONAL_API,
+        "provider": "garmin",
+        "provider_object_id": "21004587311",
+        "malware_scan": MalwareScan.NOT_APPLICABLE,
+    }
+    for changes in (
+        {**provider, "provider_object_id": None},
+        {**provider, "provider": None},
+        {**provider, "malware_scan": MalwareScan.NOT_SCANNED},
+        {**provider, "original_filename": "activity.zip"},
+        {**provider, "idempotency_key": "key-1"},
+        {"provider": "garmin"},
+        {"provider_object_id": "21004587311"},
+        {"origin": SourceOrigin.MANUAL_ENTRY, "malware_scan": None},
+    ):
+        with pytest.raises(DomainValidationError):
+            _record(**changes)
+    with pytest.raises(DomainValidationError):
+        StoredFile(0, DetectedType.ZIP, 1, SHA_A, FIT_SOURCE, 0)
 
 
 @pytest.mark.req("SEC-UPL-005", "SEC-INJ-001", "SEC-UPL-001")
@@ -219,4 +262,13 @@ def test_documents_of_the_previous_minor_version_still_load() -> None:
     observation = load_json(EXAMPLES_DIR / "source-observation.example.json")
     observation["schemaVersion"] = "1.0.0"
     loaded = OBSERVATION_CODEC.load(observation)
-    assert OBSERVATION_CODEC.dump(loaded)["schemaVersion"] == "1.1.0"
+    assert OBSERVATION_CODEC.dump(loaded)["schemaVersion"] == "1.2.0"
+    record = load_json(EXAMPLES_DIR / "ingestion-record.example.json")
+    for added in ("origin", "provider", "providerObjectId"):
+        del record[added]
+    record["schemaVersion"] = "1.0.0"
+    assert INGESTION_RECORD_CODEC.load(record).origin is SourceOrigin.FILE_UPLOAD
+    raw = load_json(EXAMPLES_DIR / "raw-source.example.json")
+    del raw["requestWindow"]
+    raw["schemaVersion"] = "1.0.0"
+    assert RAW_SOURCE_CODEC.dump(RAW_SOURCE_CODEC.load(raw))["schemaVersion"] == "1.1.0"

@@ -10,6 +10,7 @@ from coach.cli.main import main
 from coach.infrastructure.memory import InMemoryCredentialProvider
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from coach.infrastructure.sqlite.identities import SqliteIdentityDirectory
+from coach.integrations.garmin.transport import HttpTransport
 
 NOW = datetime(2026, 10, 25, 10, 0, tzinfo=UTC)
 GARMIN_KEY = "synthetic-garmin-key-for-cli-tests-0001"  # pragma: allowlist secret
@@ -21,6 +22,9 @@ class Cli:
         self.data_dir = data_dir
         self.credentials = InMemoryCredentialProvider()
         self.secret_input = GARMIN_KEY
+        self.transport: HttpTransport | None = None
+        self.sleeps: list[float] = []
+        self.now = NOW
 
     def run(self, *argv: str) -> tuple[int, str]:
         out = io.StringIO()
@@ -30,7 +34,9 @@ class Cli:
             credentials=self.credentials,
             read_secret=lambda _prompt: self.secret_input,
             out=out,
-            clock=lambda: NOW,
+            clock=lambda: self.now,
+            transport=self.transport,
+            sleep=self.sleeps.append,
         )
         return code, out.getvalue()
 

@@ -14,6 +14,7 @@ from typing import Any
 
 from activity_world import SCOPE, World
 from coach.application.ingestion import ImportResult, IngestionService
+from coach.application.providers import ProviderRecords
 from coach.application.screening import SecretScreen
 from coach.domain.ingestion.limits import IngestionLimits
 from coach.infrastructure.blobs import FileBlobStore
@@ -46,6 +47,7 @@ class IngestionWorld(World):
         runner: ParserRunner | None = None,
         limits: IngestionLimits | None = None,
         consent: bool = True,
+        provider_records: Mapping[str, ProviderRecords] | None = None,
     ) -> None:
         super().__init__(consent=consent)
         self.records = InMemoryIngestionRecordRepository()
@@ -68,6 +70,7 @@ class IngestionWorld(World):
             clock=self.clock,
             ids=self.ids,
             limits=limits,
+            provider_records=provider_records,
         )
 
     def upload(self, data: bytes, filename: str = "run.fit", **options: Any) -> ImportResult:

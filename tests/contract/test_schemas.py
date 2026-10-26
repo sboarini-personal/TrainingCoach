@@ -47,7 +47,7 @@ def test_expected_contracts_exist() -> None:
         "athlete-profile", "availability", "goal", "sport-event",
         "raw-source", "derived-metric-value", "consent-ledger", "coaching-state",
         "data-override", "data-quality-issue", "source-observation",
-        "ingestion-record", "parser-output", "time-series",
+        "ingestion-record", "parser-output", "time-series", "integration-status",
     }  # fmt: skip
     assert expected <= SCHEMAS.keys(), sorted(expected - SCHEMAS.keys())
 
@@ -687,3 +687,56 @@ def test_time_series_has_no_positions_and_cadence_names_its_unit() -> None:
     series = _example("time-series.example.json")
     series["offsetSeconds"][1] = -1
     assert _errors("time-series", series)
+
+
+# --------------------------------------------------------------------------- P7: providers
+
+
+@pytest.mark.req("INT-GAR-007", "INT-GAR-009")
+def test_provider_ingestion_records_name_provider_and_object_and_skip_the_scan() -> None:
+    record = _example("ingestion-record.provider.example.json")
+    assert _errors("ingestion-record", record) == []
+    for field, value in (
+        ("provider", None),
+        ("providerObjectId", None),
+        ("malwareScan", "NOT_SCANNED"),
+        ("originalFilename", "activity.zip"),
+        ("idempotencyKey", "key-1"),
+    ):
+        broken = _example("ingestion-record.provider.example.json")
+        broken[field] = value
+        assert _errors("ingestion-record", broken), field
+    upload = _example("ingestion-record.example.json")
+    upload["malwareScan"] = "NOT_APPLICABLE"
+    assert _errors("ingestion-record", upload)
+    upload = _example("ingestion-record.example.json")
+    upload["files"][0]["detectedType"] = "JSON"
+    assert _errors("ingestion-record", upload)
+    legacy = _example("ingestion-record.example.json")
+    for added in ("origin", "provider", "providerObjectId"):
+        del legacy[added]
+    assert _errors("ingestion-record", legacy) == []
+
+
+@pytest.mark.req("INT-GAR-009")
+def test_only_provider_payloads_have_a_request_window() -> None:
+    raw = _example("raw-source.example.json")
+    raw["requestWindow"] = {"start": "2026-10-01", "end": "2026-10-07"}
+    assert _errors("raw-source", raw)
+    raw.update(
+        origin="GARMIN_PERSONAL_API",
+        provider="garmin",
+        malwareScan="NOT_APPLICABLE",
+        detectedType="JSON",
+        originalFilename=None,
+    )
+    assert _errors("raw-source", raw) == []
+
+
+@pytest.mark.req("INT-GAR-007", "FR-ACT-002")
+def test_a_downloaded_file_is_a_file_observation_without_a_record_id() -> None:
+    observation = _example("source-observation.example.json")
+    observation.update(sourceKind="FIT_FILE", origin="GARMIN_PERSONAL_API")
+    assert _errors("source-observation", observation) == []
+    observation.update(provider="garmin", providerActivityId="21004587311")
+    assert _errors("source-observation", observation)

@@ -2,21 +2,38 @@
 
 from __future__ import annotations
 
+from datetime import date
+from typing import Any, Final
 from uuid import UUID
 
 from coach.application.contracts._json import (
-    SCHEMA_VERSION,
     Document,
     Json,
     instant,
     parse_instant,
 )
+from coach.domain.common.time import DateRange
 from coach.domain.raw.source import DetectedType, MalwareScan, RawSource, SourceOrigin
+
+# 1.1.0 added the request window of provider payloads (INT-GAR-009).
+RAW_SOURCE_SCHEMA_VERSION: Final = "1.1.0"
+
+
+def date_window(window: DateRange | None) -> Json | None:
+    if window is None:
+        return None
+    return {"start": window.start.isoformat(), "end": window.end.isoformat()}
+
+
+def parse_date_window(document: Any) -> DateRange | None:
+    if document is None:
+        return None
+    return DateRange(date.fromisoformat(document["start"]), date.fromisoformat(document["end"]))
 
 
 def raw_source_to_contract(source: RawSource) -> Json:
     return {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": RAW_SOURCE_SCHEMA_VERSION,
         "rawSourceId": str(source.raw_source_id),
         "athleteId": str(source.athlete_id),
         "origin": source.origin.value,
@@ -29,6 +46,7 @@ def raw_source_to_contract(source: RawSource) -> Json:
         "detectedType": source.detected_type.value,
         "originalFilename": source.original_filename,
         "malwareScan": source.malware_scan.value,
+        "requestWindow": date_window(source.request_window),
     }
 
 
@@ -46,4 +64,5 @@ def raw_source_from_contract(document: Document) -> RawSource:
         detected_type=DetectedType(document["detectedType"]),
         original_filename=document["originalFilename"],
         malware_scan=MalwareScan(document["malwareScan"]),
+        request_window=parse_date_window(document.get("requestWindow")),
     )

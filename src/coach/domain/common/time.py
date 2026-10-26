@@ -111,3 +111,31 @@ def parse_utc_offset(text: str) -> timedelta:
     if offset > MAX_UTC_OFFSET:
         raise DomainValidationError(f"UTC offset beyond 14 hours: {text!r}")
     return -offset if match["sign"] == "-" else offset
+
+
+@dataclass(frozen=True, slots=True)
+class DateRange:
+    """Calendar dates, both ends included."""
+
+    start: date
+    end: date
+
+    def __post_init__(self) -> None:
+        if self.end < self.start:
+            raise DomainValidationError("a date range ends on or after its start")
+
+    @property
+    def days(self) -> int:
+        return (self.end - self.start).days + 1
+
+    def split(self, days: int) -> list[DateRange]:
+        """Consecutive windows of ``days`` days; the last one may be shorter."""
+        if days < 1:
+            raise DomainValidationError("a window has at least one day")
+        windows = []
+        start = self.start
+        while start <= self.end:
+            end = min(start + timedelta(days=days - 1), self.end)
+            windows.append(DateRange(start, end))
+            start = end + timedelta(days=1)
+        return windows

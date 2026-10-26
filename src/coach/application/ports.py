@@ -135,7 +135,7 @@ class OverrideRepository(Protocol):
 
 
 class IngestionRecordRepository(Protocol):
-    """Immutable ingestion records, one per upload attempt (files spec section 9)."""
+    """Immutable ingestion records, one per import attempt (files spec section 9)."""
 
     def add(self, scope: OwnerScope, record: IngestionRecord) -> IngestionRecord: ...
 
@@ -149,6 +149,12 @@ class IngestionRecordRepository(Protocol):
 
     def recent(self, scope: OwnerScope, limit: int) -> Sequence[IngestionRecord]:
         """Most recent first."""
+        ...
+
+    def for_provider_object(
+        self, scope: OwnerScope, provider: str, provider_object_id: str
+    ) -> Sequence[IngestionRecord]:
+        """Every record of one provider object (files spec 9.1), oldest first."""
         ...
 
 
