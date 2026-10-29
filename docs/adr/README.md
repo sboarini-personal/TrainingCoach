@@ -31,3 +31,4 @@ change is a new ADR that supersedes the old one (status `Superseded by ADR-NNN`)
 | [ADR-024](ADR-024-source-observations-resolution.md) | Source observations and pure field-level resolution | Accepted |
 | [ADR-025](ADR-025-file-ingestion-mechanism.md) | File ingestion mechanism: sandbox process, FIT SDK, archives and streams | Accepted |
 | [ADR-026](ADR-026-garmin-sync-mechanism.md) | Garmin sync mechanism: thin transport, application orchestration, shared pipeline | Accepted |
+| [ADR-027](ADR-027-metrics-engine-and-units-of-work.md) | Metrics engine: subject dimensions, totals materialised on read, SQLite units of work | Accepted |

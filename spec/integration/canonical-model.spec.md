@@ -86,7 +86,8 @@ speed and stored for convenience with their unit in the field name.
   most one part to a given Activity.
 - Fields a source never provides: `timing.originalLocalTime`, `timing.trainingDay`,
   `timing.trainingDayBasis` (computed, activities spec section 2), pace fields (computed from
-  speed: 1000 / speed and 100 / speed), `cardiovascular.hrZones` (application zone model, P8),
+  speed: 1000 / speed and 100 / speed), `cardiovascular.hrZones` (application zone model, P8:
+  filled in the EFFECTIVE view from the current `any.hr_zone_time` values, metrics spec 9.2),
   `training.load.internal.sessionRpeLoad` (the current `any.srpe_load` value, filled in the
   EFFECTIVE view only) and `strength.strengthSessionId` (linked by strength ingestion, P10).
 - `status`: ACTIVE activities count toward totals. PENDING_REVIEW holds a source whose match

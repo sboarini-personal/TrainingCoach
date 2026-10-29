@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:derived-metric-value:1",
   "title": "DerivedMetricValue",
-  "description": "Append-only value of an application metric with its method version and input snapshot (FR-MET-004). Owner spec: spec/functional/metrics.spec.md section 4.",
+  "description": "Append-only value of an application metric with its method version and input snapshot (FR-MET-004). Version 1.1.0: optional subject dimension; an aggregation lists one input per known contribution and names its unknown ones; NOT_APPLICABLE retires a value whose metric no longer applies. Owner spec: spec/functional/metrics.spec.md section 4.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -29,7 +29,7 @@
     "metricId": { "$ref": "urn:coach:schema:common:1#/$defs/metricId" },
     "calculationVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "subject": { "$ref": "#/$defs/subject" },
-    "status": { "enum": ["COMPUTED", "MISSING_INPUT", "BELOW_MINIMUM_QUALITY"] },
+    "status": { "enum": ["COMPUTED", "MISSING_INPUT", "BELOW_MINIMUM_QUALITY", "NOT_APPLICABLE"] },
     "value": { "type": ["number", "null"] },
     "unit": { "type": "string", "minLength": 1, "maxLength": 20 },
     "inputs": { "type": "array", "items": { "$ref": "#/$defs/input" } },
@@ -49,6 +49,12 @@
     "computedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
     "supersededBy": {
       "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "missingContributions": {
+      "description": "Added in 1.1.0: the evidence of an aggregation's unknown contributions.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
     }
   },
   "allOf": [
@@ -81,6 +87,22 @@
           "inputConfidence": { "$ref": "urn:coach:schema:common:1#/$defs/confidence" }
         }
       }
+    },
+    {
+      "if": { "properties": { "status": { "const": "NOT_APPLICABLE" } } },
+      "then": {
+        "properties": {
+          "value": { "type": "null" },
+          "inputs": { "maxItems": 0 },
+          "missingInputs": { "maxItems": 0 },
+          "inputConfidence": { "type": "null" },
+          "uncertaintyReasons": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "required": ["missingContributions"] },
+      "then": { "properties": { "status": { "const": "MISSING_INPUT" } } }
     }
   ],
   "$defs": {
@@ -102,7 +124,12 @@
       "additionalProperties": false,
       "properties": {
         "kind": { "enum": ["ACTIVITY", "DAY", "WEEK", "EXERCISE"] },
-        "key": { "type": "string", "maxLength": 64 }
+        "key": { "type": "string", "maxLength": 64 },
+        "dimension": {
+          "description": "Added in 1.1.0 (metrics spec section 4): a sport code for per-sport values, Z1 to Z10 for heart-rate zones.",
+          "type": "string",
+          "pattern": "^(Z([1-9]|10)|RUNNING|CYCLING|SWIMMING|STRENGTH|TENNIS|OTHER)$"
+        }
       },
       "allOf": [
         {

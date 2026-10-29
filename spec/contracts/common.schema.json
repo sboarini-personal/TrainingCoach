@@ -115,7 +115,8 @@
             "WORKOUT_EXECUTION",
             "RECOVERY_ASSESSMENT",
             "INSIGHT",
-            "PLAN_VERSION"
+            "PLAN_VERSION",
+            "HR_ZONE_MODEL"
           ]
         },
         "id": { "$ref": "#/$defs/id" },
