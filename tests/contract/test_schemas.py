@@ -740,3 +740,48 @@ def test_a_downloaded_file_is_a_file_observation_without_a_record_id() -> None:
     assert _errors("source-observation", observation) == []
     observation.update(provider="garmin", providerActivityId="21004587311")
     assert _errors("source-observation", observation)
+
+
+# --------------------------------------------------------------------------- P8: metrics engine
+
+
+@pytest.mark.req("FR-MET-004", "NFR-REL-004")
+def test_a_subject_dimension_is_a_sport_or_a_zone() -> None:
+    value = _example("derived-metric-value.example.json")
+    for dimension in ("RUNNING", "Z1", "Z10"):
+        value["subject"]["dimension"] = dimension
+        assert _errors("derived-metric-value", value) == [], dimension
+    for dimension in ("Z0", "Z11", "running", "SKIING", ""):
+        value["subject"]["dimension"] = dimension
+        assert _errors("derived-metric-value", value), dimension
+
+
+@pytest.mark.req("NFR-TRC-001")
+def test_evidence_may_name_a_zone_model() -> None:
+    value = _example("derived-metric-value.example.json")
+    value["inputs"][0]["evidence"]["kind"] = "HR_ZONE_MODEL"
+    assert _errors("derived-metric-value", value) == []
+    value["inputs"][0]["evidence"]["kind"] = "PROFILE"
+    assert _errors("derived-metric-value", value)
+
+
+@pytest.mark.req("FR-MET-004")
+def test_retired_values_and_missing_contributions() -> None:
+    retired = _example("derived-metric-value.example.json")
+    retired.update(
+        status="NOT_APPLICABLE", value=None, inputs=[], inputConfidence=None, uncertaintyReasons=[]
+    )
+    assert _errors("derived-metric-value", retired) == []
+    retired["inputConfidence"] = "HIGH"
+    assert _errors("derived-metric-value", retired)
+    partial = _example("derived-metric-value.example.json")
+    evidence = {"kind": "ACTIVITY", "id": "0193b2a0-0000-7000-8000-000000000102"}
+    partial["missingContributions"] = [evidence]
+    assert _errors("derived-metric-value", partial)  # only an unknown total names them
+    partial.update(
+        status="MISSING_INPUT",
+        value=None,
+        missingInputs=["rpe"],
+        uncertaintyReasons=["MISSING_DATA"],
+    )
+    assert _errors("derived-metric-value", partial) == []

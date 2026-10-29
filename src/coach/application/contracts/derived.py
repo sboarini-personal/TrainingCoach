@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Final
 from uuid import UUID
 
 from coach.application.contracts._json import (
-    SCHEMA_VERSION,
     Document,
     Json,
     evidence,
@@ -25,16 +25,26 @@ from coach.metrics.derived import (
     SubjectKind,
 )
 
+# 1.1.0 added the optional subject dimension (metrics spec section 4, P8).
+DERIVED_VALUE_SCHEMA_VERSION: Final = "1.1.0"
+
+
+def _subject(subject: MetricSubject) -> Json:
+    document: Json = {"kind": subject.kind.value, "key": subject.key}
+    if subject.dimension is not None:
+        document["dimension"] = subject.dimension
+    return document
+
 
 def derived_value_to_contract(value: DerivedMetricValue) -> Json:
     confidence = value.input_confidence
-    return {
-        "schemaVersion": SCHEMA_VERSION,
+    document: Json = {
+        "schemaVersion": DERIVED_VALUE_SCHEMA_VERSION,
         "valueId": str(value.value_id),
         "athleteId": str(value.athlete_id),
         "metricId": value.metric_id,
         "calculationVersion": value.calculation_version,
-        "subject": {"kind": value.subject.kind.value, "key": value.subject.key},
+        "subject": _subject(value.subject),
         "status": value.status.value,
         "value": value.value,
         "unit": value.unit,
@@ -53,6 +63,9 @@ def derived_value_to_contract(value: DerivedMetricValue) -> Json:
         "computedAt": instant(value.computed_at),
         "supersededBy": optional_uuid(value.superseded_by),
     }
+    if value.missing_evidence:
+        document["missingContributions"] = [evidence(item) for item in value.missing_evidence]
+    return document
 
 
 def derived_value_from_contract(document: Document) -> DerivedMetricValue:
@@ -62,7 +75,11 @@ def derived_value_from_contract(document: Document) -> DerivedMetricValue:
         athlete_id=UUID(document["athleteId"]),
         metric_id=document["metricId"],
         calculation_version=document["calculationVersion"],
-        subject=MetricSubject(SubjectKind(document["subject"]["kind"]), document["subject"]["key"]),
+        subject=MetricSubject(
+            SubjectKind(document["subject"]["kind"]),
+            document["subject"]["key"],
+            document["subject"].get("dimension"),
+        ),
         status=DerivedStatus(document["status"]),
         value=document["value"],
         unit=document["unit"],
@@ -82,4 +99,7 @@ def derived_value_from_contract(document: Document) -> DerivedMetricValue:
         ),
         computed_at=parse_instant(document["computedAt"]),
         superseded_by=parse_optional_uuid(document["supersededBy"]),
+        missing_evidence=tuple(
+            parse_evidence(item) for item in document.get("missingContributions", [])
+        ),
     )

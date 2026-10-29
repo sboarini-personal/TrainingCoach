@@ -276,6 +276,13 @@ def test_overrides_extend_one_chain_per_field(stores: Stores) -> None:
         second,
         gain,
     ]
+    assert stores.overrides.entities_with_field(
+        SCOPE_A, EntityType.ACTIVITY, "elevation.gainMeters"
+    ) == [ACTIVITY]
+    assert (
+        stores.overrides.entities_with_field(SCOPE_A, EntityType.ACTIVITY, "timing.trainingDay")
+        == []
+    )
     assert stores.overrides.get(SCOPE_A, second.override_id) == second
     with pytest.raises(ConcurrencyConflictError):
         stores.overrides.add(
@@ -290,6 +297,7 @@ def test_overrides_are_owner_scoped(stores: Stores) -> None:
     with pytest.raises(NotFoundError):
         stores.overrides.get(SCOPE_A, theirs.override_id)
     assert stores.overrides.for_entity(SCOPE_A, EntityType.ACTIVITY, ACTIVITY) == []
+    assert stores.overrides.entities_with_field(SCOPE_A, EntityType.ACTIVITY, theirs.field) == []
     with pytest.raises(OwnershipError):
         stores.overrides.add(
             SCOPE_A, sample_override(override_id=UUID(int=8), athlete_id=OTHER_ATHLETE)

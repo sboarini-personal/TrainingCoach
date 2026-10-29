@@ -12,11 +12,12 @@ from coach.application.errors import ConcurrencyConflictError, NotFoundError, Ow
 from coach.application.ownership import OwnerScope
 from coach.application.ports import DerivedValueRepository
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.sport import Sport
 from coach.infrastructure.memory import InMemoryDerivedValueRepository
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from coach.infrastructure.sqlite.derived_values import SqliteDerivedValueRepository
 from coach.metrics.derived import MetricSubject
-from samples import ATHLETE, OTHER_ATHLETE, sample_derived_value
+from samples import ATHLETE, OTHER_ATHLETE, sample_derived_value, sample_total
 
 SCOPE_A = OwnerScope(ATHLETE)
 SCOPE_B = OwnerScope(OTHER_ATHLETE)
@@ -130,3 +131,17 @@ def test_database_rejects_rewriting_a_value(tmp_path: Path) -> None:
         connection.execute(
             "UPDATE derived_metric_values SET document = json_set(document, '$.value', 1)"
         )
+
+
+@pytest.mark.req("FR-MET-004")
+def test_the_dimension_is_part_of_the_subject(repository: DerivedValueRepository) -> None:
+    running = repository.add(SCOPE_A, sample_total(UUID(int=11), Sport.RUNNING))
+    cycling = repository.add(SCOPE_A, sample_total(UUID(int=12), Sport.CYCLING))
+    assert repository.current(SCOPE_A, running.metric_id, running.subject) == running
+    assert repository.current(SCOPE_A, cycling.metric_id, cycling.subject) == cycling
+    week = running.subject.with_dimension(None)
+    assert repository.current(SCOPE_A, running.metric_id, week) is None
+    assert repository.get(SCOPE_A, running.value_id).subject.dimension == "RUNNING"
+    assert [
+        item.value_id for item in repository.history(SCOPE_A, running.metric_id, running.subject)
+    ] == [running.value_id]

@@ -7,12 +7,11 @@ status that explains them instead of an invented number.
 
 from __future__ import annotations
 
-import re
-from collections.abc import Callable, Mapping
+import math
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
+from datetime import datetime
 from enum import StrEnum
-from typing import Final
 from uuid import UUID
 
 from coach.domain.common.errors import DomainValidationError
@@ -25,62 +24,28 @@ from coach.domain.common.quality import (
     meets_minimum,
 )
 from coach.domain.common.time import ensure_utc
-from coach.metrics.registry import MetricDefinition
+from coach.metrics.registry import Aggregation, MetricDefinition
+from coach.metrics.subjects import DimensionKind, MetricSubject, SubjectKind
 
-_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-_WEEK = re.compile(r"^[0-9]{4}-W(0[1-9]|[1-4][0-9]|5[0-3])$")
-_EXERCISE = re.compile(r"^ex\.[a-z0-9_]+$")
-
-
-class SubjectKind(StrEnum):
-    ACTIVITY = "ACTIVITY"
-    DAY = "DAY"
-    WEEK = "WEEK"
-    EXERCISE = "EXERCISE"
-
-
-def _valid_day(key: str) -> bool:
-    try:
-        return date.fromisoformat(key).isoformat() == key
-    except ValueError:
-        return False
-
-
-_KEY_RULES: Final[dict[SubjectKind, Callable[[str], bool]]] = {
-    SubjectKind.ACTIVITY: lambda key: bool(_UUID.match(key)),
-    SubjectKind.DAY: _valid_day,
-    SubjectKind.WEEK: lambda key: bool(_WEEK.match(key)),
-    SubjectKind.EXERCISE: lambda key: bool(_EXERCISE.match(key)),
-}
-
-
-@dataclass(frozen=True, slots=True)
-class MetricSubject:
-    kind: SubjectKind
-    key: str
-
-    def __post_init__(self) -> None:
-        if not _KEY_RULES[self.kind](self.key):
-            raise DomainValidationError(f"invalid {self.kind} subject key: {self.key!r}")
-
-    @classmethod
-    def activity(cls, activity_id: UUID) -> MetricSubject:
-        return cls(SubjectKind.ACTIVITY, str(activity_id))
-
-    @classmethod
-    def day(cls, day: date) -> MetricSubject:
-        return cls(SubjectKind.DAY, day.isoformat())
-
-    @classmethod
-    def week(cls, day: date) -> MetricSubject:
-        year, week, _ = day.isocalendar()
-        return cls(SubjectKind.WEEK, f"{year}-W{week:02d}")
+__all__ = [
+    "DerivedMetricValue",
+    "DerivedStatus",
+    "DimensionKind",
+    "InputRecord",
+    "MetricInput",
+    "MetricSubject",
+    "SubjectKind",
+    "derive",
+    "derive_total",
+    "not_applicable",
+]
 
 
 class DerivedStatus(StrEnum):
     COMPUTED = "COMPUTED"
     MISSING_INPUT = "MISSING_INPUT"
     BELOW_MINIMUM_QUALITY = "BELOW_MINIMUM_QUALITY"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +84,7 @@ class DerivedMetricValue:
     uncertainty_reasons: frozenset[UncertaintyReason] = field(default_factory=frozenset)
     computed_at: datetime
     superseded_by: UUID | None = None
+    missing_evidence: tuple[EvidenceRef, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "computed_at", ensure_utc(self.computed_at))
@@ -133,8 +99,15 @@ class DerivedMetricValue:
             UncertaintyReason.MISSING_DATA not in self.uncertainty_reasons
         ):
             raise DomainValidationError("MISSING_INPUT values carry MISSING_DATA")
-        if self.status is not DerivedStatus.MISSING_INPUT and self.input_confidence is None:
+        measured = {DerivedStatus.COMPUTED, DerivedStatus.BELOW_MINIMUM_QUALITY}
+        if self.status in measured and self.input_confidence is None:
             raise DomainValidationError("values with all inputs record their input confidence")
+        if self.missing_evidence and self.status is not DerivedStatus.MISSING_INPUT:
+            raise DomainValidationError("only MISSING_INPUT values name missing contributions")
+        if self.status is DerivedStatus.NOT_APPLICABLE and (
+            self.inputs or self.input_confidence is not None or self.uncertainty_reasons
+        ):
+            raise DomainValidationError("a NOT_APPLICABLE value has no inputs")
 
     @property
     def entity_id(self) -> UUID:
@@ -153,6 +126,8 @@ class DerivedMetricValue:
             self.status,
             frozenset(self.inputs),
             self.missing_inputs,
+            frozenset(self.missing_evidence),
+            self.uncertainty_reasons,
         ) == (
             other.metric_id,
             other.calculation_version,
@@ -160,6 +135,8 @@ class DerivedMetricValue:
             other.status,
             frozenset(other.inputs),
             other.missing_inputs,
+            frozenset(other.missing_evidence),
+            other.uncertainty_reasons,
         )
 
     def superseded(self, by: UUID) -> DerivedMetricValue:
@@ -191,6 +168,7 @@ def derive(
     calculate = definition.calculate
     if calculate is None:
         raise DomainValidationError(f"{definition.metric_id} is not calculated by the application")
+    definition.check_subject(subject)
     specs = {spec.name: spec for spec in definition.required_inputs}
     unexpected = sorted(set(inputs) - specs.keys())
     if unexpected:
@@ -239,5 +217,94 @@ def derive(
         missing_inputs=tuple(missing),
         input_confidence=confidence,
         uncertainty_reasons=frozenset(reasons),
+        computed_at=computed_at,
+    )
+
+
+def derive_total(
+    definition: MetricDefinition,
+    contributions: Sequence[MetricInput],
+    *,
+    value_id: UUID,
+    athlete_id: UUID,
+    subject: MetricSubject,
+    computed_at: datetime,
+) -> DerivedMetricValue:
+    """A period total (metrics spec section 4, P8): one UNKNOWN contribution makes it UNKNOWN."""
+    if definition.aggregation is not Aggregation.SUM:
+        raise DomainValidationError(f"{definition.metric_id} is not an aggregation")
+    definition.check_subject(subject)
+    if not contributions:
+        raise DomainValidationError("a total needs at least one contribution")
+    evidence = [contribution.evidence for contribution in contributions]
+    if len(evidence) != len(set(evidence)):
+        raise DomainValidationError("each contribution has its own evidence")
+    (spec,) = definition.required_inputs
+    records: list[InputRecord] = []
+    reasons: set[UncertaintyReason] = set()
+    missing: list[EvidenceRef] = []
+    for contribution in contributions:
+        reasons |= contribution.uncertainty_reasons
+        if contribution.value is None:
+            missing.append(contribution.evidence)
+            continue
+        records.append(
+            InputRecord(
+                spec.name,
+                spec.check(contribution.value),
+                contribution.evidence,
+                contribution.confidence,
+            )
+        )
+    confidence = lowest_confidence(record.confidence for record in records)
+    value: float | None = None
+    if missing:
+        status = DerivedStatus.MISSING_INPUT
+        reasons.add(UncertaintyReason.MISSING_DATA)
+    elif confidence is not None and not meets_minimum(confidence, definition.minimum_data_quality):
+        status = DerivedStatus.BELOW_MINIMUM_QUALITY
+    else:
+        status = DerivedStatus.COMPUTED
+        value = require_finite(math.fsum(record.value for record in records), definition.metric_id)
+    return DerivedMetricValue(
+        value_id=value_id,
+        athlete_id=athlete_id,
+        metric_id=definition.metric_id,
+        calculation_version=definition.calculation_version,
+        subject=subject,
+        status=status,
+        value=value,
+        unit=definition.unit,
+        inputs=tuple(records),
+        missing_inputs=(spec.name,) if missing else (),
+        input_confidence=confidence,
+        uncertainty_reasons=frozenset(reasons),
+        computed_at=computed_at,
+        missing_evidence=tuple(missing),
+    )
+
+
+def not_applicable(
+    definition: MetricDefinition,
+    *,
+    value_id: UUID,
+    athlete_id: UUID,
+    subject: MetricSubject,
+    computed_at: datetime,
+) -> DerivedMetricValue:
+    """A value that retires the current one: the metric no longer applies to the subject."""
+    definition.check_subject(subject)
+    return DerivedMetricValue(
+        value_id=value_id,
+        athlete_id=athlete_id,
+        metric_id=definition.metric_id,
+        calculation_version=definition.calculation_version,
+        subject=subject,
+        status=DerivedStatus.NOT_APPLICABLE,
+        value=None,
+        unit=definition.unit,
+        inputs=(),
+        missing_inputs=(),
+        input_confidence=None,
         computed_at=computed_at,
     )

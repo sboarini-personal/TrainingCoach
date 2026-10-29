@@ -20,6 +20,7 @@ class EvidenceKind(StrEnum):
     RECOVERY_ASSESSMENT = "RECOVERY_ASSESSMENT"
     INSIGHT = "INSIGHT"
     PLAN_VERSION = "PLAN_VERSION"
+    HR_ZONE_MODEL = "HR_ZONE_MODEL"
 
 
 @dataclass(frozen=True, slots=True)

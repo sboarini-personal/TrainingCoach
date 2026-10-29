@@ -1,13 +1,17 @@
-"""SQLite access and the migration runner (ADR-022, NFR-REL-004).
+"""SQLite access and the migration runner (ADR-022, ADR-027, NFR-REL-004).
 
 One short-lived connection per operation; write transactions take the write lock up front
-(``BEGIN IMMEDIATE``) so concurrent writers serialise instead of deadlocking.
+(``BEGIN IMMEDIATE``) so concurrent writers serialise instead of deadlocking. A batch
+(ADR-027) runs a multi-step command on one connection and one transaction: reads and writes
+inside it join it, each write is a savepoint (a failed write rolls back only itself), and the
+whole batch commits once at the end or rolls back on an exception. Batches are per thread.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from collections.abc import Iterator, Sequence
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime
@@ -17,6 +21,7 @@ from typing import Any, Final
 from coach.infrastructure.sqlite.migrations import MIGRATIONS, Migration
 
 BUSY_TIMEOUT_SECONDS: Final = 10.0
+_SAVEPOINT: Final = "coach_write"
 _MIGRATIONS_TABLE: Final = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
@@ -61,6 +66,7 @@ class SqliteDatabase:
             raise ValueError("migration versions must be consecutive from 1")
         self._path = path
         self._migrations = tuple(migrations)
+        self._local = threading.local()
 
     @classmethod
     def open(cls, path: Path) -> SqliteDatabase:
@@ -69,13 +75,53 @@ class SqliteDatabase:
         database.migrate()
         return database
 
+    def _batch_connection(self) -> sqlite3.Connection | None:
+        connection: sqlite3.Connection | None = getattr(self._local, "connection", None)
+        return connection
+
+    @contextmanager
+    def batch(self) -> Iterator[None]:
+        """One connection and one transaction for everything inside (a nested batch joins)."""
+        if self._batch_connection() is not None:
+            with self.write():  # a nested batch is a savepoint of the outer one
+                yield
+            return
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._local.connection = connection
+            try:
+                yield
+                connection.execute("COMMIT")
+            except BaseException:
+                if connection.in_transaction:
+                    connection.execute("ROLLBACK")
+                raise
+            finally:
+                self._local.connection = None
+
     @contextmanager
     def read(self) -> Iterator[sqlite3.Connection]:
+        batch = self._batch_connection()
+        if batch is not None:
+            yield batch
+            return
         with closing(self._connect()) as connection:
             yield connection
 
     @contextmanager
     def write(self) -> Iterator[sqlite3.Connection]:
+        batch = self._batch_connection()
+        if batch is not None:
+            batch.execute(f"SAVEPOINT {_SAVEPOINT}")
+            try:
+                yield batch
+                batch.execute(f"RELEASE {_SAVEPOINT}")
+            except BaseException:
+                if batch.in_transaction:  # SQLite may already have rolled everything back
+                    batch.execute(f"ROLLBACK TO {_SAVEPOINT}")
+                    batch.execute(f"RELEASE {_SAVEPOINT}")
+                raise
+            return
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:

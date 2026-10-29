@@ -8,6 +8,7 @@ athlete is reported exactly like a missing one.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, Self
@@ -27,6 +28,8 @@ from coach.metrics.derived import DerivedMetricValue, MetricSubject
 
 type Clock = Callable[[], datetime]
 type IdFactory = Callable[[], UUID]
+# A multi-step command as one unit of work (ADR-027); a no-op for in-memory stores.
+type Batch = Callable[[], AbstractContextManager[None]]
 
 
 class OwnedAggregate(Protocol):
@@ -132,6 +135,12 @@ class OverrideRepository(Protocol):
     def for_entity(
         self, scope: OwnerScope, entity_type: EntityType, entity_id: UUID
     ) -> Sequence[DataOverride]: ...
+
+    def entities_with_field(
+        self, scope: OwnerScope, entity_type: EntityType, field: str
+    ) -> Sequence[UUID]:
+        """Entities with at least one override of ``field`` (for example a moved training day)."""
+        ...
 
 
 class IngestionRecordRepository(Protocol):

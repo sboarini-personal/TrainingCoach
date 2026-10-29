@@ -90,8 +90,14 @@ from coach.domain.integration.capabilities import (
 )
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.raw.source import DetectedType, MalwareScan, RawSource, SourceOrigin
-from coach.metrics.catalog import SRPE_LOAD
-from coach.metrics.derived import DerivedMetricValue, MetricInput, MetricSubject, derive
+from coach.metrics.catalog import DISTANCE_TOTAL, SRPE_LOAD
+from coach.metrics.derived import (
+    DerivedMetricValue,
+    MetricInput,
+    MetricSubject,
+    derive,
+    derive_total,
+)
 from coach.metrics.quality import QUALITY_RULES_VERSION, assess
 
 NOW = datetime(2026, 10, 24, 18, 0, tzinfo=UTC)
@@ -566,4 +572,28 @@ def sample_integration_status(athlete_id: UUID = ATHLETE) -> IntegrationStatus:
         capabilities=sample_capabilities(
             activityRead=CapabilityValue.SUPPORTED, pullSupport=CapabilityValue.SUPPORTED
         ),
+    )
+
+
+def sample_total(
+    value_id: UUID | None = None,
+    sport: Sport | None = Sport.RUNNING,
+    *,
+    missing: bool = False,
+) -> DerivedMetricValue:
+    """A weekly distance total of two runs, per sport (metrics spec 9.3)."""
+    return derive_total(
+        DISTANCE_TOTAL,
+        [
+            MetricInput(
+                value,
+                EvidenceRef(EvidenceKind.ACTIVITY, UUID(int=number), "distance.meters"),
+                Confidence.MEDIUM,
+            )
+            for number, value in ((1, 10050.5), (2, None if missing else 5000.0))
+        ],
+        value_id=value_id or UUID("0193b2a0-0000-7000-8000-000000000904"),
+        athlete_id=ATHLETE,
+        subject=MetricSubject.week(START.date(), sport=sport),
+        computed_at=NOW,
     )

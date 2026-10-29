@@ -107,3 +107,89 @@ def test_failed_write_rolls_back(tmp_path: Path) -> None:
         insert_twice()
     with database.read() as connection:
         assert connection.execute("SELECT count(*) FROM aggregates").fetchone()[0] == 0
+
+
+ROW = "INSERT INTO aggregates VALUES ('goal', ?, 'a', 1, '1.0.0', '{}')"
+
+
+def _count(path: Path) -> int:
+    with sqlite3.connect(path) as connection:
+        return int(connection.execute("SELECT count(*) FROM aggregates").fetchone()[0])
+
+
+@pytest.mark.req("NFR-REL-001", "NFR-REL-003")
+def test_a_batch_commits_once_at_the_end(tmp_path: Path) -> None:
+    path = tmp_path / "coach.sqlite3"
+    database = SqliteDatabase.open(path)
+    with database.batch():
+        for key in ("a", "b"):
+            with database.write() as connection:
+                connection.execute(ROW, (key,))
+        with database.read() as connection:  # reads inside see the batch's own writes
+            assert connection.execute("SELECT count(*) FROM aggregates").fetchone()[0] == 2
+        assert _count(path) == 0  # nothing visible outside until the batch commits
+    assert _count(path) == 2
+
+
+@pytest.mark.req("NFR-REL-001")
+def test_a_failed_write_inside_a_batch_rolls_back_only_itself(tmp_path: Path) -> None:
+    path = tmp_path / "coach.sqlite3"
+    database = SqliteDatabase.open(path)
+
+    def duplicate() -> None:
+        with database.write() as connection:
+            connection.execute(ROW, ("b",))
+            connection.execute(ROW, ("a",))  # duplicate key: this write fails
+
+    with database.batch():
+        with database.write() as connection:
+            connection.execute(ROW, ("a",))
+        with pytest.raises(sqlite3.IntegrityError):
+            duplicate()
+        with database.write() as connection:
+            connection.execute(ROW, ("c",))
+    with database.read() as connection:
+        keys = [row[0] for row in connection.execute("SELECT entity_id FROM aggregates")]
+    assert sorted(keys) == ["a", "c"]
+
+
+@pytest.mark.req("NFR-REL-001")
+def test_an_exception_rolls_the_whole_batch_back_and_batches_nest(tmp_path: Path) -> None:
+    path = tmp_path / "coach.sqlite3"
+    database = SqliteDatabase.open(path)
+
+    def failing() -> None:
+        with database.batch():
+            with database.write() as connection:
+                connection.execute(ROW, ("a",))
+            with database.batch(), database.write() as connection:  # joins the outer batch
+                connection.execute(ROW, ("b",))
+            raise RuntimeError("stop")
+
+    with pytest.raises(RuntimeError):
+        failing()
+    assert _count(path) == 0
+    with database.write() as connection:  # usable again after the batch ended
+        connection.execute(ROW, ("z",))
+    assert _count(path) == 1
+
+
+@pytest.mark.req("NFR-REL-001")
+def test_a_nested_batch_that_fails_rolls_back_only_itself(tmp_path: Path) -> None:
+    path = tmp_path / "coach.sqlite3"
+    database = SqliteDatabase.open(path)
+
+    def nested_failure() -> None:
+        with database.batch():
+            with database.write() as connection:
+                connection.execute(ROW, ("b",))
+            raise RuntimeError("inner command failed")
+
+    with database.batch():
+        with database.write() as connection:
+            connection.execute(ROW, ("a",))
+        with pytest.raises(RuntimeError):
+            nested_failure()
+    with database.read() as connection:
+        keys = [row[0] for row in connection.execute("SELECT entity_id FROM aggregates")]
+    assert keys == ["a"]

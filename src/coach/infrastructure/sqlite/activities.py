@@ -287,6 +287,17 @@ class SqliteOverrideRepository:
         with self._database.read() as connection:
             return self._for_entity(connection, scope, entity_type, entity_id)
 
+    def entities_with_field(
+        self, scope: OwnerScope, entity_type: EntityType, field: str
+    ) -> list[UUID]:
+        with self._database.read() as connection:
+            rows = connection.execute(
+                "SELECT DISTINCT entity_id FROM data_overrides "
+                "WHERE athlete_id = ? AND entity_type = ? AND field = ? ORDER BY entity_id",
+                (str(scope.athlete_id), entity_type.value, field),
+            ).fetchall()
+        return [UUID(row["entity_id"]) for row in rows]
+
     @staticmethod
     def _for_entity(
         connection: sqlite3.Connection,

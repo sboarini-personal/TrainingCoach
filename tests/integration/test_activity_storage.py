@@ -14,6 +14,7 @@ from coach.application.contracts import (
     DATA_QUALITY_ISSUE_CODEC,
 )
 from coach.application.derived_metrics import DerivedMetricService
+from coach.application.errors import NotFoundError
 from coach.application.identity import Principal
 from coach.application.ownership import OwnerScope
 from coach.application.raw_storage import RawStorage
@@ -74,6 +75,7 @@ class Installation:
             clock=clock,
             ids=ids,
             screen=SecretScreen(events),
+            batch=self.database.batch,
         )
 
 
@@ -141,3 +143,31 @@ def test_corrections_never_change_raw_or_normalized_data(tmp_path: Path) -> None
     ]
     assert history[-1].value == pytest.approx(6.0 * 3720 / 60)
     assert view.activity.number("training.load.internal.sessionRpeLoad") == history[-1].value
+
+
+@pytest.mark.req("NFR-REL-001", "FR-ACT-007")
+def test_an_ingest_that_fails_part_way_stores_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installation = Installation(tmp_path)
+    stored = installation.storage.store(
+        SCOPE,
+        FIT_BYTES,
+        origin=SourceOrigin.FILE_UPLOAD,
+        category="ACTIVITY_FILE",
+        detected_type=DetectedType.FIT,
+        malware_scan=MalwareScan.NOT_SCANNED,
+    )
+
+    def broken(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("metrics failed after the activity was saved")
+
+    monkeypatch.setattr(DerivedMetricService, "compute", broken)
+    with pytest.raises(RuntimeError):
+        installation.service.ingest(SCOPE, _observation_for(stored.source))
+    assert installation.activities.list_all(SCOPE) == []
+    with pytest.raises(NotFoundError):
+        installation.observations.get(SCOPE, SourceKey(stored.source.raw_source_id))
+    monkeypatch.undo()
+    result = installation.service.ingest(SCOPE, _observation_for(stored.source))
+    assert result.outcome is IngestOutcome.CREATED  # a retry starts from a clean state

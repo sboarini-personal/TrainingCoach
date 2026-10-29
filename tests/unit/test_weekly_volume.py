@@ -55,18 +55,22 @@ def test_pending_and_merged_activities_are_excluded_and_unknowns_counted() -> No
 
 @pytest.mark.req("FR-MET-001", "FR-ACT-006")
 def test_activity_bindings_map_every_metric_input_to_a_field() -> None:
-    (binding,) = ACTIVITY_BINDINGS
-    assert binding.definition is SRPE_LOAD
+    # P8 adds speed and pace bindings; session RPE load keeps its own (metrics spec 8, 9.1).
+    (binding,) = [item for item in ACTIVITY_BINDINGS if item.definition is SRPE_LOAD]
     assert dict(binding.inputs) == {
-        "rpe": "subjective.rpe",
-        "session_duration_seconds": "timing.elapsedSeconds",
+        "rpe": ("subjective.rpe",),
+        "session_duration_seconds": ("timing.elapsedSeconds",),
     }
     with pytest.raises(DomainValidationError):
-        ActivityBinding(SRPE_LOAD, (("rpe", "subjective.rpe"),))
+        ActivityBinding(SRPE_LOAD, (("rpe", ("subjective.rpe",)),))
     with pytest.raises(DomainValidationError):
         ActivityBinding(
             SRPE_LOAD,
-            (("rpe", "subjective.rpe"), ("session_duration_seconds", "timing.duration")),
+            (("rpe", ("subjective.rpe",)), ("session_duration_seconds", ("timing.duration",))),
+        )
+    with pytest.raises(DomainValidationError):
+        ActivityBinding(
+            SRPE_LOAD, (("rpe", ()), ("session_duration_seconds", ("timing.elapsedSeconds",)))
         )
 
 

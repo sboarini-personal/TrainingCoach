@@ -57,6 +57,7 @@ from samples import (
     sample_observation,
     sample_override,
     sample_raw_source,
+    sample_total,
     tennis_values,
 )
 from schemas import EXAMPLES_DIR, load_json, validation_errors
@@ -74,6 +75,8 @@ ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
     (COACHING_STATE_CODEC, CoachingState.new(ATHLETE)),
     (RAW_SOURCE_CODEC, sample_raw_source()),
     (DERIVED_VALUE_CODEC, sample_derived_value()),
+    (DERIVED_VALUE_CODEC, sample_total()),
+    (DERIVED_VALUE_CODEC, sample_total(missing=True)),
     (CREDENTIAL_RECORD_CODEC, sample_credential_record()),
     (ACTIVITY_CODEC, sample_activity()),
     (ACTIVITY_CODEC, rich_activity()),

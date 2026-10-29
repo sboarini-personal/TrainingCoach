@@ -2,7 +2,8 @@
 
 The stored document is the value as computed; only the ``superseded_by`` column is ever set,
 once. A partial unique index allows a single current value per athlete, metric and subject,
-and a trigger rejects any other change.
+and a trigger rejects any other change. The ``subject_key`` column holds the subject's key
+with its dimension (``MetricSubject.storage_key``), so the dimension is part of uniqueness.
 """
 
 from __future__ import annotations
@@ -76,7 +77,7 @@ class SqliteDerivedValueRepository:
                 "SELECT document, superseded_by FROM derived_metric_values "
                 "WHERE athlete_id = ? AND metric_id = ? AND subject_kind = ? AND subject_key = ? "
                 "AND superseded_by IS NULL",
-                (str(scope.athlete_id), metric_id, subject.kind.value, subject.key),
+                (str(scope.athlete_id), metric_id, subject.kind.value, subject.storage_key),
             ).fetchone()
         return None if row is None else _load(row)
 
@@ -88,7 +89,7 @@ class SqliteDerivedValueRepository:
                 "SELECT document, superseded_by FROM derived_metric_values "
                 "WHERE athlete_id = ? AND metric_id = ? AND subject_kind = ? AND subject_key = ? "
                 "ORDER BY rowid",
-                (str(scope.athlete_id), metric_id, subject.kind.value, subject.key),
+                (str(scope.athlete_id), metric_id, subject.kind.value, subject.storage_key),
             ).fetchall()
         return [_load(row) for row in rows]
 
@@ -115,7 +116,7 @@ def _insert(connection: sqlite3.Connection, value: DerivedMetricValue) -> None:
             str(value.athlete_id),
             value.metric_id,
             value.subject.kind.value,
-            value.subject.key,
+            value.subject.storage_key,
             document["schemaVersion"],
             dumps(document),
         ),

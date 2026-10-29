@@ -10,12 +10,15 @@ a retry completes follow-up work an interrupted run left undone (NFR-REL-001).
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Concatenate
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from coach.application.activity_metrics import ActivityMetricsEngine
 from coach.application.audit import ActorKind, AuditEvent, AuditOutcome
 from coach.application.consent import ConsentGate
 from coach.application.derived_metrics import DerivedMetricService
@@ -27,6 +30,7 @@ from coach.application.ports import (
     ActivityChange,
     ActivityRepository,
     AuditLog,
+    Batch,
     Clock,
     EventSink,
     IdFactory,
@@ -67,12 +71,9 @@ from coach.domain.activity.overrides import (
 )
 from coach.domain.activity.resolution import RESOLUTION_RULES_VERSION, resolve
 from coach.domain.common.errors import DomainValidationError
-from coach.domain.common.evidence import EvidenceKind, EvidenceRef
-from coach.domain.common.quality import UncertaintyReason
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.raw.source import RawSource
 from coach.metrics.catalog import ACTIVITY_BINDINGS, ActivityBinding
-from coach.metrics.derived import MetricInput, MetricSubject
 from coach.metrics.quality import QUALITY_RULES_VERSION, assess, detect_anomalies
 
 _CANDIDATE_WINDOW = timedelta(seconds=START_ZERO_SECONDS)
@@ -167,6 +168,20 @@ def _check_observation_source(observation: Observation, raw: RawSource) -> None:
         raise DomainValidationError("observation does not describe its raw source")
 
 
+def _atomic[**P, R](
+    method: Callable[Concatenate[ActivityService, P], R],
+) -> Callable[Concatenate[ActivityService, P], R]:
+    """Run a command as one unit of work (ADR-027): all of its writes commit or none do."""
+
+    def command(self: ActivityService, /, *args: P.args, **kwargs: P.kwargs) -> R:
+        with self._batch():
+            return method(self, *args, **kwargs)
+
+    command.__name__, command.__qualname__ = method.__name__, method.__qualname__
+    command.__doc__ = method.__doc__
+    return command
+
+
 class ActivityService:
     def __init__(
         self,
@@ -181,6 +196,8 @@ class ActivityService:
         ids: IdFactory,
         screen: SecretScreen,
         bindings: Sequence[ActivityBinding] = ACTIVITY_BINDINGS,
+        engine: ActivityMetricsEngine | None = None,
+        batch: Batch = nullcontext,
     ) -> None:
         self._stores = stores
         self._consents = consents
@@ -191,10 +208,12 @@ class ActivityService:
         self._clock = clock
         self._ids = ids
         self._screen = screen
-        self._bindings = tuple(bindings)
+        self.engine = engine or ActivityMetricsEngine(metrics, bindings=bindings)
+        self._batch = batch
 
     # ------------------------------------------------------------------ ingestion
 
+    @_atomic
     def ingest(self, scope: OwnerScope, observation: Observation) -> IngestResult:
         """Link an observation to its logical activity (FR-ACT-007, NFR-REL-001)."""
         check_owner(scope, observation.athlete_id)
@@ -362,12 +381,7 @@ class ActivityService:
         )
         applied = apply_overrides(activity, overrides)
         values = dict(applied.values)
-        subject = MetricSubject.activity(activity.activity_id)
-        for binding in self._bindings:
-            if binding.target is None:
-                continue
-            current = self._metrics.current(scope, binding.definition.metric_id, subject)
-            values[binding.target] = None if current is None else current.value
+        values.update(self.engine.targets(scope, replace(activity, values=applied.values)))
         normalized_detected = set(
             detect_anomalies(activity.values, imported_at=activity.imported_at)
         )
@@ -380,6 +394,7 @@ class ActivityService:
 
     # ------------------------------------------------------------------ corrections
 
+    @_atomic
     def correct(
         self,
         scope: OwnerScope,
@@ -427,6 +442,7 @@ class ActivityService:
         self._after_change(scope, activity)
         return Correction(stored, notice)
 
+    @_atomic
     def confirm_match(self, scope: OwnerScope, issue_id: UUID) -> Activity:
         """Merge a pending activity into its candidate (deduplication spec section 5)."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
@@ -470,6 +486,7 @@ class ActivityService:
         self._after_change(scope, target)
         return target
 
+    @_atomic
     def keep_separate(self, scope: OwnerScope, issue_id: UUID) -> Activity:
         """The athlete rejects an ambiguous match: the pending activity becomes ACTIVE."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
@@ -492,6 +509,7 @@ class ActivityService:
         self._after_change(scope, pending)
         return pending
 
+    @_atomic
     def split(self, scope: OwnerScope, activity_id: UUID, key: SourceKey) -> Activity:
         """Move one source of an activity into its own ACTIVE activity."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
@@ -539,6 +557,7 @@ class ActivityService:
         self._after_change(scope, separated)
         return separated
 
+    @_atomic
     def acknowledge(self, scope: OwnerScope, issue_id: UUID) -> DataQualityIssue:
         """The athlete accepts flagged data as it is, or has seen a failed import."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
@@ -555,39 +574,8 @@ class ActivityService:
         current = self._stores.activities.get(scope, activity.activity_id)
         view = self._effective(scope, current).activity
         if current.is_live:
-            self._recompute_metrics(scope, view)
+            self.engine.recompute(scope, view)
         self._sync_anomaly_issues(scope, view)
-
-    def _recompute_metrics(self, scope: OwnerScope, view: Activity) -> None:
-        anomalous_fields = {anomaly.field for anomaly in view.quality.anomalies}
-        for binding in self._bindings:
-            inputs = {}
-            for name, path in binding.inputs:
-                spec = next(
-                    item for item in binding.definition.required_inputs if item.name == name
-                )
-                value = view.number(path)
-                reasons: set[UncertaintyReason] = set()
-                if path in anomalous_fields:
-                    reasons.add(UncertaintyReason.SENSOR_QUALITY)
-                if value is not None:
-                    try:
-                        spec.check(value)
-                    except DomainValidationError:
-                        value = None
-                        reasons.add(UncertaintyReason.SENSOR_QUALITY)
-                inputs[name] = MetricInput(
-                    value,
-                    EvidenceRef(EvidenceKind.ACTIVITY, view.activity_id, field=path),
-                    view.quality.confidence,
-                    frozenset(reasons),
-                )
-            self._metrics.compute(
-                scope,
-                binding.definition.metric_id,
-                MetricSubject.activity(view.activity_id),
-                inputs,
-            )
 
     def _sync_anomaly_issues(self, scope: OwnerScope, view: Activity) -> None:
         detected = (

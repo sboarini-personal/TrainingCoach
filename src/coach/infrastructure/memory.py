@@ -347,6 +347,18 @@ class InMemoryOverrideRepository:
             == (scope.athlete_id, entity_type, entity_id)
         ]
 
+    def entities_with_field(
+        self, scope: OwnerScope, entity_type: EntityType, field: str
+    ) -> list[UUID]:
+        with self._lock:
+            found = (
+                item.entity_id
+                for item in self._items.values()
+                if (item.athlete_id, item.entity_type, item.field)
+                == (scope.athlete_id, entity_type, field)
+            )
+            return sorted(set(found), key=str)
+
 
 class InMemoryIngestionRecordRepository:
     def __init__(self) -> None:

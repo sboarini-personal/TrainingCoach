@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -9,6 +10,8 @@ from typing import Final
 from zoneinfo import ZoneInfo
 
 from coach.application.activities import ActivityService, ActivityStores
+from coach.application.activity_metrics import ActivityMetricsEngine
+from coach.application.analytics import AnalyticsService
 from coach.application.authentication import (
     AuthenticationService,
     FailedAuthLockout,
@@ -24,6 +27,7 @@ from coach.application.contracts import (
     DATA_QUALITY_ISSUE_CODEC,
     INTEGRATION_STATUS_CODEC,
     PROFILE_CODEC,
+    TIME_SERIES_CODEC,
 )
 from coach.application.credentials import CredentialService
 from coach.application.derived_metrics import DerivedMetricService
@@ -37,10 +41,12 @@ from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
 from coach.application.sync import SyncService
 from coach.domain.activity.issues import DataQualityIssue
+from coach.domain.activity.streams import TimeSeries
+from coach.domain.athlete.physiology import HeartRateZoneModel
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.common.time import parse_timezone
 from coach.domain.integration.status import IntegrationStatus
-from coach.infrastructure.blobs import FileBlobStore
+from coach.infrastructure.blobs import BlobIntegrityError, FileBlobStore
 from coach.infrastructure.datadir import DataLayout
 from coach.infrastructure.events import LoggingEventSink
 from coach.infrastructure.quarantine import FileQuarantine, UnavailableMalwareScanner
@@ -79,6 +85,16 @@ class TimezoneRequiredError(ApplicationError):
         super().__init__("athlete timezone not set")
 
 
+def zone_models(
+    profiles: SqliteAggregateRepository[AthleteProfile], scope: OwnerScope
+) -> tuple[HeartRateZoneModel, ...]:
+    """The athlete's heart-rate zone models (profile spec 1.1); none without a profile."""
+    try:
+        return profiles.get(scope, scope.athlete_id).zone_models
+    except NotFoundError:
+        return ()
+
+
 def athlete_timezone(
     profiles: SqliteAggregateRepository[AthleteProfile], scope: OwnerScope
 ) -> ZoneInfo:
@@ -109,6 +125,7 @@ class Runtime:
     ingestion_records: SqliteIngestionRecordRepository
     activities: ActivityService
     ingestion: IngestionService
+    analytics: AnalyticsService
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
     sync: SyncService
@@ -179,24 +196,49 @@ def build_runtime(
     blobs = FileBlobStore(layout.raw)
     gate = ConsentGate(consents.ledgers, policy_version=PRIVACY_POLICY_VERSION)
     screen = SecretScreen(events)
+    derived = DerivedMetricService(
+        CATALOG, SqliteDerivedValueRepository(database), clock=clock, ids=new_id
+    )
+
+    def time_series(scope: OwnerScope, digest: str) -> TimeSeries | None:
+        """A stored series; ``None`` when its blob is missing or damaged (zones UNKNOWN)."""
+        try:
+            return TIME_SERIES_CODEC.load(json.loads(blobs.get(scope, digest)))
+        except (NotFoundError, BlobIntegrityError, ValueError, KeyError, TypeError):
+            return None
+
+    engine = ActivityMetricsEngine(
+        derived,
+        zone_models=lambda scope: zone_models(profiles, scope),
+        time_series=time_series,
+    )
+    overrides = SqliteOverrideRepository(database)
     activities = ActivityService(
         ActivityStores(
             activity_store,
             SqliteObservationRepository(database),
-            SqliteOverrideRepository(database),
+            overrides,
             issue_store,
             raw_sources,
         ),
         consents=gate,
-        metrics=DerivedMetricService(
-            CATALOG, SqliteDerivedValueRepository(database), clock=clock, ids=new_id
-        ),
+        metrics=derived,
         timezone_of=lambda scope: athlete_timezone(profiles, scope),
         audit=audit,
         events=events,
         clock=clock,
         ids=new_id,
         screen=screen,
+        engine=engine,
+        batch=database.batch,
+    )
+    analytics = AnalyticsService(
+        activities=activities,
+        store=activity_store,
+        overrides=overrides,
+        metrics=derived,
+        consents=gate,
+        batch=database.batch,
     )
     ingestion_records = SqliteIngestionRecordRepository(database)
     ingestion = IngestionService(
@@ -253,6 +295,7 @@ def build_runtime(
         ingestion_records=ingestion_records,
         activities=activities,
         ingestion=ingestion,
+        analytics=analytics,
         integrations=integrations,
         conditions=conditions,
         sync=sync,

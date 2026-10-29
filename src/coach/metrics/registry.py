@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Final
 
 from coach.domain.common.errors import DomainValidationError
@@ -18,6 +19,7 @@ from coach.domain.common.provenance import MetricOrigin
 from coach.domain.common.quality import Confidence
 from coach.domain.common.sport import Sport
 from coach.domain.common.text import clean_text
+from coach.metrics.subjects import PERIOD_KINDS, DimensionKind, MetricSubject, SubjectKind
 
 APPLICATION_NAMESPACES: Final = frozenset(
     {"any", "run", "cyc", "swim", "str", "ten", "rec", "plan", "goal"}
@@ -29,6 +31,12 @@ _INPUT_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 _SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 type Calculation = Callable[[Mapping[str, float]], float]
+
+
+class Aggregation(StrEnum):
+    """A period total over contributions of the single input of a metric (P8)."""
+
+    SUM = "SUM"
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +81,10 @@ class MetricDefinition:
     provider: str | None = None
     provider_metric_name: str | None = None
     calculate: Calculation | None = field(default=None, compare=False, repr=False)
+    subject_kinds: frozenset[SubjectKind] = frozenset({SubjectKind.ACTIVITY})
+    dimension: DimensionKind | None = None
+    cross_sport: bool = False
+    aggregation: Aggregation | None = None
 
     def __post_init__(self) -> None:
         match = _METRIC_ID.match(self.metric_id)
@@ -86,6 +98,7 @@ class MetricDefinition:
         names = [spec.name for spec in self.required_inputs]
         if len(names) != len(set(names)):
             raise DomainValidationError("input names must be unique")
+        self._check_subjects()
         if self.origin in PROVIDER_ORIGINS:
             self._check_provider_metric(match["namespace"])
         else:
@@ -96,7 +109,7 @@ class MetricDefinition:
             raise DomainValidationError("provider metrics name the provider and its metric")
         if self.provider != namespace or namespace in APPLICATION_NAMESPACES:
             raise DomainValidationError("a provider metric lives in its own provider namespace")
-        if self.calculate is not None:
+        if self.calculate is not None or self.aggregation is not None:
             raise DomainValidationError("provider metrics are not calculated by the application")
 
     def _check_application_metric(self, namespace: str) -> None:
@@ -106,14 +119,37 @@ class MetricDefinition:
             )
         if self.provider is not None or self.provider_metric_name is not None:
             raise DomainValidationError("application metrics are never labelled with a provider")
-        if self.calculate is None:
-            raise DomainValidationError("application metrics are calculated in code")
+        if (self.calculate is None) == (self.aggregation is None):
+            raise DomainValidationError(
+                "application metrics have a calculation or an aggregation in code, not both"
+            )
+        if self.aggregation is not None:
+            if len(self.required_inputs) != 1:
+                raise DomainValidationError("an aggregation has exactly one input")
+            if not self.subject_kinds <= PERIOD_KINDS:
+                raise DomainValidationError("an aggregation is computed for DAY or WEEK subjects")
         if self.origin is MetricOrigin.STANDARD_CALCULATION and not self.reference:
             raise DomainValidationError("a standard calculation must cite its reference")
+
+    def _check_subjects(self) -> None:
+        if not self.subject_kinds:
+            raise DomainValidationError("a metric names the subjects it describes")
+        if self.cross_sport and self.dimension is not DimensionKind.SPORT:
+            raise DomainValidationError("only a SPORT dimension can be cross-sport")
 
     @property
     def is_application_metric(self) -> bool:
         return self.origin not in PROVIDER_ORIGINS
+
+    def check_subject(self, subject: MetricSubject) -> MetricSubject:
+        """Refuse a subject this metric does not describe (kind and dimension)."""
+        if subject.kind not in self.subject_kinds:
+            raise DomainValidationError(f"{self.metric_id} does not describe {subject.kind}")
+        if subject.dimension_kind is not self.dimension and not (
+            subject.dimension is None and self.cross_sport
+        ):
+            raise DomainValidationError(f"{self.metric_id}: the subject dimension does not apply")
+        return subject
 
 
 class MetricRegistry:

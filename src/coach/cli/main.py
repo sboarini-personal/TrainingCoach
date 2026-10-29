@@ -28,6 +28,7 @@ from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.secrets import SecretValue
 from coach.cli import activities as activity_commands
+from coach.cli import analytics as analytics_commands
 from coach.cli import garmin as garmin_commands
 from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.common.errors import DomainValidationError
@@ -76,11 +77,24 @@ def _parser() -> argparse.ArgumentParser:
     )
     zone = profile.add_parser("timezone", help="show or set the IANA timezone")
     zone.add_argument("name", nargs="?", help="for example America/Argentina/Buenos_Aires")
+    zones = profile.add_parser(
+        "hr-zones",
+        help="show heart-rate zone models, or add one (same start date: replaced)",
+    )
+    zones.add_argument(
+        "boundaries", nargs="*", type=int, help="2 to 11 ascending bpm, for example 100 130 150 170"
+    )
+    zones.add_argument("--valid-from", type=date.fromisoformat, help="YYYY-MM-DD; default today")
+    zones.add_argument(
+        "--method", choices=sorted(analytics_commands.ZONE_METHODS), default="custom"
+    )
     upload = commands.add_parser("import", help="import FIT, TCX, GPX, CSV or ZIP files")
     upload.add_argument("paths", nargs="+", type=Path)
     activity = commands.add_parser("activity", help="activities").add_subparsers(
         dest="action", required=True
     )
+    show = activity.add_parser("show", help="one activity with its metrics")
+    show.add_argument("activity_id", type=UUID)
     listing = activity.add_parser("list", help="most recent activities, corrections applied")
     listing.add_argument("--limit", type=int, default=20)
     exporting = activity.add_parser("export", help="write activities as CSV (activity template)")
@@ -91,6 +105,17 @@ def _parser() -> argparse.ArgumentParser:
     issue.add_parser("list", help="open issues")
     acknowledge = issue.add_parser("ack", help="acknowledge an issue")
     acknowledge.add_argument("issue_id", type=UUID)
+    metrics = commands.add_parser("metrics", help="derived metrics").add_subparsers(
+        dest="action", required=True
+    )
+    metrics.add_parser("recompute", help="recompute the metrics of every activity")
+    load = commands.add_parser("load", help="training load and volume").add_subparsers(
+        dest="action", required=True
+    )
+    week = load.add_parser("week", help="one ISO week by sport, and across sports")
+    week.add_argument("--week", help="ISO week, for example 2026-W44; default this week")
+    weeks = load.add_parser("weeks", help="the last weeks, one line each")
+    weeks.add_argument("--count", type=int, default=8)
     garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
         dest="action", required=True
     )
@@ -235,6 +260,16 @@ def main(
                 return activity_commands.timezone(runtime, _session(runtime), args, stream)
             case ("import", _):
                 return activity_commands.import_files(runtime, _session(runtime), args, stream)
+            case ("profile", "hr-zones"):
+                return analytics_commands.hr_zones(runtime, _session(runtime), args, stream)
+            case ("activity", "show"):
+                return analytics_commands.show_activity(runtime, _session(runtime), args, stream)
+            case ("metrics", "recompute"):
+                return analytics_commands.recompute(runtime, _session(runtime), stream)
+            case ("load", "week"):
+                return analytics_commands.load_week(runtime, _session(runtime), args, stream)
+            case ("load", "weeks"):
+                return analytics_commands.load_weeks(runtime, _session(runtime), args, stream)
             case ("activity", "list"):
                 return activity_commands.list_activities(runtime, _session(runtime), args, stream)
             case ("activity", "export"):
