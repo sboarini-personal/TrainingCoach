@@ -138,7 +138,7 @@ Storage (P3, ADR-022): one SQLite file `<data_dir>/coach.sqlite3`.
 |---|---|---|
 | `aggregates` | mutable aggregates as contract documents (profile, availability, goals, events, consent ledger, coaching state) | owner column on every query; optimistic `version` |
 | `raw_sources` | immutable RAW metadata | unique `(athlete_id, sha256)`; trigger rejects every update |
-| `derived_metric_values` | append-only metric values with input snapshots | partial unique index: one current value per athlete, metric and subject; trigger allows only the one-time `superseded_by` link |
+| `derived_metric_values` | append-only metric values with input snapshots | partial unique index: one current value per athlete, metric and subject (the subject key column holds the key and, from P8, its dimension); trigger allows only the one-time `superseded_by` link |
 | `schema_migrations` | applied migrations with SQL checksums | refuses downgrades, edited migrations and unapproved destructive migrations |
 | `activities` (P5) | logical activities (NORMALIZED) as contract documents; status ACTIVE, PENDING_REVIEW or MERGED | owner column on every query; optimistic `version`; start-time index for candidate search |
 | `activity_sources` (P5) | sources of live activities | primary key `(athlete_id, raw_source_id, part)`: a source belongs to at most one live activity |
@@ -146,6 +146,10 @@ Storage (P3, ADR-022): one SQLite file `<data_dir>/coach.sqlite3`.
 | `data_overrides` (P5) | athlete corrections | trigger rejects every update; unique supersession link and one first override per entity and field keep one chain per field |
 
 Data quality issues are aggregates in `aggregates` (kind `data_quality_issue`).
+
+Units of work (P8, ADR-027): a multi-step command runs as one SQLite batch, one
+connection and one transaction, with a savepoint per write. Activity commands, period
+reports and metric recomputation use it.
 
 | `ingestion_records` (P6) | one immutable record per import attempt, upload or provider payload (origin, outcome, reason, hashes, files, activities) | trigger rejects every update; unique idempotency key per athlete; indexes by hash and time |
 
@@ -176,6 +180,13 @@ each page stored as RAW -> for each new activity: original file (ZIP) then detai
 cursor saved after every activity. Retries with backoff and `Retry-After` wrap every port
 call. Failures keep the progress, mark the sync PENDING, set INTEGRATION_ERROR and never block
 local features.
+
+**Metrics (P8, ADR-027):** every activity change recomputes the per-activity metrics of
+its EFFECTIVE view (session RPE load, speed and pace, time in heart-rate zones from the
+time series and the athlete's zone model); reading a day or a week materialises its
+totals (per sport, and across sports for time and session RPE load only); the week report
+shows external and internal load separately. Values carry their input snapshot down to
+activities, derived values and RAW sources.
 
 **Adaptive loop:** activity ingested -> workout execution matching -> metrics -> recovery
 assessment -> insights -> decision (code thresholds plus AI interpretation) -> policy engine
@@ -220,7 +231,7 @@ engine for proposals -> AgentDecision audit.
 | A-15 | Women's health and nutrition data not ingested | Proposed |
 | A-16 | Deduplication tolerances and weights as in the deduplication spec (rules 1.0.0), versioned | Proposed |
 | A-17 | V1 is for adults (18 or older) | Proposed |
-| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability) are initial, versioned values to be reviewed with real data | Proposed |
+| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability, the metric input ranges and the 20 s sample gap of time in zones from P8) are initial, versioned values to be reviewed with real data | Proposed |
 | A-19 | At most one ACTIVE priority-A goal | Proposed |
 | A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
 
@@ -239,8 +250,8 @@ Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md
 | P5 | Canonical Activity and field catalogue, source observations and field-level resolution (ADR-024), time model, data quality rules and issues, deduplication tiers with merge, keep separate and split, DataOverride corrections and the effective view, weekly volume, activity storage (migration 3) | Done |
 | P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP): detection, archives, sandboxed parsers (ADR-025), normalisation rules 1.0.0, time series, ingestion records and failure issues, CSV export, CLI import | Done |
 | P7 | FitnessProvider port and fake provider, capability model and POL-CAPABILITY, IntegrationStatus, LocalWorkoutPublisher, Garmin Personal adapter (token broker, thin transport, request budget, `garmin_activity` normaliser 1.0.0), SyncService with windows, cursor, retries and degradation (ADR-026), provider payloads through the ingestion pipeline, CLI `garmin sync` and `garmin status` | Done |
-| P8 | Deterministic metrics engine | Next |
-| P9 | Running, cycling, swimming analytics; tennis load | |
+| P8 | Deterministic metrics engine: subject dimensions, aggregations, speed and pace, time in heart-rate zones, period totals materialised on read, week report with external and internal load, recomputation, SQLite units of work (ADR-027), CLI `load`, `metrics`, `activity show`, `profile hr-zones` | Done |
+| P9 | Running, cycling, swimming analytics; tennis load | Next |
 | P10 | Exercise catalogue, strength prescription and execution, interference | |
 | P11 | Check-in, recovery, patterns, insights, report data | |
 | P12 | Policy engine (full), planning, versioning, execution, adaptive loop | |

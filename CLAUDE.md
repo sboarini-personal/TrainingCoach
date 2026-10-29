@@ -103,8 +103,8 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P7 are done. Next: P8 (deterministic metrics engine). See `docs/architecture.md`
-section 8.
+P0 to P8 are done. Next: P9 (running, cycling and swimming analytics, tennis load). See
+`docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 `AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
@@ -137,3 +137,12 @@ scripted HTTP transport), payloads from `tests/garmin_samples.py`; nothing conta
 Scripts that write repository files from Python pass an explicit LF newline to
 `write_text`: Windows text mode writes CRLF otherwise (`.gitattributes` expects LF). Tokens in
 tests are built at run time (`garmin_samples.jwt`): detect-secrets blocks JWT-shaped literals.
+
+Metrics (P8): register a metric in `coach.metrics.catalog` (subject kinds, dimension,
+calculation or aggregation, reference for STANDARD_CALCULATION); per-activity metrics are
+an `ActivityBinding` (fields in order of preference, sports) run by
+`ActivityMetricsEngine`; period totals are a `PeriodTotal` read through
+`AnalyticsService`. Multi-step commands take the `Batch` port (`SqliteDatabase.batch`):
+one connection and one transaction, a savepoint per write. Tests: `World` in
+`tests/activity_world.py` has `zone_models` and `series` for the engine. Shell heredocs
+break on apostrophes in this environment: put edit scripts in `reports/` as files.

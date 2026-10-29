@@ -51,11 +51,23 @@ uv run coach issue list                             # data problems and failed i
 uv run coach garmin sync                            # pull new activities (Personal API)
 uv run coach garmin sync --since 2026-09-01         # re-scan from a date
 uv run coach garmin status                          # freshness, errors, capabilities, key expiry
+uv run coach load week                              # this week by sport, and across sports
+uv run coach load week --week 2026-W44              # a given ISO week
+uv run coach load weeks --count 12                  # one line per week
+uv run coach activity show <activity-id>            # an activity with speed, pace and zones
+uv run coach profile hr-zones 100 130 150 165 180 --valid-from 2020-01-01
+uv run coach metrics recompute                      # after upgrading, or a zone change
 ```
 
 Imports run each file through a sandboxed parser; rejected files leave only an ingestion
 record and an issue (`coach issue list`). The CSV template header is documented in
 `spec/integration/files.spec.md` section 8.4.
+
+Metrics are calculated in code (`spec/functional/metrics.spec.md` section 9). A weekly
+total with activities that lack the value is shown as `>= known (n unknown)`, never as
+the total. Distances are never added across sports. Time in heart-rate zones needs a zone
+model (`coach profile hr-zones`, which recomputes the metrics); activities imported before
+a metric existed get it with `coach metrics recompute`.
 
 `coach garmin sync` uses the Garmin Personal API key stored with `coach secret set
 garmin-api-key` (create it in Garmin Connect, under Personal API key). It pulls the last 8

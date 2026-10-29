@@ -1,5 +1,13 @@
 # Acceptance: metrics and lineage
 
+Implementation status (P8): AT-MET-001 is executed by the metrics engine over activities
+(`tests/unit/test_activity_metrics.py`, `tests/unit/test_metrics_engine.py`,
+`tests/integration/test_cli_metrics.py`): speed, pace and time in zones are calculated in
+code from the EFFECTIVE view, store their input snapshot and recompute idempotently, and
+an activity below the minimum quality gets an UNKNOWN value with its reason. AT-LIN-001
+is executed for a weekly load total down to session values, activities and RAW sources
+(`tests/unit/test_analytics.py`); insights and recommendations arrive in P11.
+
 Implementation status (P3): AT-MET-001 is executed with session RPE load
 (`tests/unit/test_derived_metrics.py`, `tests/unit/test_derived_metric_service.py`); the full
 metrics engine over activities comes in P8. AT-MET-002 is executed by
