@@ -25,7 +25,13 @@ from coach.domain.common.time import TrainingDayBasis, Weekday
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.goals.goal import GoalPriority, GoalStatus
 from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
-from coach.domain.strength.vocabulary import ContraindicationTag, MovementPattern, MuscleGroup
+from coach.domain.strength.prescription import EffortCue, InterferenceLevel, LoadKind
+from coach.domain.strength.vocabulary import (
+    BodyRegion,
+    ContraindicationTag,
+    MovementPattern,
+    MuscleGroup,
+)
 from coach.metrics.derived import DerivedStatus, SubjectKind
 from samples import (
     ATHLETE,
@@ -68,6 +74,18 @@ ENUM_PAIRS: list[tuple[type[Enum], str, tuple[str, ...]]] = [
     (MuscleGroup, "workout", ("$defs", "muscleGroup")),
     (Equipment, "exercise", ("properties", "equipment", "items")),
     (ContraindicationTag, "exercise", ("properties", "contraindicationTags", "items")),
+    (BodyRegion, "workout", ("$defs", "bodyRegion")),
+    (EffortCue, "workout", ("$defs", "strengthExercise", "properties", "effortCue")),
+    (
+        LoadKind,
+        "workout",
+        ("$defs", "strengthExercise", "properties", "load", "properties", "kind"),
+    ),
+    (
+        InterferenceLevel,
+        "workout",
+        ("$defs", "strengthWorkout", "properties", "expectedInterference", "properties", "level"),
+    ),
 ]
 
 

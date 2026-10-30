@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:workout:1",
   "title": "PlannedWorkout",
-  "description": "A workout inside a training plan version (FR-PLN-004, FR-PLN-005, FR-PLN-008, FR-STR-004, FR-TEN-001). Exactly one detail block matching 'type' is present.",
+  "description": "A workout inside a training plan version (FR-PLN-004, FR-PLN-005, FR-PLN-008, FR-STR-004, FR-TEN-001). Exactly one detail block matching 'type' is present. Version 1.1.0 (P10): expected interference names body regions (strength spec 2) and a strength exercise may state a plain-language effortCue instead of RPE or RIR (strength spec 4).",
   "type": "object",
   "required": ["schemaVersion", "id", "type", "trainingDay", "order", "isKeyWorkout", "objective", "explanation"],
   "additionalProperties": false,
@@ -116,6 +116,34 @@
         "BICEPS",
         "TRICEPS",
         "FOREARMS"
+      ]
+    },
+    "bodyRegion": {
+      "description": "Added in 1.1.0: the muscle groups plus four joint and tendon regions (strength spec 2).",
+      "enum": [
+        "QUADRICEPS",
+        "HAMSTRINGS",
+        "GLUTES",
+        "CALVES",
+        "SOLEUS",
+        "ADDUCTORS",
+        "ABDUCTORS",
+        "FOOT_ANKLE",
+        "CORE",
+        "ERECTOR_SPINAE",
+        "LATS",
+        "RHOMBOIDS",
+        "TRAPEZIUS",
+        "PECTORALS",
+        "DELTOIDS",
+        "ROTATOR_CUFF",
+        "BICEPS",
+        "TRICEPS",
+        "FOREARMS",
+        "ACHILLES_REGION",
+        "KNEES",
+        "SHOULDERS",
+        "ELBOWS"
       ]
     },
     "exerciseId": { "type": "string", "pattern": "^ex\\.[a-z0-9_]+$" },
@@ -282,6 +310,10 @@
         },
         "targetRpe": { "$ref": "urn:coach:schema:common:1#/$defs/rpe" },
         "targetRir": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+        "effortCue": {
+          "description": "Added in 1.1.0: plain-language effort when the athlete is not familiar with RPE or RIR (EASY or MODERATE then; strength spec 4).",
+          "enum": ["EASY", "MODERATE", "HARD"]
+        },
         "restSeconds": { "type": "integer", "minimum": 0, "maximum": 900 },
         "tempo": { "type": ["string", "null"], "pattern": "^[0-9X]-[0-9X]-[0-9X]-[0-9X]$" },
         "alternatives": {
@@ -323,7 +355,7 @@
             "affectedRegions": {
               "type": "array",
               "uniqueItems": true,
-              "items": { "$ref": "#/$defs/muscleGroup" }
+              "items": { "$ref": "#/$defs/bodyRegion" }
             },
             "notes": { "type": "string", "maxLength": 500 }
           }

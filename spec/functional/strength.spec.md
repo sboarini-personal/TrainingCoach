@@ -90,6 +90,24 @@ goal), **sets**, **reps**, **load or RPE or RIR**, **rest**, **target muscles**,
 familiar with them (profile); otherwise loads are prescribed conservatively with plain-language
 effort cues.
 
+Rules 1.0.0 (P10, precision of this section; `coach.domain.strength.prescription`, workout
+contract 1.1.0):
+
+- An exercise's movement pattern and muscles are the catalogue's (a prescription is built
+  from the catalogue exercise and checked against it); its alternatives are catalogue
+  exercises of the same movement pattern, never itself.
+- Sets 1 to 20, a repetition range within 1 to 100, rest 0 to 900 s, tempo as four digits or
+  X; a workout lasts 1 minute to 3 hours and has at least one exercise.
+- Load: ABSOLUTE_KG (above 0, at most 1000), PERCENT_1RM (above 0, at most 100), RPE_BASED
+  (the load that gives the target RPE or RIR, so it needs one) or BODYWEIGHT; the last two
+  state no value.
+- Effort: a target RPE only for an athlete whose profile says they are familiar with RPE, a
+  target RIR only for one familiar with RIR; unknown familiarity counts as not familiar.
+  Without RPE or RIR the exercise states an `effortCue` (contract 1.1.0): EASY or MODERATE,
+  never HARD, with a stated load or bodyweight: that is the conservative prescription.
+- Expected interference names body regions (section 2; contract 1.1.0, which widened
+  `affectedRegions` from muscle groups to body regions, an additive change).
+
 ## 5. Execution capture (FR-STR-005)
 
 `StrengthSetResult`: `workoutId`, `exerciseId`, `setNumber`, `targetReps`, `completedReps`,
