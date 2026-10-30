@@ -47,6 +47,13 @@ class PowerSource(StrEnum):
     UNKNOWN = "UNKNOWN"
 
 
+class PowerSensor(StrEnum):
+    """The power device a file names (files spec 8.6): evidence for the power source."""
+
+    POWER_METER = "POWER_METER"
+    SMART_TRAINER = "SMART_TRAINER"
+
+
 class CadenceUnit(StrEnum):
     STEPS_PER_MIN = "STEPS_PER_MIN"
     RPM = "RPM"
@@ -469,6 +476,7 @@ _FIELDS: Final = (
     _num("performance.averagePaceSecondsPer100m", Group.COMPUTED),
     _of("performance.cadence", FieldKind.CADENCE, Group.SENSOR),
     FieldSpec(path="performance.power", kind=FieldKind.POWER, group=Group.SENSOR, nullable=False),
+    _code("performance.powerSensor", Group.SENSOR, PowerSensor, correctable=True),
     _num("performance.runningDynamics.strideLengthMeters", Group.SENSOR),
     _num("performance.runningDynamics.verticalOscillationMm", Group.SENSOR),
     _num("performance.runningDynamics.groundContactTimeMs", Group.SENSOR),

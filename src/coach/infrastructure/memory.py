@@ -29,7 +29,7 @@ from coach.application.ownership import OwnerScope, check_owner
 from coach.application.ports import ActivityChange, IdFactory, OwnedAggregate
 from coach.application.secrets import SecretValue
 from coach.domain.activity.activity import Activity
-from coach.domain.activity.observation import Observation, SourceKey
+from coach.domain.activity.observation import Observation, SourceKey, supersedes
 from coach.domain.activity.overrides import (
     DataOverride,
     EntityType,
@@ -283,27 +283,54 @@ class InMemoryActivityRepository:
 
 
 class InMemoryObservationRepository:
+    """Revisions per source key, oldest first; the last one is current (ADR-029)."""
+
     def __init__(self) -> None:
-        self._items: dict[SourceKey, Observation] = {}
+        self._items: dict[SourceKey, list[Observation]] = {}
         self._lock = threading.Lock()
 
     def add(self, scope: OwnerScope, observation: Observation) -> tuple[Observation, bool]:
         check_owner(scope, observation.athlete_id)
         with self._lock:
-            existing = self._items.get(observation.key)
-            if existing is None:
-                self._items[observation.key] = observation
+            revisions = self._items.get(observation.key)
+            if revisions is None:
+                self._items[observation.key] = [observation]
                 return observation, True
-            if existing != observation:
+            if revisions[-1] != observation:
                 raise ConcurrencyConflictError("a different observation exists for this source")
-            return existing, False
+            return revisions[-1], False
 
     def get(self, scope: OwnerScope, key: SourceKey) -> Observation:
         with self._lock:
-            item = self._items.get(key)
-            if item is None or item.athlete_id != scope.athlete_id:
+            revisions = self._items.get(key)
+            if revisions is None or revisions[-1].athlete_id != scope.athlete_id:
                 raise NotFoundError
-            return item
+            return revisions[-1]
+
+    def list_all(self, scope: OwnerScope) -> list[Observation]:
+        with self._lock:
+            return [
+                revisions[-1]
+                for revisions in self._items.values()
+                if revisions[-1].athlete_id == scope.athlete_id
+            ]
+
+    def add_revision(self, scope: OwnerScope, observation: Observation) -> Observation:
+        check_owner(scope, observation.athlete_id)
+        with self._lock:
+            revisions = self._items.get(observation.key)
+            if revisions is None or revisions[-1].athlete_id != scope.athlete_id:
+                raise NotFoundError
+            if not supersedes(observation, revisions[-1]):
+                raise ConcurrencyConflictError("only a newer normaliser version is a revision")
+            revisions.append(observation)
+            return observation
+
+    def revisions(self, scope: OwnerScope, key: SourceKey) -> list[Observation]:
+        """Every revision of a source, oldest first (lineage)."""
+        with self._lock:
+            revisions = self._items.get(key, [])
+            return [item for item in revisions if item.athlete_id == scope.athlete_id]
 
 
 class InMemoryOverrideRepository:

@@ -55,11 +55,18 @@ from coach.application.contracts.integration import (
 )
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
+from coach.application.contracts.segments import (
+    laps_from_contract,
+    laps_to_contract,
+    lengths_from_contract,
+    lengths_to_contract,
+)
 from coach.application.credentials import CredentialRecord
 from coach.domain.activity.activity import Activity
 from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.activity.observation import Observation
 from coach.domain.activity.overrides import DataOverride
+from coach.domain.activity.segments import Laps, Lengths
 from coach.domain.activity.streams import TimeSeries
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.availability.availability import Availability
@@ -147,6 +154,12 @@ INGESTION_RECORD_CODEC: Final[DocumentCodec[IngestionRecord]] = DocumentCodec(
 TIME_SERIES_CODEC: Final[DocumentCodec[TimeSeries]] = DocumentCodec(
     "time_series", "time-series", time_series_to_contract, time_series_from_contract
 )
+LAPS_CODEC: Final[DocumentCodec[Laps]] = DocumentCodec(
+    "laps", "laps", laps_to_contract, laps_from_contract
+)
+LENGTHS_CODEC: Final[DocumentCodec[Lengths]] = DocumentCodec(
+    "lengths", "lengths", lengths_to_contract, lengths_from_contract
+)
 INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
     "integration_status",
     "integration-status",
@@ -169,5 +182,7 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     DATA_QUALITY_ISSUE_CODEC,
     INGESTION_RECORD_CODEC,
     TIME_SERIES_CODEC,
+    LAPS_CODEC,
+    LENGTHS_CODEC,
     INTEGRATION_STATUS_CODEC,
 )

@@ -60,7 +60,9 @@ from coach.domain.activity.observation import (
     Observation,
     SourceKey,
     SourceKind,
+    same_session,
     source_kind_of,
+    supersedes,
 )
 from coach.domain.activity.overrides import (
     SUBTYPE_FIELD,
@@ -92,6 +94,14 @@ class IngestResult:
     activity: Activity
     outcome: IngestOutcome
     match_score: float | None = None
+
+
+class RenormalisationRefusedError(InvalidOperationError):
+    """A re-normalised observation cannot replace the stored one (activities spec 1.1)."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(f"re-normalisation refused: {reason}")
+        self.reason = reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,6 +263,43 @@ class ActivityService:
         created = self._create(scope, observation, ActivityStatus.ACTIVE, now)
         self._events.emit(EventName.ACTIVITY_CREATED, {"sport": created.sport.value})
         return IngestResult(created, IngestOutcome.CREATED)
+
+    @_atomic
+    def renormalise(self, scope: OwnerScope, observations: Sequence[Observation]) -> list[Activity]:
+        """Add a newer normaliser version of one raw source's observations as their latest
+        revision and rebuild the activities holding them (activities spec 1.1, ADR-029); all or
+        nothing."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        for observation in observations:
+            check_owner(scope, observation.athlete_id)
+            raw = self._stores.raw_sources.get(scope, observation.raw_source_id)
+            _check_observation_source(observation, raw)
+            stored = self._stores.observations.get(scope, observation.key)
+            if not supersedes(observation, stored):
+                raise RenormalisationRefusedError("NOT_NEWER")
+            if not same_session(observation, stored):
+                raise RenormalisationRefusedError("IDENTITY_CHANGED")
+            self._stores.observations.add_revision(scope, observation)
+        holders: dict[UUID, None] = {}
+        for observation in observations:
+            holder = self._stores.activities.find_by_source(scope, observation.key)
+            if holder is not None:
+                holders[holder.activity_id] = None
+        rebuilt = []
+        for activity_id in holders:
+            current = self._stores.activities.get(scope, activity_id)
+            activity = self._rebuild(scope, current, current.sources)
+            (stored_activity,) = self._stores.activities.save(
+                scope, [ActivityChange(activity, current.version)]
+            )
+            self._after_change(scope, stored_activity)
+            rebuilt.append(stored_activity)
+        return rebuilt
+
+    def observations(self, scope: OwnerScope) -> list[Observation]:
+        """Every source observation of the athlete (for re-normalisation)."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        return list(self._stores.observations.list_all(scope))
 
     def _create(
         self, scope: OwnerScope, observation: Observation, status: ActivityStatus, now: datetime

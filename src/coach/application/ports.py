@@ -118,11 +118,26 @@ class ActivityRepository(Protocol):
 
 
 class ObservationRepository(Protocol):
+    """Immutable observations; ``get`` and ``list_all`` return each source's latest
+    revision (ADR-029)."""
+
     """Immutable source observations; adding an identical one again returns the stored one."""
 
     def add(self, scope: OwnerScope, observation: Observation) -> tuple[Observation, bool]: ...
 
     def get(self, scope: OwnerScope, key: SourceKey) -> Observation: ...
+
+    def list_all(self, scope: OwnerScope) -> Sequence[Observation]: ...
+
+    def add_revision(self, scope: OwnerScope, observation: Observation) -> Observation:
+        """Re-normalisation (activities spec 1.1, ADR-029): store a newer version of the
+        same normaliser as the source's latest revision; earlier revisions are kept.
+        ConcurrencyConflictError unless it supersedes the latest; NotFoundError without one."""
+        ...
+
+    def revisions(self, scope: OwnerScope, key: SourceKey) -> Sequence[Observation]:
+        """Every revision of a source, oldest first (lineage); empty when unknown."""
+        ...
 
 
 class OverrideRepository(Protocol):

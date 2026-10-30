@@ -16,7 +16,7 @@ from coach.domain.ingestion.limits import IngestionLimits
 from coach.domain.ingestion.record import RejectionReason
 from coach.domain.raw.source import DetectedType
 from coach.integrations.files import archive, detection
-from coach.integrations.files.normalise import normalise
+from coach.integrations.files.normalise import NORMALISERS, RULES_VERSION, normalise
 from coach.integrations.files.output import decode_response
 from coach.integrations.files.worker import PROTOCOL
 
@@ -51,6 +51,9 @@ class LocalFileFormats:
 
     def members(self, data: bytes, limits: IngestionLimits) -> Sequence[ArchiveMember]:
         return archive.read_members(data, limits)
+
+    def normaliser_versions(self) -> Mapping[str, str]:
+        return dict.fromkeys(NORMALISERS.values(), RULES_VERSION)
 
     def decode(
         self,

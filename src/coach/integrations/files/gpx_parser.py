@@ -26,7 +26,7 @@ from coach.integrations.files.parsing import (
 from coach.integrations.files.xmlsafe import Element, child_text, events, local, namespace
 
 PARSER: Final = "gpx"
-VERSION: Final = "1.0.0"
+VERSION: Final = "1.1.0"
 GPX_NAMESPACES: Final = frozenset(
     {"http://www.topografix.com/GPX/1/1", "http://www.topografix.com/GPX/1/0"}
 )

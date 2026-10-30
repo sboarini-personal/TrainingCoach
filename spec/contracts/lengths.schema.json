@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:lengths:1",
+  "title": "Lengths",
+  "description": "Pool lengths of one swim session, stored as a content-addressed blob and referenced as the LENGTHS stream of an observation (P9). Offsets are seconds from startTimeUtc, never decreasing (checked in code). The pool length is the activity field environment.poolLengthMeters. null = UNKNOWN. Owner spec: spec/integration/files.spec.md section 8.6.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "startTimeUtc",
+    "lengths"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion"
+    },
+    "startTimeUtc": {
+      "$ref": "urn:coach:schema:common:1#/$defs/utcInstant"
+    },
+    "lengths": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/length"
+      }
+    }
+  },
+  "$defs": {
+    "duration": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "exclusiveMinimum": 0,
+      "maximum": 86400
+    },
+    "length": {
+      "type": "object",
+      "required": [
+        "startOffsetSeconds",
+        "elapsedSeconds",
+        "timerSeconds",
+        "type",
+        "strokes",
+        "strokeType"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "startOffsetSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "elapsedSeconds": {
+          "$ref": "#/$defs/duration"
+        },
+        "timerSeconds": {
+          "$ref": "#/$defs/duration"
+        },
+        "type": {
+          "description": "IDLE is a rest at the wall.",
+          "enum": [
+            "ACTIVE",
+            "IDLE",
+            null
+          ]
+        },
+        "strokes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "strokeType": {
+          "enum": [
+            "FREESTYLE",
+            "BACKSTROKE",
+            "BREASTSTROKE",
+            "BUTTERFLY",
+            "MIXED",
+            "DRILL",
+            null
+          ]
+        }
+      }
+    }
+  }
+}

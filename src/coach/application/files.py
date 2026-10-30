@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from coach.application.errors import ApplicationError
+from coach.domain.activity.segments import Laps, Lengths
 from coach.domain.activity.streams import TimeSeries
 from coach.domain.common.quality import Anomaly
 from coach.domain.ingestion.limits import IngestionLimits
@@ -60,6 +61,8 @@ class DecodedSession:
     source_paths: Mapping[str, str] = field(default_factory=dict)
     anomalies: tuple[Anomaly, ...] = ()
     time_series: TimeSeries | None = None
+    laps: Laps | None = None
+    lengths: Lengths | None = None
 
 
 class FileFormats(Protocol):
@@ -93,6 +96,10 @@ class FileFormats(Protocol):
         received_at: datetime,
     ) -> Sequence[DecodedSession]:
         """Stages 8 to 11 for a quarantined file."""
+        ...
+
+    def normaliser_versions(self) -> Mapping[str, str]:
+        """Current version of each file normaliser by name (activities spec 1.1)."""
         ...
 
 

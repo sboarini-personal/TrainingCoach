@@ -1,7 +1,7 @@
 """TCX parser (runs in the sandbox): Garmin TrainingCenterDatabase v2 (files spec 8.2).
 
 Streams the document; finished track points are removed from the tree to bound memory.
-Positions are read past, never extracted.
+Positions are read past, never extracted. From P9 the laps are also returned (files spec 8.6).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from coach.integrations.files.parsing import (
 from coach.integrations.files.xmlsafe import Element, child_text, events, local, namespace
 
 PARSER: Final = "tcx"
-VERSION: Final = "1.0.0"
+VERSION: Final = "1.1.0"
 TCX_NAMESPACE: Final = "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2"
 
 
@@ -38,6 +38,8 @@ class _Lap:
     avg_hr: float | None
     max_hr: float | None
     cadence: float | None
+    intensity: str | None
+    trigger: str | None
 
 
 @dataclass(slots=True)
@@ -85,6 +87,8 @@ def _lap(element: Element) -> _Lap:
         avg_hr=_value_child(element, "AverageHeartRateBpm"),
         max_hr=_value_child(element, "MaximumHeartRateBpm"),
         cadence=text_number(child_text(element, "Cadence")),
+        intensity=child_text(element, "Intensity"),
+        trigger=child_text(element, "TriggerMethod"),
     )
 
 
@@ -149,6 +153,7 @@ def _session(index: int, activity: _Activity) -> SessionData:
     )
     if activity.notes is not None:
         data.texts["description"] = activity.notes
+    _laps(data, activity.laps)
     for point in activity.points:
         data.sample(
             (point.time - first.start).total_seconds(),
@@ -160,6 +165,34 @@ def _session(index: int, activity: _Activity) -> SessionData:
             altitudeMeters=point.altitude,
         )
     return data
+
+
+def _label(value: str | None) -> str | None:
+    text = (value or "").strip()
+    return text[:64] if text else None
+
+
+def _laps(data: SessionData, laps: list[_Lap]) -> None:
+    """Each lap; its elapsed time runs to the next lap start (the last one's is unknown)."""
+    first = laps[0].start
+    for index, lap in enumerate(laps):
+        following = laps[index + 1].start if index + 1 < len(laps) else None
+        data.laps.append(
+            {
+                "startOffsetSeconds": (lap.start - first).total_seconds(),
+                "elapsedSeconds": (
+                    None if following is None else (following - lap.start).total_seconds()
+                ),
+                "timerSeconds": lap.seconds,
+                "distanceMeters": lap.distance,
+                "avgHeartRate": lap.avg_hr,
+                "maxHeartRate": lap.max_hr,
+                "avgCadence": lap.cadence,
+                "avgPowerWatts": None,
+                "intensity": _label(lap.intensity),
+                "trigger": _label(lap.trigger),
+            }
+        )
 
 
 def parse_tcx(path: Path, limits: ParserLimits) -> dict[str, Any]:

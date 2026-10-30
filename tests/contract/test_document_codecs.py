@@ -22,6 +22,8 @@ from coach.application.contracts import (
     GOAL_CODEC,
     INGESTION_RECORD_CODEC,
     INTEGRATION_STATUS_CODEC,
+    LAPS_CODEC,
+    LENGTHS_CODEC,
     OBSERVATION_CODEC,
     PROFILE_CODEC,
     RAW_SOURCE_CODEC,
@@ -31,8 +33,17 @@ from coach.application.contracts import (
     UnsupportedSchemaVersionError,
 )
 from coach.domain.activity.activity import ActivityStatus
+from coach.domain.activity.fields import CadenceUnit
 from coach.domain.activity.issues import DataQualityIssue, IssueResolution
 from coach.domain.activity.observation import SourceKind
+from coach.domain.activity.segments import (
+    Lap,
+    LapIntensity,
+    Laps,
+    LapTrigger,
+    Lengths,
+    SwimLength,
+)
 from coach.domain.activity.streams import TimeSeries
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.coaching.state import CoachingState
@@ -147,6 +158,31 @@ ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
     (
         TIME_SERIES_CODEC,
         TimeSeries(start_time_utc=NOW, offset_seconds=(0.0, 1.5), power_watts=(None, 250.0)),
+    ),
+    (LAPS_CODEC, Laps(start_time_utc=NOW, laps=(Lap(start_offset_seconds=0.0),))),
+    (
+        LAPS_CODEC,
+        Laps(
+            start_time_utc=NOW,
+            cadence_unit=CadenceUnit.RPM,
+            laps=(
+                Lap(
+                    start_offset_seconds=0.0,
+                    timer_seconds=300.0,
+                    average_cadence=88.5,
+                    average_power_watts=231.0,
+                    intensity=LapIntensity.INTERVAL,
+                    trigger=LapTrigger.POSITION,
+                ),
+            ),
+        ),
+    ),
+    (LENGTHS_CODEC, Lengths(start_time_utc=NOW, lengths=(SwimLength(start_offset_seconds=0.0),))),
+    (
+        DATA_OVERRIDE_CODEC,
+        sample_override(
+            field="performance.powerSensor", original_value=None, corrected_value="POWER_METER"
+        ),
     ),
     (
         DATA_QUALITY_ISSUE_CODEC,

@@ -1,7 +1,8 @@
 """FIT parser (runs in the sandbox): official Garmin FIT SDK with the CRC check enabled.
 
-Reads file_id, session, activity and record messages into the parser-output document; the
-mapping to canonical fields happens in the parent (spec/integration/files.spec.md 8.1).
+Reads file_id, session, activity and record messages into the parser-output document, and
+from P9 lap, length and device_info messages (device types only, never identifiers); the
+mapping to canonical fields happens in the parent (spec/integration/files.spec.md 8.1, 8.6).
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from coach.integrations.files.parsing import (
 )
 
 PARSER: Final = "fit"
-VERSION: Final = "1.0.0"
+VERSION: Final = "1.1.0"
 FIT_EPOCH: Final = datetime(1989, 12, 31, tzinfo=UTC)
 MAX_OFFSET_SECONDS: Final = 14 * 3600
 _CODE: Final = re.compile(r"^[a-z0-9_]{1,40}$")
@@ -49,6 +50,11 @@ _SUMMARY: Final = (
     ("poolLengthMeters", ("pool_length",)),
     ("lengthCount", ("num_active_lengths", "num_lengths")),
 )
+
+
+# device_info subfields that name a device type (the SDK expands them by source_type)
+_DEVICE_TYPES: Final = ("antplus_device_type", "ble_device_type")
+MAX_SENSORS: Final = 32
 
 
 class _RecordLimit(Exception):  # noqa: N818 - control flow inside the decoder callback
@@ -156,6 +162,70 @@ def _samples(data: SessionData, records: list[dict[str, Any]], end: datetime | N
         )
 
 
+def _inside(message: dict[str, Any], data: SessionData, end: datetime | None) -> float | None:
+    """Offset of a lap or length that starts inside the session window, else ``None``."""
+    start = message.get("start_time")
+    if not isinstance(start, datetime) or start < data.start:
+        return None
+    if end is not None and start > end:
+        return None
+    return (start - data.start).total_seconds()
+
+
+def _laps(data: SessionData, laps: list[dict[str, Any]], end: datetime | None) -> None:
+    for message in sorted(laps, key=_start_key):
+        offset = _inside(message, data, end)
+        if offset is None:
+            continue
+        data.laps.append(
+            {
+                "startOffsetSeconds": offset,
+                "elapsedSeconds": number(message.get("total_elapsed_time")),
+                "timerSeconds": number(message.get("total_timer_time")),
+                "distanceMeters": number(message.get("total_distance")),
+                "avgHeartRate": number(message.get("avg_heart_rate")),
+                "maxHeartRate": number(message.get("max_heart_rate")),
+                "avgCadence": _cadence(message, "avg_cadence", "avg_fractional_cadence"),
+                "avgPowerWatts": number(message.get("avg_power")),
+                "intensity": _code(message.get("intensity")),
+                "trigger": _code(message.get("lap_trigger")),
+            }
+        )
+
+
+def _lengths(data: SessionData, lengths: list[dict[str, Any]], end: datetime | None) -> None:
+    for message in sorted(lengths, key=_start_key):
+        offset = _inside(message, data, end)
+        if offset is None:
+            continue
+        data.lengths.append(
+            {
+                "startOffsetSeconds": offset,
+                "elapsedSeconds": number(message.get("total_elapsed_time")),
+                "timerSeconds": number(message.get("total_timer_time")),
+                "type": _code(message.get("length_type")),
+                "strokes": number(message.get("total_strokes")),
+                "strokeType": _code(message.get("swim_stroke")),
+            }
+        )
+
+
+def _start_key(message: dict[str, Any]) -> float:
+    start = message.get("start_time")
+    return start.timestamp() if isinstance(start, datetime) else 0.0
+
+
+def _sensors(devices: list[dict[str, Any]]) -> list[str]:
+    """Device types of the file's sensors; serial numbers and other identifiers are dropped."""
+    found: list[str] = []
+    for device in devices:
+        for key in _DEVICE_TYPES:
+            code = _code(device.get(key))
+            if code is not None and code not in found and len(found) < MAX_SENSORS:
+                found.append(code)
+    return found
+
+
 def parse_fit(path: Path, limits: ParserLimits) -> dict[str, Any]:
     counter = RecordCounter(limits.records)
 
@@ -183,11 +253,16 @@ def parse_fit(path: Path, limits: ParserLimits) -> dict[str, Any]:
     manufacturer = _code(file_ids[0].get("manufacturer")) if file_ids else None
     offset = _utc_offset_minutes(decoded.get("activity_mesgs", []))
     records = decoded.get("record_mesgs", [])
+    sensors = _sensors(decoded.get("device_info_mesgs", []))
     sessions = []
     for index, message in enumerate(decoded.get("session_mesgs", [])):
         data = _session(index, message, manufacturer)
         data.utc_offset_minutes = offset
-        _samples(data, records, _window_end(message, data.start))
+        end = _window_end(message, data.start)
+        _samples(data, records, end)
+        _laps(data, decoded.get("lap_mesgs", []), end)
+        _lengths(data, decoded.get("length_mesgs", []), end)
+        data.sensors = list(sensors)
         sessions.append(data)
     return output(
         "FIT",

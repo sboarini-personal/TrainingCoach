@@ -12,7 +12,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Final
 
-OUTPUT_SCHEMA_VERSION: Final = "1.0.0"
+# 1.1.0 (P9): laps, pool lengths and sensor device types (files spec 8.6).
+OUTPUT_SCHEMA_VERSION: Final = "1.1.0"
 SAMPLE_COLUMNS: Final = (
     "distanceMeters",
     "heartRate",
@@ -125,6 +126,9 @@ class SessionData:
     columns: dict[str, list[float | None]] = field(
         default_factory=lambda: {name: [] for name in SAMPLE_COLUMNS}
     )
+    laps: list[dict[str, float | str | None]] = field(default_factory=list)
+    lengths: list[dict[str, float | str | None]] = field(default_factory=list)
+    sensors: list[str] = field(default_factory=list)
 
     def put(self, key: str, value: float | None, path: str) -> None:
         if value is not None:
@@ -153,6 +157,9 @@ class SessionData:
             "texts": self.texts,
             "sourcePaths": self.source_paths,
             "samples": samples,
+            "laps": self.laps,
+            "lengths": self.lengths,
+            "sensors": self.sensors,
         }
 
 

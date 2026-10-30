@@ -27,13 +27,13 @@ Owner of FR-ACT-001. Master spec §18, §52. Contract:
 | distance | `meters` |
 | elevation | `gainMeters`, `lossMeters` |
 | cardiovascular | `averageHr`, `maxHr`, `hrSensor` (CHEST_STRAP, OPTICAL, OTHER), `hrZones` (zone model ID, seconds per zone) |
-| performance | `averageSpeedMps`, `maxSpeedMps`, `averagePaceSecondsPerKm`, `averagePaceSecondsPer100m`, `cadence` (average, max, unit), `power` (source MEASURED/ESTIMATED/UNKNOWN, average, max), `runningDynamics` (stride length, vertical oscillation, ground contact time) |
+| performance | `averageSpeedMps`, `maxSpeedMps`, `averagePaceSecondsPerKm`, `averagePaceSecondsPer100m`, `cadence` (average, max, unit), `power` (source MEASURED/ESTIMATED/UNKNOWN, average, max), `powerSensor` (P9: POWER_METER or SMART_TRAINER named by the file, evidence for the power source), `runningDynamics` (stride length, vertical oscillation, ground contact time) |
 | swimming | `lengthCount`, `strokeType`, `averageStrokeRate`, `swolf` (value, origin) |
 | strength | `strengthSessionId` |
 | training | `aerobicEffect`, `anaerobicEffect` (provider metrics), `load.external`, `load.internal` (session RPE load, provider load) |
 | subjective | `rpe`, `soreness`, `pain`, `comments` (untrusted) |
 | environment | `temperatureC`, `humidityPct`, `windMps`, `altitudeMeters`, `terrain`, `surface`, `poolLengthMeters` |
-| streams | references to stored stream blobs (not inline) |
+| streams | references to stored stream blobs (not inline): TIME_SERIES, LAPS and LENGTHS (P9, files spec 8.6), SETS (P10) |
 | quality | completeness, reliability, anomalies, confidence, uncertainty reasons, warnings |
 
 ## 3. Enumerations
@@ -47,6 +47,7 @@ Owner of FR-ACT-001. Master spec §18, §52. Contract:
 | subtype (tennis) | MATCH, PRACTICE |
 | subtype (strength) | GYM, HOME, OTHER |
 | power.source | MEASURED, ESTIMATED, UNKNOWN |
+| powerSensor | POWER_METER, SMART_TRAINER |
 | trainingDayBasis | ACTIVITY_TIMEZONE, ATHLETE_TIMEZONE_ESTIMATED, CONFIGURED |
 | terrain | ROAD, TRAIL, TRACK, MIXED, INDOOR, WATER, COURT |
 | surface (tennis) | HARD, CLAY, GRASS, CARPET, OTHER |
@@ -81,7 +82,9 @@ speed and stored for convenience with their unit in the field name.
   (1.1.0 from P6: athlete entries may come from a FILE_UPLOAD of the CSV activity template)
   is the normalised content of one part of one RawSource: the field values that source
   provides, the path of each value inside the source, stream references and anomalies the
-  normaliser detected. It is immutable and identified by `(rawSourceId, part)`; `part` is 0
+  normaliser detected. It is immutable and identified by `(rawSourceId, part)`; a
+  re-normalisation with a newer normaliser version adds a revision of the same source and
+  part, and activities use the latest one (P9, ADR-029); `part` is 0
   unless one raw file holds several sessions (multisport FIT, P6). A raw source contributes at
   most one part to a given Activity.
 - Fields a source never provides: `timing.originalLocalTime`, `timing.trainingDay`,

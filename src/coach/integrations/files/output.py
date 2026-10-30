@@ -62,8 +62,30 @@ SESSION_KEYS: Final = frozenset(
         "texts",
         "sourcePaths",
         "samples",
+        "laps",
+        "lengths",
+        "sensors",
     }
 )
+LAP_KEYS: Final = frozenset(
+    {
+        "startOffsetSeconds",
+        "elapsedSeconds",
+        "timerSeconds",
+        "distanceMeters",
+        "avgHeartRate",
+        "maxHeartRate",
+        "avgCadence",
+        "avgPowerWatts",
+        "intensity",
+        "trigger",
+    }
+)
+LENGTH_KEYS: Final = frozenset(
+    {"startOffsetSeconds", "elapsedSeconds", "timerSeconds", "type", "strokes", "strokeType"}
+)
+SEGMENT_LABELS: Final = frozenset({"intensity", "trigger", "type", "strokeType"})
+MAX_SENSORS: Final = 32
 OUTPUT_KEYS: Final = frozenset(
     {"schemaVersion", "format", "parser", "recordCount", "fileType", "sessions"}
 )
@@ -82,6 +104,14 @@ class _Invalid(Exception):  # noqa: N818 - internal control flow
 
 
 @dataclass(frozen=True, slots=True)
+class ParsedSegment:
+    """A lap or a pool length in the file's vocabulary: numbers and labels by key."""
+
+    numbers: Mapping[str, float]
+    labels: Mapping[str, str]
+
+
+@dataclass(frozen=True, slots=True)
 class ParsedSession:
     index: int
     sport: str | None
@@ -95,6 +125,9 @@ class ParsedSession:
     source_paths: Mapping[str, str]
     offsets: tuple[float, ...]
     samples: Mapping[str, tuple[float | None, ...]]
+    laps: tuple[ParsedSegment, ...] = ()
+    lengths: tuple[ParsedSegment, ...] = ()
+    sensors: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +197,33 @@ def _strings(value: Any, allowed: frozenset[str] | None, maximum: int) -> dict[s
     return result
 
 
+def _segment(value: Any, keys: frozenset[str]) -> ParsedSegment:
+    document = _object(value, keys, frozenset({"startOffsetSeconds"}))
+    numbers: dict[str, float] = {}
+    labels: dict[str, str] = {}
+    for key, item in document.items():
+        if key in SEGMENT_LABELS:
+            text = _text(item, 64)
+            if text is not None:
+                labels[key] = text
+        elif item is not None:
+            numbers[key] = _number(item)
+    _check("startOffsetSeconds" in numbers)
+    return ParsedSegment(numbers, labels)
+
+
+def _segments(value: Any, keys: frozenset[str]) -> tuple[ParsedSegment, ...]:
+    _check(isinstance(value, list))
+    return tuple(_segment(item, keys) for item in value)
+
+
+def _sensors(value: Any) -> tuple[str, ...]:
+    _check(isinstance(value, list) and len(value) <= MAX_SENSORS)
+    codes = tuple(_code(item) for item in value)
+    _check(all(code is not None for code in codes))
+    return tuple(code for code in codes if code is not None)
+
+
 def _session(value: Any) -> ParsedSession:
     document = _object(value, SESSION_KEYS, SESSION_KEYS)
     summary = _object(document["summary"], SUMMARY_KEYS)
@@ -191,6 +251,9 @@ def _session(value: Any) -> ParsedSession:
         source_paths=_strings(document["sourcePaths"], None, 300),
         offsets=offsets,
         samples=columns,
+        laps=_segments(document["laps"], LAP_KEYS),
+        lengths=_segments(document["lengths"], LENGTH_KEYS),
+        sensors=_sensors(document["sensors"]),
     )
 
 

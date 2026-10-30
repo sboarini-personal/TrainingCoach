@@ -1,21 +1,23 @@
 # File ingestion
 
 Owner of INT-FIL-001 to INT-FIL-004. Master spec §15 and §16. Security controls in
-[../security/uploads.spec.md](../security/uploads.spec.md). Implemented in Phase P6.
+[../security/uploads.spec.md](../security/uploads.spec.md). Implemented in Phase P6; laps,
+pool lengths and power sensors from P9 (normalisation rules 1.1.0).
 
 ## 1. Formats (INT-FIL-001)
 
 | Format | Parser | Notes |
 |---|---|---|
-| FIT | official Garmin FIT Python SDK (`garmin-fit-sdk`), CRC check enabled | messages used: file_id, session, record, activity |
+| FIT | official Garmin FIT Python SDK (`garmin-fit-sdk`), CRC check enabled | messages used: file_id, session, record, activity; from P9 lap, length and device_info |
 | TCX | hardened XML parser (`defusedxml`) | Garmin TrainingCenterDatabase v2 root element required |
 | GPX | hardened XML parser (`defusedxml`) | GPX 1.1 (1.0 accepted); heart rate and cadence only from recognised extension namespaces |
 | CSV | standard library `csv` with limits | only the application's own documented templates (section 8.4) |
 | ZIP | standard library `zipfile` with limits | only as a container for the formats above (for example Garmin activity downloads) |
 
 Third-party CSV exports are not supported in V1: their formats are not specified here and are
-not guessed. A template can be added once a real sample is reviewed. Laps, lengths and strength
-sets are parsed in later phases (P9, P10); P6 imports session summaries and the time series.
+not guessed. A template can be added once a real sample is reviewed. P6 imports session
+summaries and the time series; P9 adds laps, pool lengths and power sensors (section 8.6);
+strength sets follow in P10.
 
 ## 2. Pipeline (INT-FIL-002)
 
@@ -121,14 +123,18 @@ The sandboxed parser returns JSON that must validate against
 the parser name and version, the record count and a list of sessions. A session carries the
 format's own labels (sport, sub-sport, manufacturer), its start time and UTC offset when the
 format states one, summary values keyed by name (section 8), untrusted texts, the location of
-each summary value in the file and a columnar time series. The parent decodes the JSON
+each summary value in the file and a columnar time series. From version 1.1.0 (P9) a session
+also carries its laps, its pool lengths and the device types of the file's sensors (section
+8.6); every parser emits them, empty when its format has none. The parent decodes the JSON
 strictly: unknown keys, wrong types, non-finite numbers, unequal sample columns or too many
 sessions are `SCHEMA_INVALID`.
 
-## 8. Normalisation rules 1.0.0
+## 8. Normalisation rules 1.1.0
 
 Each normaliser has a name and version recorded on the observations it produces (`fit`,
-`tcx`, `gpx`, `csv_activity`, all 1.0.0). Values are converted to canonical units in code;
+`tcx`, `gpx`, `csv_activity`; 1.0.0 in P6, 1.1.0 from P9, which adds laps, pool lengths
+and the power sensor, section 8.6). Observations of an older version are brought up to date
+by re-normalisation (activities spec section 1.1). Values are converted to canonical units in code;
 nothing is inferred that the file does not state. Formats without a timezone or offset leave
 the training day to the athlete's timezone (activities spec section 2).
 
@@ -168,8 +174,9 @@ One observation per `session` message (part = session index).
 | `sport`, `sub_sport` | classification (table below); `classification.providerType` = `fit:<sport>/<sub_sport>` |
 | `record` messages inside the session's time window | time series (section 8.5) |
 
-Not mapped: `avg_temperature` (the device's own sensor, not ambient temperature), calories,
-the heart-rate sensor type (a session does not state it) and lap, length and set messages.
+Laps, lengths and `device_info` follow section 8.6. Not mapped: `avg_temperature` (the
+device's own sensor, not ambient temperature), calories, the heart-rate sensor type (a
+session does not state it) and set messages (P10).
 
 | FIT sport | sub_sport | Sport, subtype |
 |---|---|---|
@@ -199,7 +206,8 @@ CYCLING, Other = OTHER; subtype unknown. Times must carry `Z` or an offset (naiv
 | `Activity/Notes` | `metadata.description` (untrusted) |
 | `Trackpoint`s | time series (section 8.5) |
 
-Running cadence (in extensions) and positions are not used.
+`Lap`s also become the LAPS stream (section 8.6). Running cadence (in extensions) and
+positions are not used.
 
 ### 8.3 GPX
 
@@ -252,6 +260,48 @@ linked as the TIME_SERIES stream (contract
 [../contracts/time-series.schema.json](../contracts/time-series.schema.json)). Positions are
 not copied into it (data minimisation); they stay only in the RAW file. The normaliser runs
 the DISTANCE_GPS_JUMP rule on the distance samples (activities spec section 5.1).
+
+### 8.6 Laps, pool lengths and power sensors (rules 1.1.0, P9)
+
+Laps and lengths are stored like the time series: content-addressed blobs in the athlete's
+blob store, linked as the LAPS and LENGTHS streams (contracts
+[../contracts/laps.schema.json](../contracts/laps.schema.json) and
+[../contracts/lengths.schema.json](../contracts/lengths.schema.json)). Offsets are seconds
+from the session start. Positions, serial numbers and other device identifiers are never
+copied (data minimisation).
+
+| Source | Lap field |
+|---|---|
+| FIT `lap` inside the session's time window: `start_time` minus session start; TCX `Lap/@StartTime` minus the first lap start | `startOffsetSeconds` |
+| FIT `total_elapsed_time`; TCX: the next lap start minus this one (the last lap: unknown) | `elapsedSeconds` |
+| FIT `total_timer_time`; TCX `TotalTimeSeconds` | `timerSeconds` |
+| FIT `total_distance`; TCX `DistanceMeters` | `distanceMeters` |
+| FIT `avg_heart_rate`, `max_heart_rate`; TCX `AverageHeartRateBpm`, `MaximumHeartRateBpm` | `averageHr`, `maxHr` |
+| FIT `avg_cadence` plus `avg_fractional_cadence` (running: times 2, steps per minute); TCX `Cadence` (biking, RPM) | `averageCadence`, in the unit of `performance.cadence` |
+| FIT `avg_power` | `averagePowerWatts` |
+| FIT `intensity`: active, rest, warmup, cooldown, recovery, interval, other; TCX `Intensity`: Active, Resting | `intensity`: ACTIVE, REST, WARMUP, COOLDOWN, RECOVERY, INTERVAL, OTHER |
+| FIT `lap_trigger`: manual, time, distance, position_* (POSITION), session_end, fitness_equipment (OTHER); TCX `TriggerMethod`: Manual, Distance, Location (POSITION), Time, HeartRate (OTHER) | `trigger`: MANUAL, TIME, DISTANCE, POSITION, SESSION_END, OTHER |
+
+Pool lengths (FIT `length` messages of a pool swim, inside the session's window):
+`startOffsetSeconds`, `elapsedSeconds` (`total_elapsed_time`), `timerSeconds`
+(`total_timer_time`), `type` (`length_type`: ACTIVE or IDLE, a rest), `strokes`
+(`total_strokes`) and `strokeType` (`swim_stroke`, as in section 8.1). The pool length is the
+activity field `environment.poolLengthMeters`, so a correction of it applies to every
+length.
+
+Power sensor (FIT only): when a session has power (summary or samples), the file's
+`device_info` messages are read for their device type only: ANT+ or BLE `bike_power` is
+POWER_METER, ANT+ `fitness_equipment` or BLE `bike_trainer` is SMART_TRAINER (POWER_METER
+when both appear), stored as `performance.powerSensor`; absent when the file names neither.
+The field is evidence for the cycling power source (cycling spec section 2), never the
+source itself: the athlete's declared sensors decide it.
+
+Validation: a lap or length whose elapsed and timer times are both 0 or unknown is left out
+(a double press of the lap button), and a time of 0 next to a positive one is UNKNOWN; the
+others' offsets never decrease and lie inside the
+session, their known durations are above 0 and at most 86,400 s, and counts and values are
+non-negative. A lap or length list that breaks these rules is not stored (the session is
+still imported); analyses that need it are then UNKNOWN with MISSING_DATA.
 
 ## 9. Ingestion record
 

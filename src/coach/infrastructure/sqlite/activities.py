@@ -18,7 +18,7 @@ from coach.application.errors import ConcurrencyConflictError, NotFoundError
 from coach.application.ownership import OwnerScope, check_owner
 from coach.application.ports import ActivityChange
 from coach.domain.activity.activity import Activity
-from coach.domain.activity.observation import Observation, SourceKey
+from coach.domain.activity.observation import Observation, SourceKey, supersedes
 from coach.domain.activity.overrides import (
     DataOverride,
     EntityType,
@@ -191,6 +191,14 @@ class SqliteActivityRepository:
 
 
 class SqliteObservationRepository:
+    """Observations of migration 3, their later revisions in migration 5 (ADR-029)."""
+
+    _LATEST: Final = (
+        "SELECT document FROM source_observation_revisions "
+        "WHERE raw_source_id = ? AND part = ? AND athlete_id = ? "
+        "ORDER BY revision DESC LIMIT 1"
+    )
+
     def __init__(self, database: SqliteDatabase) -> None:
         self._database = database
 
@@ -198,12 +206,8 @@ class SqliteObservationRepository:
         check_owner(scope, observation.athlete_id)
         document = OBSERVATION_CODEC.dump(observation)
         with self._database.write() as connection:
-            row = connection.execute(
-                "SELECT document FROM source_observations WHERE raw_source_id = ? AND part = ?",
-                (str(observation.raw_source_id), observation.part),
-            ).fetchone()
-            if row is not None:
-                existing = OBSERVATION_CODEC.load(loads(row["document"]))
+            existing = self._latest(connection, observation.key, observation.athlete_id)
+            if existing is not None:
                 if existing != observation:
                     raise ConcurrencyConflictError("a different observation exists for this source")
                 return existing, False
@@ -224,16 +228,84 @@ class SqliteObservationRepository:
                 raise NotFoundError from error
         return observation, True
 
-    def get(self, scope: OwnerScope, key: SourceKey) -> Observation:
-        with self._database.read() as connection:
+    def _latest(
+        self, connection: sqlite3.Connection, key: SourceKey, athlete_id: UUID
+    ) -> Observation | None:
+        parameters = (str(key.raw_source_id), key.part, str(athlete_id))
+        row = connection.execute(self._LATEST, parameters).fetchone()
+        if row is None:
             row = connection.execute(
                 "SELECT document FROM source_observations "
                 "WHERE raw_source_id = ? AND part = ? AND athlete_id = ?",
-                (str(key.raw_source_id), key.part, str(scope.athlete_id)),
+                parameters,
             ).fetchone()
-        if row is None:
+        return None if row is None else OBSERVATION_CODEC.load(loads(row["document"]))
+
+    def get(self, scope: OwnerScope, key: SourceKey) -> Observation:
+        with self._database.read() as connection:
+            found = self._latest(connection, key, scope.athlete_id)
+        if found is None:
             raise NotFoundError
-        return OBSERVATION_CODEC.load(loads(row["document"]))
+        return found
+
+    def list_all(self, scope: OwnerScope) -> list[Observation]:
+        with self._database.read() as connection:
+            rows = connection.execute(
+                "SELECT coalesce(("
+                "  SELECT revision.document FROM source_observation_revisions AS revision"
+                "  WHERE revision.raw_source_id = base.raw_source_id"
+                "  AND revision.part = base.part ORDER BY revision.revision DESC LIMIT 1"
+                "), base.document) AS document "
+                "FROM source_observations AS base WHERE base.athlete_id = ? "
+                "ORDER BY base.raw_source_id, base.part",
+                (str(scope.athlete_id),),
+            ).fetchall()
+        return [OBSERVATION_CODEC.load(loads(row["document"])) for row in rows]
+
+    def add_revision(self, scope: OwnerScope, observation: Observation) -> Observation:
+        check_owner(scope, observation.athlete_id)
+        document = OBSERVATION_CODEC.dump(observation)
+        with self._database.write() as connection:
+            latest = self._latest(connection, observation.key, scope.athlete_id)
+            if latest is None:
+                raise NotFoundError
+            if not supersedes(observation, latest):
+                raise ConcurrencyConflictError("only a newer normaliser version is a revision")
+            connection.execute(
+                "INSERT INTO source_observation_revisions "
+                "(raw_source_id, part, revision, athlete_id, normaliser_version, "
+                "schema_version, document) "
+                "VALUES (?, ?, (SELECT coalesce(max(revision), 0) + 1 "
+                "FROM source_observation_revisions WHERE raw_source_id = ? AND part = ?), "
+                "?, ?, ?, ?)",
+                (
+                    str(observation.raw_source_id),
+                    observation.part,
+                    str(observation.raw_source_id),
+                    observation.part,
+                    str(observation.athlete_id),
+                    observation.normaliser_version,
+                    document["schemaVersion"],
+                    dumps(document),
+                ),
+            )
+        return observation
+
+    def revisions(self, scope: OwnerScope, key: SourceKey) -> list[Observation]:
+        """Every revision of a source, oldest first (lineage)."""
+        with self._database.read() as connection:
+            parameters = (str(key.raw_source_id), key.part, str(scope.athlete_id))
+            base = connection.execute(
+                "SELECT document FROM source_observations "
+                "WHERE raw_source_id = ? AND part = ? AND athlete_id = ?",
+                parameters,
+            ).fetchall()
+            later = connection.execute(
+                "SELECT document FROM source_observation_revisions "
+                "WHERE raw_source_id = ? AND part = ? AND athlete_id = ? ORDER BY revision",
+                parameters,
+            ).fetchall()
+        return [OBSERVATION_CODEC.load(loads(row["document"])) for row in [*base, *later]]
 
 
 class SqliteOverrideRepository:

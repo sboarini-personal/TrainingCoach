@@ -37,6 +37,33 @@ RAW rules (P3):
 - The original filename keeps only its last path component, without control characters, at
   most 255 characters. It never influences storage paths (SEC-UPL-005).
 
+### 1.1 Re-normalisation (P9)
+
+When a normaliser gains a version (files spec 8: rules 1.1.0 add laps, pool lengths and the
+power sensor), activities imported before keep their older observations until the athlete
+runs `coach activity reprocess`:
+
+- It selects the RAW sources whose observations were produced by an older version of a
+  normaliser that still exists (same name, lower MAJOR.MINOR.PATCH), parses their stored
+  bytes again in the sandbox and normalises them with the current rules. RAW never changes.
+- Each new observation is stored as the latest revision of its source and part
+  (ADR-029): observations stay immutable, earlier revisions are kept for lineage and reads
+  use the latest. The activity holding that source is rebuilt from its
+  sources' observations (resolution and quality) with its identity, links and status
+  unchanged; corrections keep applying; per-activity metrics are recomputed and quality
+  issues synchronised, as after any change.
+- Deduplication is not run again. A RAW source is skipped, with nothing changed and a reason
+  code, when its parse or normalisation now fails (`REJECTED`), when it now yields another
+  number of sessions than it has observations (`SESSIONS_CHANGED`), or when a session's
+  sport or start time differs from its observation (`IDENTITY_CHANGED`): the new observation
+  would describe another activity.
+- One RAW source is one unit of work (ADR-027): its observations and activities change
+  together or not at all. Observations already at the current version are untouched, so a
+  second run changes nothing (idempotent).
+- It needs the ACTIVITIES consent, reports counts (reprocessed, up to date, skipped by
+  reason) and emits an event with those counts only. Stream blobs of replaced observations
+  stay in the blob store (content-addressed) until privacy deletion.
+
 ## 2. Time model (FR-ACT-003, FR-ACT-004)
 
 - Canonical timestamps are UTC (`...Z`). Naive datetimes are rejected in code (ruff `DTZ`

@@ -28,6 +28,7 @@ class EventName(StrEnum):
     CREDENTIAL_ROTATED = "credential.rotated"
     ACTIVITY_CREATED = "activity.created"
     ACTIVITY_CORRECTED = "activity.corrected"
+    ACTIVITY_REPROCESSED = "activity.reprocessed"
     INGESTION_RECEIVED = "ingestion.file.received"
     INGESTION_PARSED = "ingestion.file.parsed"
     INGESTION_REJECTED = "ingestion.file.rejected"

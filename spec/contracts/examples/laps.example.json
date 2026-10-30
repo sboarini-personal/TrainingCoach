@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "1.0.0",
+  "startTimeUtc": "2026-10-20T21:00:00Z",
+  "cadenceUnit": "STEPS_PER_MIN",
+  "laps": [
+    {
+      "startOffsetSeconds": 0,
+      "elapsedSeconds": 600,
+      "timerSeconds": 600,
+      "distanceMeters": 2000,
+      "averageHr": 132,
+      "maxHr": 141,
+      "averageCadence": 168,
+      "averagePowerWatts": null,
+      "intensity": "WARMUP",
+      "trigger": "MANUAL"
+    },
+    {
+      "startOffsetSeconds": 600,
+      "elapsedSeconds": 240,
+      "timerSeconds": 240,
+      "distanceMeters": 1000,
+      "averageHr": 164,
+      "maxHr": 171,
+      "averageCadence": 182,
+      "averagePowerWatts": null,
+      "intensity": "ACTIVE",
+      "trigger": "DISTANCE"
+    },
+    {
+      "startOffsetSeconds": 840,
+      "elapsedSeconds": 90,
+      "timerSeconds": 90,
+      "distanceMeters": 180,
+      "averageHr": 150,
+      "maxHr": null,
+      "averageCadence": null,
+      "averagePowerWatts": null,
+      "intensity": "REST",
+      "trigger": "TIME"
+    }
+  ]
+}

@@ -63,6 +63,73 @@ def fit_session(
     return records, session
 
 
+def fit_lap(
+    start: datetime,
+    seconds: float,
+    distance: float,
+    *,
+    intensity: str = "active",
+    trigger: str = "manual",
+    heart_rate: int | None = 150,
+    cadence: int | None = 85,
+    power: int | None = None,
+) -> dict[str, Any]:
+    """A FIT lap message; messages may be written in any order next to the records."""
+    lap: dict[str, Any] = {
+        "mesg_num": NUMS["LAP"],
+        "timestamp": start + timedelta(seconds=seconds),
+        "start_time": start,
+        "total_elapsed_time": float(seconds),
+        "total_timer_time": float(seconds),
+        "total_distance": float(distance),
+        "intensity": intensity,
+        "lap_trigger": trigger,
+    }
+    for key, value in (("avg_heart_rate", heart_rate), ("avg_cadence", cadence)):
+        if value is not None:
+            lap[key] = value
+    if power is not None:
+        lap["avg_power"] = power
+    return lap
+
+
+def fit_length(
+    start: datetime,
+    seconds: float,
+    strokes: int | None,
+    *,
+    length_type: str = "active",
+    stroke: str | None = "freestyle",
+) -> dict[str, Any]:
+    """A FIT pool length message (a rest at the wall is ``length_type="idle"``)."""
+    length: dict[str, Any] = {
+        "mesg_num": NUMS["LENGTH"],
+        "timestamp": start + timedelta(seconds=seconds),
+        "start_time": start,
+        "total_elapsed_time": float(seconds),
+        "total_timer_time": float(seconds),
+        "length_type": length_type,
+    }
+    if strokes is not None:
+        length["total_strokes"] = strokes
+    if stroke is not None:
+        length["swim_stroke"] = stroke
+    return length
+
+
+def fit_device(device_type: int, *, source: str = "antplus") -> dict[str, Any]:
+    """A FIT device_info message; ANT+ 11 is bike_power and 17 fitness_equipment, BLE 7 is
+    bike_trainer. The serial number is there to prove it is never copied."""
+    return {
+        "mesg_num": NUMS["DEVICE_INFO"],
+        "timestamp": START,
+        "device_index": 1,
+        "source_type": source,
+        "device_type": device_type,
+        "serial_number": 3141592653,
+    }
+
+
 def fit_file(
     sessions: Iterable[tuple[list[dict[str, Any]], dict[str, Any]]] | None = None,
     *,
@@ -160,7 +227,9 @@ def tcx_file(
             f"<DistanceMeters>{lap['distance']}</DistanceMeters><MaximumSpeed>{lap['speed']}</MaximumSpeed>"
             f"<AverageHeartRateBpm><Value>{lap['avg']}</Value></AverageHeartRateBpm>"
             f"<MaximumHeartRateBpm><Value>{lap['max']}</Value></MaximumHeartRateBpm>"
-            f"<Track>{points}</Track></Lap>"
+            + (f"<Intensity>{lap['intensity']}</Intensity>" if "intensity" in lap else "")
+            + (f"<TriggerMethod>{lap['trigger']}</TriggerMethod>" if "trigger" in lap else "")
+            + f"<Track>{points}</Track></Lap>"
         )
     notes_xml = "" if notes is None else f"<Notes>{notes}</Notes>"
     return (

@@ -32,7 +32,8 @@ could not be handled correctly. The result must not depend on arrival order.
 ## Consequences
 
 - Activities can be rebuilt at any time from observations; re-normalising RAW with a newer
-  normaliser produces new observations (normaliser versions join the key in P6).
+  normaliser produces new observations (normaliser versions join the key in P6; implemented in
+  P9 as observation revisions, ADR-029).
 - Per-source values are stored next to the resolved activity (bounded duplication).
 - There is no unit of work across repositories: activities changed together (merge, split)
   are saved in one transaction, and follow-up work left undone by a crash is repaired by the

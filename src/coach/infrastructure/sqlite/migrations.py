@@ -204,9 +204,30 @@ BEGIN
 END;
 """
 
+# Additive (ADR-029): a re-normalisation adds a revision; nothing stored is rewritten.
+_OBSERVATION_REVISIONS_SCHEMA: Final = """
+CREATE TABLE source_observation_revisions (
+    raw_source_id TEXT NOT NULL,
+    part INTEGER NOT NULL CHECK (part >= 0),
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    athlete_id TEXT NOT NULL,
+    normaliser_version TEXT NOT NULL,
+    schema_version TEXT NOT NULL,
+    document TEXT NOT NULL CHECK (json_valid(document)),
+    PRIMARY KEY (raw_source_id, part, revision),
+    FOREIGN KEY (raw_source_id, part) REFERENCES source_observations (raw_source_id, part)
+) STRICT;
+CREATE TRIGGER source_observation_revisions_are_immutable
+BEFORE UPDATE ON source_observation_revisions
+BEGIN
+    SELECT RAISE(ABORT, 'source observations are immutable');
+END;
+"""
+
 MIGRATIONS: Final[tuple[Migration, ...]] = (
     Migration(1, "aggregates, raw sources and derived metric values", _INITIAL_SCHEMA),
     Migration(2, "identities and hash-chained audit log", _SECURITY_SCHEMA),
     Migration(3, "activities, source observations and data overrides", _ACTIVITY_SCHEMA),
     Migration(4, "file ingestion records", _INGESTION_SCHEMA),
+    Migration(5, "source observation revisions", _OBSERVATION_REVISIONS_SCHEMA),
 )

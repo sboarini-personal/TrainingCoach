@@ -139,6 +139,33 @@ def import_files(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, 
     return status
 
 
+PROGRESS_EVERY: Final = 100
+
+
+def reprocess(runtime: Runtime, scope: OwnerScope, out: TextIO) -> int:
+    """Re-normalise imported files with the current rules (activities spec 1.1)."""
+
+    def progress(done: int, total: int) -> None:
+        if done % PROGRESS_EVERY == 0 and done < total:
+            print(f"  {done} of {total} sources", file=out, flush=True)
+
+    try:
+        athlete_timezone(runtime.profiles, scope)
+        report = runtime.ingestion.reprocess(scope, progress=progress)
+    except TimezoneRequiredError:
+        raise CommandError(TIMEZONE_HINT) from None
+    except ConsentRequiredError:
+        raise CommandError(CONSENT_HINT) from None
+    print(
+        f"reprocessed {report.reprocessed} sources ({report.activities} activities rebuilt), "
+        f"{report.up_to_date} already up to date",
+        file=out,
+    )
+    for reason, count in sorted(report.skipped.items()):
+        print(f"skipped {count}: {reason}", file=out)
+    return 0
+
+
 def _duration(seconds: float | None) -> str:
     if seconds is None:
         return "-"

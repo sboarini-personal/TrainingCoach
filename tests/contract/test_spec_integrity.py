@@ -22,7 +22,7 @@ pytestmark = pytest.mark.req("NFR-TRC-002")
 
 REQUIREMENTS = load_requirements()
 ACCEPTANCE = load_acceptance_tests()
-EXPECTED_ADRS = [f"ADR-{number:03d}" for number in range(1, 29)]
+EXPECTED_ADRS = [f"ADR-{number:03d}" for number in range(1, 30)]
 
 # Living documents whose references must resolve. The discovery report is a historical
 # snapshot and is deliberately excluded.

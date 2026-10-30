@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:data-override:1",
   "title": "DataOverride",
-  "description": "Append-only athlete correction of one field, applied at read time; RAW and NORMALIZED values are never modified (FR-ACT-006). Owner spec: spec/functional/activities.spec.md section 4.",
+  "description": "Append-only athlete correction of one field, applied at read time; RAW and NORMALIZED values are never modified (FR-ACT-006). Version 1.1.0 (P9): performance.powerSensor. Owner spec: spec/functional/activities.spec.md section 4.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -40,6 +40,7 @@
         "cardiovascular.maxHr",
         "performance.averageSpeedMps",
         "performance.maxSpeedMps",
+        "performance.powerSensor",
         "swimming.lengthCount",
         "swimming.strokeType",
         "subjective.rpe",

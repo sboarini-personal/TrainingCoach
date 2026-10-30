@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from activity_world import SCOPE, World
+from coach.application.files import FileFormats
 from coach.application.ingestion import ImportResult, IngestionService
 from coach.application.providers import ProviderRecords
 from coach.application.screening import SecretScreen
@@ -45,6 +46,7 @@ class IngestionWorld(World):
         root: Path,
         *,
         runner: ParserRunner | None = None,
+        formats: FileFormats | None = None,
         limits: IngestionLimits | None = None,
         consent: bool = True,
         provider_records: Mapping[str, ProviderRecords] | None = None,
@@ -56,7 +58,7 @@ class IngestionWorld(World):
         self.blobs = FileBlobStore(self.raw_dir)
         self.scanner = UnavailableMalwareScanner()
         self.ingestion = IngestionService(
-            formats=LocalFileFormats(runner or InProcessRunner()),
+            formats=formats or LocalFileFormats(runner or InProcessRunner()),
             quarantine=FileQuarantine(self.quarantine_dir),
             scanner=self.scanner,
             blobs=self.blobs,

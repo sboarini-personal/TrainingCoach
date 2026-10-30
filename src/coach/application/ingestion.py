@@ -15,16 +15,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import BinaryIO, Final
 from uuid import UUID, uuid4
 
-from coach.application.activities import ActivityService
+from coach.application.activities import ActivityService, RenormalisationRefusedError
 from coach.application.consent import ConsentGate
-from coach.application.contracts import TIME_SERIES_CODEC
+from coach.application.contracts import LAPS_CODEC, LENGTHS_CODEC, TIME_SERIES_CODEC
 from coach.application.errors import ApplicationError
 from coach.application.events import EventName
 from coach.application.files import (
@@ -52,9 +53,16 @@ from coach.application.providers import (
 )
 from coach.application.raw_storage import RawStorage
 from coach.application.screening import SecretScreen
+from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import FieldKind, StreamKind, StreamRef, field_spec
 from coach.domain.activity.issues import DataQualityIssue
-from coach.domain.activity.observation import Observation, SourceKind, source_kind_of
+from coach.domain.activity.observation import (
+    Observation,
+    SourceKind,
+    same_session,
+    source_kind_of,
+    version_key,
+)
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.ingestion.limits import IngestionLimits
@@ -93,6 +101,29 @@ class IdempotencyConflictError(ApplicationError):
 class ImportResult:
     record: IngestionRecord
     secret_notice: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReprocessReport:
+    """Counts of a re-normalisation run (activities spec 1.1); raw sources, not files."""
+
+    reprocessed: int
+    up_to_date: int
+    activities: int
+    skipped: Mapping[str, int]
+
+
+class _Skip(Exception):  # noqa: N818 - control flow: a raw source left as it is
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _outdated(observation: Observation, current: Mapping[str, str]) -> bool:
+    version = current.get(observation.normaliser)
+    return version is not None and version_key(observation.normaliser_version) < version_key(
+        version
+    )
 
 
 @dataclass(slots=True)
@@ -165,6 +196,7 @@ class IngestionService:
         self._scanner = scanner
         self._blobs = blobs
         self._raw = RawStorage(blobs, raw_sources, clock=clock, ids=ids)
+        self._raw_sources = raw_sources
         self._records = records
         self._activities = activities
         self._issues = issues
@@ -284,6 +316,75 @@ class IngestionService:
             malware_scan=MalwareScan.NOT_APPLICABLE,
         )
         return self._reject(scope, attempt, rejection)
+
+    # ------------------------------------------------------------------ re-normalisation
+
+    def reprocess(
+        self, scope: OwnerScope, *, progress: Callable[[int, int], None] | None = None
+    ) -> ReprocessReport:
+        """Re-normalise the RAW sources whose observations an older normaliser produced
+        (activities spec 1.1). RAW never changes; a source that cannot be redone is skipped.
+        ``progress`` receives (sources done, sources to do) after each one."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        current = self._formats.normaliser_versions()
+        by_source: dict[UUID, list[Observation]] = {}
+        for observation in self._activities.observations(scope):
+            by_source.setdefault(observation.raw_source_id, []).append(observation)
+        reprocessed = rebuilt = 0
+        skipped: Counter[str] = Counter()
+        outdated = [
+            raw_source_id
+            for raw_source_id in sorted(by_source, key=str)
+            if any(_outdated(observation, current) for observation in by_source[raw_source_id])
+        ]
+        for done, raw_source_id in enumerate(outdated, start=1):
+            stored = sorted(by_source[raw_source_id], key=lambda item: item.part)
+            try:
+                rebuilt += len(self._reprocess_source(scope, raw_source_id, stored))
+                reprocessed += 1
+            except _Skip as skip:
+                skipped[skip.reason] += 1
+            if progress is not None:
+                progress(done, len(outdated))
+        up_to_date = len(by_source) - len(outdated)
+        self._events.emit(
+            EventName.ACTIVITY_REPROCESSED,
+            {"reprocessed": str(reprocessed), "skipped": str(sum(skipped.values()))},
+        )
+        return ReprocessReport(reprocessed, up_to_date, rebuilt, dict(skipped))
+
+    def _reprocess_source(
+        self, scope: OwnerScope, raw_source_id: UUID, stored: Sequence[Observation]
+    ) -> list[Activity]:
+        source = self._raw_sources.get(scope, raw_source_id)
+        path = self._quarantine.put(self._raw.read(scope, raw_source_id))
+        try:
+            sessions = self._formats.decode(
+                path, source.detected_type, self.limits, received_at=source.received_at
+            )
+        except FileRejectedError:
+            raise _Skip("REJECTED") from None
+        finally:
+            self._quarantine.discard(path)
+        if sorted(session.part for session in sessions) != [item.part for item in stored]:
+            raise _Skip("SESSIONS_CHANGED")
+        screened = [self._screen_texts(session)[0] for session in sessions]
+        origin = _Source.of(source)
+        by_part = {item.part: item for item in stored}
+        try:
+            trial = [self._observation(scope, origin, session, streams=()) for session in screened]
+        except DomainValidationError:
+            raise _Skip("REJECTED") from None
+        if any(not same_session(new, by_part[new.part]) for new in trial):
+            raise _Skip("IDENTITY_CHANGED")  # checked before any stream blob is written
+        observations = [
+            self._observation(scope, origin, session, streams=self._streams(scope, session))
+            for session in screened
+        ]
+        try:
+            return self._activities.renormalise(scope, observations)
+        except RenormalisationRefusedError as refused:
+            raise _Skip(refused.reason) from None
 
     def _stored_type(self, detected: DetectedType | None, data: bytes) -> DetectedType:
         if detected is DetectedType.ZIP:
@@ -409,14 +510,20 @@ class IngestionService:
                 ) from None
 
     def _screened(self, session: DecodedSession, attempt: _Attempt) -> DecodedSession:
+        screened, notice = self._screen_texts(session)
+        attempt.notice = attempt.notice or notice
+        return screened
+
+    def _screen_texts(self, session: DecodedSession) -> tuple[DecodedSession, str | None]:
         """Text taken from files is screened for pasted secrets (SEC-SEC-005)."""
         values = dict(session.values)
+        notice = None
         for path, value in session.values.items():
             if isinstance(value, str) and field_spec(path).kind is FieldKind.TEXT:
                 screened = self._screen.screen(value, source=SCREEN_SOURCE)
                 values[path] = screened.text
-                attempt.notice = attempt.notice or screened.notice
-        return replace(session, values=values)
+                notice = notice or screened.notice
+        return replace(session, values=values), notice
 
     # ------------------------------------------------------------------ persistence
 
@@ -449,6 +556,20 @@ class IngestionService:
             anomalies=session.anomalies,
         )
 
+    def _streams(self, scope: OwnerScope, session: DecodedSession) -> tuple[StreamRef, ...]:
+        """Stream blobs of a session: time series, laps and lengths (files spec 8.5, 8.6)."""
+        documents: list[tuple[StreamKind, dict[str, object]]] = []
+        if session.time_series is not None:
+            documents.append((StreamKind.TIME_SERIES, TIME_SERIES_CODEC.dump(session.time_series)))
+        if session.laps is not None:
+            documents.append((StreamKind.LAPS, LAPS_CODEC.dump(session.laps)))
+        if session.lengths is not None:
+            documents.append((StreamKind.LENGTHS, LENGTHS_CODEC.dump(session.lengths)))
+        return tuple(
+            StreamRef(kind, self._blobs.put(scope, _canonical(document)))
+            for kind, document in documents
+        )
+
     def _store(
         self, scope: OwnerScope, attempt: _Attempt, item: _File, *, single: bool
     ) -> RawSource:
@@ -475,13 +596,8 @@ class IngestionService:
             for item in files:
                 stored = self._store(scope, attempt, item, single=len(files) == 1)
                 for session in item.sessions:
-                    streams: tuple[StreamRef, ...] = ()
-                    if session.time_series is not None:
-                        document = TIME_SERIES_CODEC.dump(session.time_series)
-                        digest = self._blobs.put(scope, _canonical(document))
-                        streams = (StreamRef(StreamKind.TIME_SERIES, digest),)
                     observation = self._observation(
-                        scope, _Source.of(stored), session, streams=streams
+                        scope, _Source.of(stored), session, streams=self._streams(scope, session)
                     )
                     result = self._activities.ingest(scope, observation)
                     imported.append(

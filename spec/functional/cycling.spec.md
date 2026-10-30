@@ -18,6 +18,14 @@ Every power value carries `source`:
 | ESTIMATED | power is identified as estimated or virtual (calculated from speed or a model) |
 | UNKNOWN | the origin of the power values cannot be determined |
 
+Attribution (P9): a source records `power.source` UNKNOWN; the EFFECTIVE view decides it.
+Power of a CYCLING activity is MEASURED when its `performance.powerSensor` (files spec
+8.6, correctable by the athlete) is POWER_METER and the athlete declares a
+CYCLING_POWER_METER with `reliableForTraining`, or SMART_TRAINER and the athlete declares a
+reliable SMART_TRAINER. No V1 source identifies estimated or virtual power, so ESTIMATED
+is never set by V1 rules; everything else stays UNKNOWN. The sensors are declared with
+`coach profile sensor`.
+
 Rules:
 
 - `UNKNOWN` is treated as **not measured**.

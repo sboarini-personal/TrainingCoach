@@ -227,6 +227,45 @@ def test_observations_are_immutable_and_idempotent(stores: Stores) -> None:
     assert stores.observations.get(SCOPE_A, observation.key) == observation
 
 
+@pytest.mark.req("FR-ACT-002")
+def test_a_re_normalisation_adds_a_revision_and_keeps_the_first(stores: Stores) -> None:
+    first = sample_observation()
+    stores.observations.add(SCOPE_A, first)
+    newer = replace(
+        first, normaliser_version="1.1.0", values={**first.values, "distance.meters": 1.0}
+    )
+    assert stores.observations.add_revision(SCOPE_A, newer) == newer
+    assert stores.observations.get(SCOPE_A, first.key) == newer
+    assert stores.observations.list_all(SCOPE_A) == [newer]
+    assert stores.observations.revisions(SCOPE_A, first.key) == [first, newer]
+    for refused in (newer, first, replace(first, normaliser="other", normaliser_version="2.0.0")):
+        with pytest.raises(ConcurrencyConflictError):
+            stores.observations.add_revision(SCOPE_A, refused)  # not newer than the latest
+    with pytest.raises(ConcurrencyConflictError):
+        stores.observations.add(SCOPE_A, first)  # the first ingestion no longer matches
+    assert stores.observations.add(SCOPE_A, newer) == (newer, False)
+    latest = replace(newer, normaliser_version="1.10.0")  # 1.10.0 is newer than 1.9.0
+    stores.observations.add_revision(SCOPE_A, latest)
+    assert stores.observations.get(SCOPE_A, first.key).normaliser_version == "1.10.0"
+
+
+@pytest.mark.req("SEC-IDOR-001", "FR-ACT-002")
+def test_revisions_are_owner_scoped(stores: Stores) -> None:
+    theirs = sample_observation(
+        raw_source_id=FOREIGN_SOURCE, sha256=SHA_D, athlete_id=OTHER_ATHLETE
+    )
+    stores.observations.add(SCOPE_B, theirs)
+    newer = replace(theirs, normaliser_version="1.1.0")
+    with pytest.raises(OwnershipError):
+        stores.observations.add_revision(SCOPE_A, newer)
+    with pytest.raises(NotFoundError):
+        stores.observations.add_revision(
+            SCOPE_A, replace(sample_observation(), normaliser_version="9.0.0")
+        )
+    assert stores.observations.revisions(SCOPE_A, theirs.key) == []
+    assert stores.observations.list_all(SCOPE_A) == []
+
+
 @pytest.mark.req("SEC-IDOR-001")
 def test_observations_are_owner_scoped(stores: Stores) -> None:
     theirs = sample_observation(
@@ -312,6 +351,7 @@ def test_overrides_are_owner_scoped(stores: Stores) -> None:
     ("sql", "message"),
     [
         ("UPDATE source_observations SET document = json('{}')", "immutable"),
+        ("UPDATE source_observation_revisions SET document = json('{}')", "immutable"),
         ("UPDATE data_overrides SET field = 'elevation.lossMeters'", "append-only"),
     ],
 )
@@ -321,6 +361,9 @@ def test_database_rejects_rewriting_observations_and_overrides(
     database = SqliteDatabase.open(tmp_path / "coach.sqlite3")
     stores = _sqlite_stores(database)
     stores.observations.add(SCOPE_A, sample_observation())
+    stores.observations.add_revision(
+        SCOPE_A, replace(sample_observation(), normaliser_version="1.1.0")
+    )
     stores.overrides.add(SCOPE_A, sample_override())
     with pytest.raises(sqlite3.IntegrityError, match=message), database.write() as connection:
         connection.execute(sql)

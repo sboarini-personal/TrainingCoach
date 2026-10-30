@@ -121,3 +121,18 @@ def test_unreadable_paths_are_reported(cli: Cli, tmp_path: Path) -> None:
     _ready(cli)
     code, output = cli.run("import", str(tmp_path / "missing.fit"))
     assert (code, output) == (1, "missing.fit: cannot be read\n")
+
+
+@pytest.mark.req("FR-ACT-002")
+def test_reprocess_reports_what_it_did(cli: Cli, tmp_path: Path) -> None:
+    _ready(cli)
+    path = tmp_path / "run.fit"
+    path.write_bytes(fit_file())
+    assert cli.run("import", str(path))[0] == 0
+    assert cli.run("activity", "reprocess") == (
+        0,
+        "reprocessed 0 sources (0 activities rebuilt), 1 already up to date\n",
+    )
+    cli.run("consent", "revoke", "activities")
+    code, output = cli.run("activity", "reprocess")
+    assert (code, "coach consent grant activities" in output) == (2, True)

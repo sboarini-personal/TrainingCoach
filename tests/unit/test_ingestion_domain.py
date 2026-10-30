@@ -262,7 +262,7 @@ def test_documents_of_the_previous_minor_version_still_load() -> None:
     observation = load_json(EXAMPLES_DIR / "source-observation.example.json")
     observation["schemaVersion"] = "1.0.0"
     loaded = OBSERVATION_CODEC.load(observation)
-    assert OBSERVATION_CODEC.dump(loaded)["schemaVersion"] == "1.2.0"
+    assert OBSERVATION_CODEC.dump(loaded)["schemaVersion"] == "1.3.0"
     record = load_json(EXAMPLES_DIR / "ingestion-record.example.json")
     for added in ("origin", "provider", "providerObjectId"):
         del record[added]

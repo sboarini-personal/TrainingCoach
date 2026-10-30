@@ -47,6 +47,7 @@ uv run coach profile timezone America/Argentina/Buenos_Aires
 uv run coach import run.fit ride.tcx export.zip     # FIT, TCX, GPX, CSV template, ZIP
 uv run coach activity list                          # most recent activities
 uv run coach activity export activities.csv         # CSV activity template
+uv run coach activity reprocess                     # re-read imported files with newer rules
 uv run coach issue list                             # data problems and failed imports
 uv run coach garmin sync                            # pull new activities (Personal API)
 uv run coach garmin sync --since 2026-09-01         # re-scan from a date
@@ -60,6 +61,10 @@ uv run coach profile birth-date 1980-01-31          # synthetic example date
 uv run coach profile hr-zones 51 59 71 81 90 100 --age-predicted --valid-from 2020-01-01
 uv run coach metrics recompute                      # after upgrading, or a zone change
 ```
+
+Files imported before an upgrade of the normalisation rules (P9 added laps, pool lengths
+and the power sensor) are read again with `coach activity reprocess`: about 0.7 s per file,
+once; it adds a revision of each observation and never changes the stored files.
 
 Imports run each file through a sandboxed parser; rejected files leave only an ingestion
 record and an issue (`coach issue list`). The CSV template header is documented in

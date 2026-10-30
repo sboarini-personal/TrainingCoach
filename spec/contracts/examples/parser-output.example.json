@@ -1,7 +1,10 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "format": "FIT",
-  "parser": { "name": "fit", "version": "1.0.0" },
+  "parser": {
+    "name": "fit",
+    "version": "1.1.0"
+  },
   "recordCount": 9,
   "fileType": "activity",
   "sessions": [
@@ -30,12 +33,55 @@
         "avgHeartRate": "session[0].avg_heart_rate"
       },
       "samples": {
-        "offsetSeconds": [0, 1, 2, 3],
-        "distanceMeters": [0, 2.8, 5.6, 8.4],
-        "heartRate": [120, 122, null, 125],
-        "speedMps": [2.8, 2.8, 2.8, 2.8],
-        "cadence": [84, 85, 85, 86]
-      }
+        "offsetSeconds": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "distanceMeters": [
+          0,
+          2.8,
+          5.6,
+          8.4
+        ],
+        "heartRate": [
+          120,
+          122,
+          null,
+          125
+        ],
+        "speedMps": [
+          2.8,
+          2.8,
+          2.8,
+          2.8
+        ],
+        "cadence": [
+          84,
+          85,
+          85,
+          86
+        ]
+      },
+      "laps": [
+        {
+          "startOffsetSeconds": 0,
+          "elapsedSeconds": 3,
+          "timerSeconds": 3,
+          "distanceMeters": 8.4,
+          "avgHeartRate": 122,
+          "maxHeartRate": 125,
+          "avgCadence": 85,
+          "avgPowerWatts": null,
+          "intensity": "active",
+          "trigger": "session_end"
+        }
+      ],
+      "lengths": [],
+      "sensors": [
+        "heart_rate"
+      ]
     }
   ]
 }

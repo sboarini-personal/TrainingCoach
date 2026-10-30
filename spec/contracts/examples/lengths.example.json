@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "1.0.0",
+  "startTimeUtc": "2026-10-21T10:00:00Z",
+  "lengths": [
+    {
+      "startOffsetSeconds": 0,
+      "elapsedSeconds": 24.5,
+      "timerSeconds": 24.5,
+      "type": "ACTIVE",
+      "strokes": 16,
+      "strokeType": "FREESTYLE"
+    },
+    {
+      "startOffsetSeconds": 24.5,
+      "elapsedSeconds": 25.1,
+      "timerSeconds": 25.1,
+      "type": "ACTIVE",
+      "strokes": 17,
+      "strokeType": "FREESTYLE"
+    },
+    {
+      "startOffsetSeconds": 49.6,
+      "elapsedSeconds": 20,
+      "timerSeconds": 20,
+      "type": "IDLE",
+      "strokes": null,
+      "strokeType": null
+    }
+  ]
+}

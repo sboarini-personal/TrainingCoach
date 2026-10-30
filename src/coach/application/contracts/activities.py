@@ -13,7 +13,6 @@ from typing import Any, Final
 from uuid import UUID
 
 from coach.application.contracts._json import (
-    SCHEMA_VERSION,
     Document,
     Json,
     instant,
@@ -65,8 +64,11 @@ from coach.domain.common.quality import (
 )
 from coach.domain.raw.source import SourceOrigin
 
-# Contract versions written by this code (spec/README.md change process).
-OBSERVATION_SCHEMA_VERSION: Final = "1.2.0"
+# Contract versions written by this code (spec/README.md change process). P9 added the power
+# sensor field (activity 1.1.0, observation 1.3.0, override 1.1.0).
+ACTIVITY_SCHEMA_VERSION: Final = "1.1.0"
+OBSERVATION_SCHEMA_VERSION: Final = "1.3.0"
+OVERRIDE_SCHEMA_VERSION: Final = "1.1.0"
 ISSUE_SCHEMA_VERSION: Final = "1.1.0"
 
 
@@ -291,7 +293,7 @@ def _parse_field_provenance(document: Document) -> FieldProvenance:
 
 def activity_to_contract(activity: Activity) -> Json:
     document: Json = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": ACTIVITY_SCHEMA_VERSION,
         "id": str(activity.activity_id),
         "athleteId": str(activity.athlete_id),
         "version": activity.version,
@@ -401,7 +403,7 @@ def observation_from_contract(document: Document) -> Observation:
 def override_to_contract(override: DataOverride) -> Json:
     spec = field_spec(override.field)
     return {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": OVERRIDE_SCHEMA_VERSION,
         "overrideId": str(override.override_id),
         "athleteId": str(override.athlete_id),
         "entityType": override.entity_type.value,

@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:laps:1",
+  "title": "Laps",
+  "description": "Laps of one session, stored as a content-addressed blob and referenced as the LAPS stream of an observation (P9). Offsets are seconds from startTimeUtc, never decreasing (checked in code). null = UNKNOWN. No positions or device identifiers. Owner spec: spec/integration/files.spec.md section 8.6.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "startTimeUtc",
+    "cadenceUnit",
+    "laps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion"
+    },
+    "startTimeUtc": {
+      "$ref": "urn:coach:schema:common:1#/$defs/utcInstant"
+    },
+    "cadenceUnit": {
+      "description": "Unit of averageCadence (that of performance.cadence); null when no lap has a cadence.",
+      "enum": [
+        "STEPS_PER_MIN",
+        "RPM",
+        "STROKES_PER_MIN",
+        null
+      ]
+    },
+    "laps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/lap"
+      }
+    }
+  },
+  "$defs": {
+    "duration": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "exclusiveMinimum": 0,
+      "maximum": 86400
+    },
+    "lap": {
+      "type": "object",
+      "required": [
+        "startOffsetSeconds",
+        "elapsedSeconds",
+        "timerSeconds",
+        "distanceMeters",
+        "averageHr",
+        "maxHr",
+        "averageCadence",
+        "averagePowerWatts",
+        "intensity",
+        "trigger"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "startOffsetSeconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "elapsedSeconds": {
+          "$ref": "#/$defs/duration"
+        },
+        "timerSeconds": {
+          "$ref": "#/$defs/duration"
+        },
+        "distanceMeters": {
+          "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown"
+        },
+        "averageHr": {
+          "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown"
+        },
+        "maxHr": {
+          "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown"
+        },
+        "averageCadence": {
+          "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown"
+        },
+        "averagePowerWatts": {
+          "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown"
+        },
+        "intensity": {
+          "enum": [
+            "ACTIVE",
+            "REST",
+            "WARMUP",
+            "COOLDOWN",
+            "RECOVERY",
+            "INTERVAL",
+            "OTHER",
+            null
+          ]
+        },
+        "trigger": {
+          "enum": [
+            "MANUAL",
+            "TIME",
+            "DISTANCE",
+            "POSITION",
+            "SESSION_END",
+            "OTHER",
+            null
+          ]
+        }
+      }
+    }
+  }
+}

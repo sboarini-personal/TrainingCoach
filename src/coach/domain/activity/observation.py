@@ -168,3 +168,25 @@ class Observation:
         if self.provider is None or self.provider_activity_id is None:
             return None
         return self.provider, self.provider_activity_id
+
+
+def version_key(version: str) -> tuple[int, ...]:
+    """MAJOR.MINOR.PATCH as numbers, so 1.10.0 is newer than 1.9.0."""
+    if not _SEMVER.match(version):
+        raise DomainValidationError(f"not a MAJOR.MINOR.PATCH version: {version!r}")
+    return tuple(int(part) for part in version.split("."))
+
+
+def supersedes(new: Observation, old: Observation) -> bool:
+    """A re-normalisation of the same source (activities spec 1.1): same source and part,
+    same normaliser, a newer version."""
+    return (
+        new.key == old.key
+        and new.normaliser == old.normaliser
+        and version_key(new.normaliser_version) > version_key(old.normaliser_version)
+    )
+
+
+def same_session(new: Observation, old: Observation) -> bool:
+    """Whether a re-normalised observation still describes the session it replaces."""
+    return (new.sport, new.start_time_utc) == (old.sport, old.start_time_utc)

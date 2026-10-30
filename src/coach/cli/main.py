@@ -107,6 +107,9 @@ def _parser() -> argparse.ArgumentParser:
     show.add_argument("activity_id", type=UUID)
     listing = activity.add_parser("list", help="most recent activities, corrections applied")
     listing.add_argument("--limit", type=int, default=20)
+    activity.add_parser(
+        "reprocess", help="re-read imported files with the current rules (laps, lengths, sensors)"
+    )
     exporting = activity.add_parser("export", help="write activities as CSV (activity template)")
     exporting.add_argument("output", type=Path)
     issue = commands.add_parser("issue", help="data quality issues").add_subparsers(
@@ -282,6 +285,8 @@ def main(
                 return analytics_commands.load_week(runtime, _session(runtime), args, stream)
             case ("load", "weeks"):
                 return analytics_commands.load_weeks(runtime, _session(runtime), args, stream)
+            case ("activity", "reprocess"):
+                return activity_commands.reprocess(runtime, _session(runtime), stream)
             case ("activity", "list"):
                 return activity_commands.list_activities(runtime, _session(runtime), args, stream)
             case ("activity", "export"):
