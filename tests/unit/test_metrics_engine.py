@@ -251,7 +251,7 @@ def test_cross_sport_totals_cover_time_and_session_rpe_only() -> None:
 
 
 @pytest.mark.req("FR-MET-002", "FR-MET-003")
-def test_the_p8_catalogue_is_registered_with_origins_and_references() -> None:
+def test_the_catalogue_is_registered_with_origins_and_references() -> None:
     expected = {
         "any.srpe_load": MetricOrigin.STANDARD_CALCULATION,
         "any.speed_avg": MetricOrigin.STANDARD_CALCULATION,
@@ -263,6 +263,11 @@ def test_the_p8_catalogue_is_registered_with_origins_and_references() -> None:
         "any.distance_total": MetricOrigin.APPLICATION_DERIVED,
         "any.elevation_gain_total": MetricOrigin.APPLICATION_DERIVED,
         "any.srpe_load_total": MetricOrigin.STANDARD_CALCULATION,
+        # P9 (running spec 4): this application's methods, so APPLICATION_DERIVED
+        "run.hr_drift": MetricOrigin.APPLICATION_DERIVED,
+        "run.pace_variability": MetricOrigin.APPLICATION_DERIVED,
+        "run.interval_degradation": MetricOrigin.APPLICATION_DERIVED,
+        "run.efficiency_hr": MetricOrigin.APPLICATION_DERIVED,
     }
     assert {item.metric_id: item.origin for item in CATALOG} == expected
     for item in CATALOG:

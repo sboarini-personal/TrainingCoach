@@ -163,3 +163,17 @@ def test_bad_birth_dates_and_methods_are_refused(cli: Cli) -> None:
     assert (code, "percent-max-hr" in output) == (2, True)
     code, output = cli.run("profile", "hr-zones", "51", "120", "--age-predicted")
     assert (code, output.startswith("error:")) == (2, True)  # percentages above 100
+
+
+@pytest.mark.req("FR-RUN-002", "FR-RUN-004")
+def test_running_metrics_of_an_imported_steady_run(cli: Cli, tmp_path: Path) -> None:
+    records, summary = fit_session(seconds=2400)  # 40 min at 3 m/s
+    for record in records:  # heart rate 140 until the middle of the window, then 150
+        elapsed = (record["timestamp"] - summary["start_time"]).total_seconds()
+        record["heart_rate"] = 140 if elapsed < 1500 else 150
+    activity_id = imported(cli, tmp_path, fit_file([(records, summary)]))
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    drift = next(line for line in shown.splitlines() if "run.hr_drift" in line)
+    assert drift.endswith("6.7 %")
+    assert any(line.strip().startswith("run.pace_variability") for line in shown.splitlines())
+    assert any(line.strip().startswith("run.efficiency_hr") for line in shown.splitlines())

@@ -3,7 +3,8 @@
 Activity bindings name the activity fields each input of a per-activity metric is read from,
 in order of preference, and the sports the metric applies to; those metrics are recomputed
 from the EFFECTIVE view after every change to an activity (activities spec section 4).
-Period totals name the activity field (or the per-activity metric) they add up.
+Period totals name the activity field (or the per-activity metric) they add up. Stream
+analyses (P9, metrics spec 10) read a metric's inputs from a session's streams.
 """
 
 from __future__ import annotations
@@ -12,11 +13,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final
 
-from coach.domain.activity.fields import field_spec
+from coach.domain.activity.fields import StreamKind, field_spec
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import MetricOrigin
-from coach.domain.common.quality import Confidence
+from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
+from coach.metrics import running
+from coach.metrics.analyses import StreamAnalysis
 from coach.metrics.registry import (
     Aggregation,
     Calculation,
@@ -166,6 +169,136 @@ HR_ZONE_TIME: Final = MetricDefinition(
 )
 
 
+# ------------------------------------------------------------------ running (P9)
+
+MAX_RUNNING_SPEED_MPS: Final = 15.0
+_RUN_SPEED: Final = (0.0, MAX_RUNNING_SPEED_MPS)
+
+
+def _run_speed(name: str, description: str) -> InputSpec:
+    low, high = _RUN_SPEED
+    return InputSpec(name, "m/s", low, high, minimum_exclusive=True, description=description)
+
+
+def _heart_rate(name: str, description: str) -> InputSpec:
+    return InputSpec(name, "bpm", 30, 230, description=description)
+
+
+def _hr_drift(inputs: Mapping[str, float]) -> float:
+    first = inputs["first_half_speed_mps"] / inputs["first_half_hr_bpm"]
+    second = inputs["second_half_speed_mps"] / inputs["second_half_hr_bpm"]
+    return (first - second) / first * 100.0
+
+
+def _variability(inputs: Mapping[str, float]) -> float:
+    return inputs["split_stdev_seconds"] / inputs["split_mean_seconds"] * 100.0
+
+
+def _degradation(inputs: Mapping[str, float]) -> float:
+    first = inputs["first_reps_speed_mps"]
+    return (first - inputs["last_reps_speed_mps"]) / first * 100.0
+
+
+def _per_heartbeat(inputs: Mapping[str, float]) -> float:
+    speed = inputs["distance_meters"] / inputs["duration_seconds"]
+    return speed * SECONDS_PER_MINUTE / inputs["average_hr_bpm"]
+
+
+RUN_HR_DRIFT: Final = MetricDefinition(
+    metric_id="run.hr_drift",
+    name="Heart-rate drift",
+    sport=Sport.RUNNING,
+    unit="%",
+    method=(
+        "(first-half speed/heart rate - second-half speed/heart rate) / first-half speed/heart "
+        "rate x 100, over the steady window after a 600 s warm-up (running spec 4.1)"
+    ),
+    required_inputs=(
+        _run_speed("first_half_speed_mps", "Speed of the first half of the window"),
+        _heart_rate("first_half_hr_bpm", "Mean heart rate of the first half"),
+        _run_speed("second_half_speed_mps", "Speed of the second half of the window"),
+        _heart_rate("second_half_hr_bpm", "Mean heart rate of the second half"),
+    ),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    calculate=_hr_drift,
+)
+RUN_PACE_VARIABILITY: Final = MetricDefinition(
+    metric_id="run.pace_variability",
+    name="Pace variability",
+    sport=Sport.RUNNING,
+    unit="%",
+    method="Coefficient of variation of the whole-kilometre split times (running spec 4.2)",
+    required_inputs=(
+        InputSpec("split_mean_seconds", "s", 0, 3600, minimum_exclusive=True),
+        InputSpec("split_stdev_seconds", "s", 0, 3600),
+    ),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    calculate=_variability,
+)
+RUN_INTERVAL_DEGRADATION: Final = MetricDefinition(
+    metric_id="run.interval_degradation",
+    name="Interval degradation",
+    sport=Sport.RUNNING,
+    unit="%",
+    method=(
+        "(mean speed of the first k repetitions - of the last k) / first x 100, "
+        "k = max(1, n // 3) (running spec 4.3)"
+    ),
+    required_inputs=(
+        _run_speed("first_reps_speed_mps", "Mean speed of the first repetitions"),
+        _run_speed("last_reps_speed_mps", "Mean speed of the last repetitions"),
+    ),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    calculate=_degradation,
+)
+RUN_EFFICIENCY_HR: Final = MetricDefinition(
+    metric_id="run.efficiency_hr",
+    name="Distance per heartbeat",
+    sport=Sport.RUNNING,
+    unit="m/beat",
+    method="(distance / duration) x 60 / average heart rate (running spec 4)",
+    required_inputs=(_DISTANCE, _DURATION, _heart_rate("average_hr_bpm", "Average heart rate")),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    calculate=_per_heartbeat,
+)
+_RUNNING: Final = frozenset({Sport.RUNNING})
+STREAM_ANALYSES: Final = (
+    StreamAnalysis(
+        definition=RUN_HR_DRIFT,
+        stream=StreamKind.TIME_SERIES,
+        sports=_RUNNING,
+        analyse=running.hr_drift,
+        unknown_without_stream=True,
+        anomaly_fields=("cardiovascular.", "distance.", "performance.averageSpeedMps"),
+        stream_reasons=frozenset({UncertaintyReason.MISSING_DATA, UncertaintyReason.ENVIRONMENT}),
+    ),
+    StreamAnalysis(
+        definition=RUN_PACE_VARIABILITY,
+        stream=StreamKind.TIME_SERIES,
+        sports=_RUNNING,
+        analyse=running.pace_variability,
+        unknown_without_stream=True,
+        anomaly_fields=("distance.", "performance.averageSpeedMps"),
+    ),
+    StreamAnalysis(
+        definition=RUN_INTERVAL_DEGRADATION,
+        stream=StreamKind.LAPS,
+        sports=_RUNNING,
+        analyse=running.interval_degradation,
+        unknown_without_stream=False,
+        anomaly_fields=("distance.",),
+    ),
+)
+
+
 def _total(
     metric_id: str,
     name: str,
@@ -247,6 +380,10 @@ CATALOG: Final = MetricRegistry(
         DISTANCE_TOTAL,
         ELEVATION_GAIN_TOTAL,
         SRPE_LOAD_TOTAL,
+        RUN_HR_DRIFT,
+        RUN_PACE_VARIABILITY,
+        RUN_INTERVAL_DEGRADATION,
+        RUN_EFFICIENCY_HR,
     )
 )
 
@@ -300,6 +437,9 @@ ACTIVITY_BINDINGS: Final = (
     ActivityBinding(SPEED_AVG, _SPEED_INPUTS, sports=DISTANCE_SPORTS),
     ActivityBinding(RUN_PACE_AVG, _SPEED_INPUTS),
     ActivityBinding(SWIM_PACE_100M_AVG, _SPEED_INPUTS),
+    ActivityBinding(
+        RUN_EFFICIENCY_HR, (*_SPEED_INPUTS, ("average_hr_bpm", ("cardiovascular.averageHr",)))
+    ),
 )
 
 

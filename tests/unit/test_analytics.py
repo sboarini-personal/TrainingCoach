@@ -243,6 +243,9 @@ def test_recomputation_brings_old_activities_up_to_date() -> None:
         "any.srpe_load",
         "any.speed_avg",
         "run.pace_avg",
+        "run.efficiency_hr",
+        "run.hr_drift",  # no time series: UNKNOWN
+        "run.pace_variability",
     ]
     world.zone_models.append(
         HeartRateZoneModel(

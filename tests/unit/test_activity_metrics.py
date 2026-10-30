@@ -312,7 +312,14 @@ def test_sparse_heart_rate_marks_zone_times_as_missing_data() -> None:
 def test_an_unchanged_series_is_not_read_again() -> None:
     world = World()
     world.zone_models.append(MODEL)
-    activity_id = run_with(world, series())
+    # a ride: no running analysis reads the series (a run that does not qualify for one is
+    # read again, since nothing is stored for it; metrics spec 10)
+    ride = sample_observation(
+        streams=(StreamRef(StreamKind.TIME_SERIES, SERIES_SHA),),
+        updates={"classification.sport": Sport.CYCLING},
+    )
+    world.series[SERIES_SHA] = series()
+    activity_id = world.ingest(ride).activity.activity_id
     assert world.series_reads == [SERIES_SHA]
     view = world.service.effective(SCOPE, activity_id).activity
     world.engine.recompute(SCOPE, view)

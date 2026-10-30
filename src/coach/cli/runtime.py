@@ -6,7 +6,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Any, Final
 from zoneinfo import ZoneInfo
 
 from coach.application.activities import ActivityService, ActivityStores
@@ -26,8 +26,11 @@ from coach.application.contracts import (
     CREDENTIAL_RECORD_CODEC,
     DATA_QUALITY_ISSUE_CODEC,
     INTEGRATION_STATUS_CODEC,
+    LAPS_CODEC,
+    LENGTHS_CODEC,
     PROFILE_CODEC,
     TIME_SERIES_CODEC,
+    DocumentCodec,
 )
 from coach.application.credentials import CredentialService
 from coach.application.derived_metrics import DerivedMetricService
@@ -40,8 +43,8 @@ from coach.application.providers import FitnessProvider
 from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
 from coach.application.sync import SyncService
+from coach.domain.activity.fields import StreamKind
 from coach.domain.activity.issues import DataQualityIssue
-from coach.domain.activity.streams import TimeSeries
 from coach.domain.athlete.physiology import HeartRateZones
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.common.time import parse_timezone
@@ -200,17 +203,27 @@ def build_runtime(
         CATALOG, SqliteDerivedValueRepository(database), clock=clock, ids=new_id
     )
 
-    def time_series(scope: OwnerScope, digest: str) -> TimeSeries | None:
-        """A stored series; ``None`` when its blob is missing or damaged (zones UNKNOWN)."""
+    codecs: dict[StreamKind, DocumentCodec[Any]] = {
+        StreamKind.TIME_SERIES: TIME_SERIES_CODEC,
+        StreamKind.LAPS: LAPS_CODEC,
+        StreamKind.LENGTHS: LENGTHS_CODEC,
+    }
+
+    def read_stream(scope: OwnerScope, kind: StreamKind, digest: str) -> object | None:
+        """A stored stream; ``None`` when its blob is missing or damaged (analyses UNKNOWN)."""
+        codec = codecs.get(kind)
+        if codec is None:
+            return None
         try:
-            return TIME_SERIES_CODEC.load(json.loads(blobs.get(scope, digest)))
+            content: object = codec.load(json.loads(blobs.get(scope, digest)))
         except (NotFoundError, BlobIntegrityError, ValueError, KeyError, TypeError):
             return None
+        return content
 
     engine = ActivityMetricsEngine(
         derived,
         zones=lambda scope: heart_rate_zones(profiles, scope),
-        time_series=time_series,
+        streams=read_stream,
     )
     overrides = SqliteOverrideRepository(database)
     activities = ActivityService(

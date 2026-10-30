@@ -150,8 +150,9 @@ until a reference is recorded.
 | `any.hr_zone_time` | STANDARD_CALCULATION | P8 | requires a valid zone model; section 9.2 |
 | `any.weekly_volume_by_sport` | APPLICATION_DERIVED | P8 | the week report of section 9.4, not a stored value |
 | `any.training_monotony`, `any.training_strain` | STANDARD_CALCULATION | P11 | reference to confirm (Foster) |
-| `run.hr_drift` | STANDARD_CALCULATION | P9 | first-half vs second-half pace:HR; reference to confirm |
-| `run.interval_degradation` | APPLICATION_DERIVED | P9 | |
+| `run.hr_drift` | APPLICATION_DERIVED (P9 decision, running spec 4) | P9 | first-half vs second-half speed:HR of a steady run |
+| `run.interval_degradation` | APPLICATION_DERIVED | P9 | running spec 4.3 |
+| `run.pace_variability`, `run.efficiency_hr` | APPLICATION_DERIVED | P9 | added in P9: pacing stability and efficiency inputs (FR-RUN-003, FR-RUN-004); running spec 4 |
 | `cyc.power_distribution` | STANDARD_CALCULATION | P9 | measured power only |
 | `swim.swolf_avg` | RAW_PROVIDER or STANDARD_CALCULATION | P9 | valid pool lengths only |
 | `str.volume_load` | STANDARD_CALCULATION | P10 | sets x reps x kg |
@@ -295,3 +296,23 @@ recovery and insights (P11).
   activities imported before a metric existed. It works in units of work of 50 activities
   (ADR-027) and reuses the zone times stored for the same stream and zone model instead of
   reading the series again.
+
+## 10. Sport session analyses (P9)
+
+Per-activity metrics of the sport specs (running 4, cycling 6, swimming 5, tennis 4) are
+computed with the per-activity metrics of section 9.1, after every change to a live
+activity and by `coach metrics recompute`.
+
+- A metric that reads only activity fields is a binding as in 9.1. A metric that reads a
+  stream (TIME_SERIES, LAPS or LENGTHS) records, for each input taken from it, the RAW
+  source that supplied the stream as evidence (field `streams.timeSeries`, `streams.laps`
+  or `streams.lengths`, note the stream's SHA-256) and the activity's confidence.
+- Each metric applies to its sports and qualification rules. A session that does not
+  qualify has no value, and a value it had is retired (NOT_APPLICABLE, section 4); a
+  qualifying session whose data is missing is UNKNOWN (MISSING_INPUT) with its reason.
+- A stream analysis reuses the numbers of its current value when that value used the same
+  stream and calculation version, and recomputes the value with the activity's current
+  confidence and reasons (idempotent store); otherwise it reads the stream again.
+- Parameters are versioned with each metric (calculationVersion) and are initial values
+  to review with real data (A-18).
+

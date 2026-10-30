@@ -14,8 +14,10 @@ from coach.application.derived_metrics import DerivedMetricService
 from coach.application.ownership import OwnerScope
 from coach.application.screening import SecretScreen
 from coach.domain.activity.activity import Activity
+from coach.domain.activity.fields import StreamKind
 from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.activity.observation import Observation, SourceKind
+from coach.domain.activity.segments import Laps, Lengths
 from coach.domain.activity.streams import TimeSeries
 from coach.domain.athlete.physiology import HeartRateZoneModel, HeartRateZones
 from coach.domain.common.sport import Sport
@@ -88,10 +90,11 @@ class World:
         self.birth_date: date | None = None  # for age-predicted models (ADR-028)
         self.series: dict[str, TimeSeries] = {}
         self.series_reads: list[str] = []
+        self.segments: dict[str, Laps | Lengths] = {}  # LAPS and LENGTHS blobs (P9)
         self.engine = ActivityMetricsEngine(
             self.metrics,
             zones=lambda _scope: HeartRateZones(tuple(self.zone_models), self.birth_date),
-            time_series=self.read_series,
+            streams=self.read_stream,
         )
         self.consents_gate = ConsentGate(self.ledgers, policy_version="1.0")
         self.service = ActivityService(
@@ -110,6 +113,11 @@ class World:
     def read_series(self, _scope: OwnerScope, digest: str) -> TimeSeries | None:
         self.series_reads.append(digest)
         return self.series.get(digest)  # a missing blob reads as None, like the runtime
+
+    def read_stream(self, scope: OwnerScope, kind: StreamKind, digest: str) -> object | None:
+        if kind is StreamKind.TIME_SERIES:
+            return self.read_series(scope, digest)
+        return self.segments.get(digest)
 
     def grant(self, athlete_id: UUID) -> None:
         self.consents.grant(

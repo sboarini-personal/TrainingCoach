@@ -75,6 +75,10 @@ def amount(value: float, unit: str) -> str:
             return f"{minutes(value)} /100m"
         case "AU":
             return f"{value:.0f} AU"
+        case "%":
+            return f"{value:.1f} %"
+        case "m/beat":
+            return f"{value:.2f} m/beat"
         case _:
             return f"{value:g} {unit}"
 
