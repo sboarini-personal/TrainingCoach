@@ -65,10 +65,18 @@ uv run coach profile sensor CYCLING_POWER_METER --reliable   # power becomes MEA
 uv run coach profile ftp 250 --on 2026-10-01 --measured
 uv run coach analysis trend run.efficiency_hr --weeks 12
 uv run coach analysis trend swim.swolf_avg --stroke FREESTYLE
+uv run coach strength exercises "sentadilla bulgara"   # the catalogue, by ID, name or alias
+uv run coach strength alias "Búlgaras" ex.bulgarian_split_squat
+uv run coach strength sets <activity-id>                # executed sets of a strength session
+uv run coach strength log <activity-id> "back squat" --set 2 --reps 7 --rpe 8.5
+uv run coach strength relabel <activity-id> fit:squat ex.goblet_squat
+uv run coach strength week --week 2026-W44              # hard sets per muscle, volume load
+uv run coach strength progress                          # progress, hold or regress per exercise
+uv run coach strength interference --days 7
 ```
 
 Files imported before an upgrade of the normalisation rules (P9 added laps, pool lengths
-and the power sensor) are read again with `coach activity reprocess`: about 0.7 s per file,
+and the power sensor, P10 strength sets) are read again with `coach activity reprocess`: about 0.7 s per file,
 once; it adds a revision of each observation and never changes the stored files.
 
 Imports run each file through a sandboxed parser; rejected files leave only an ingestion
@@ -92,6 +100,18 @@ pace variability per stroke, and pace and stroke fatigue within sets; tennis reg
 from duration, RPE and match. A session's RPE is recorded with `coach activity correct`.
 `coach analysis trend` compares only sessions of the same kind (surface and terrain, indoor
 or outdoor, pool length and stroke) and never mixes groups.
+
+Strength (P10): a watch's strength sets are imported with the activity; an exercise the
+watch names without an exact catalogue equivalent stays unknown until you name it with
+`coach strength relabel`. Your entries (`coach strength log`) correct the watch set of the
+same exercise and set number, or add a set; RPE and RIR come only from you, and you can
+ignore the watch's sets for a session (`coach strength watch-sets <id> ignore`). Volume
+load counts sets with known repetitions and load; a hard set is RIR 4 or less, else RPE 6
+or more, so sets without either show as unknown effort in `coach strength week`.
+`coach strength progress` needs targets (`--target-reps`, `--target-rpe`) to decide;
+`coach strength interference` flags combinations such as heavy legs the day before hard
+intervals. Pain counts for a region only when its location is the region's name (for
+example "rodilla"). These are load-management rules, not medical advice.
 
 `coach garmin sync` uses the Garmin Personal API key stored with `coach secret set
 garmin-api-key` (create it in Garmin Connect, under Personal API key). It pulls the last 8

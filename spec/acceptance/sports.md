@@ -34,7 +34,10 @@ sessions in separate groups, NON_COMPARABLE_SESSION across them).
 Implementation status (P9): the load part is executed by `tests/unit/test_tennis.py`
 (session RPE load per sport and across sports, HIGH regional load for the listed regions
 during 48 hours); re-evaluating planned workouts arrives with interference (P10) and plans
-(P12).
+(P12). Implementation status (P10): the interference engine assesses demanding tennis with
+hard intervals and heavy legs within 48 hours as VERY_HIGH and tennis with calf and Achilles
+intensive work within 24 hours as HIGH (`tests/unit/test_interference.py`); re-evaluating
+the planned workouts arrives with plans (P12).
 
 **Given** 120 minutes of demanding tennis (RPE 8)
 **When** the next 24 to 48 hours are planned
@@ -45,6 +48,12 @@ during 48 hours); re-evaluating planned workouts arrives with interference (P10)
 ### AT-STR-001 — Heavy legs are avoided before hard intervals
 - Requirements: FR-STR-007
 - Level: unit. First executable: P10.
+
+Implementation status (P10): the assessment is executed by `tests/unit/test_interference.py`
+(a planned strength block at RPE 7 the day before planned hard intervals is HIGH; a modifier
+lowers it only with stated evidence, recorded with the base level) and end to end on
+completed sessions by `tests/integration/test_cli_strength.py`. Not scheduling the heavy
+work is the planner's (P12).
 
 **Given** hard running intervals planned tomorrow
 **When** strength is planned today

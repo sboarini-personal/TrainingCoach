@@ -252,8 +252,9 @@ start_time_utc,utc_offset,sport,subtype,elapsed_seconds,moving_seconds,distance_
   removes one leading quote when the rest of the cell starts with `=`, `+`, `-`, `@`, tab or
   carriage return, so an export can be imported again. The cell stays data either way.
 
-Strength sets get their own template with the strength domain (P10, after the athlete's
-set entries of strength spec section 5).
+Strength sets get their own template with the strength domain. Deferred from P10 to P12
+(execution capture): in P10 the athlete enters sets with `coach strength log` (strength spec
+section 5).
 
 ### 8.5 Time series
 

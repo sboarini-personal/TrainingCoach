@@ -103,8 +103,8 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P9 are done. Next: P10 (exercise catalogue, strength prescription and execution,
-interference). See `docs/architecture.md` section 8.
+P0 to P10 are done. Next: P11 (check-in, recovery, patterns, insights, report data). See
+`docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 `AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
@@ -161,4 +161,17 @@ paths. The engine reads profile data as `AnalysisSettings` (zones, reliable powe
 FTP, usual pool). Power is MEASURED only in the EFFECTIVE view, never in a normaliser.
 Trends are `AnalyticsService.trend` over `coach.metrics.trends` groups. Synthetic FIT laps,
 lengths and devices come from `file_samples.fit_lap`, `fit_length` and `fit_device`.
+
+Strength (P10, ADR-031): exercises come from `coach.domain.strength.catalogue.CATALOGUE`
+(resolve text with `CATALOGUE.resolve`, never by similarity; own aliases through
+`check_own_alias`). The watch's sets are the SETS stream (`WatchSets`, FIT mapping in
+`coach.integrations.files.fit_exercises`, exact equivalents only); the athlete's are a
+`StrengthSession` per activity changed through `StrengthService`; read executed sets with
+`StrengthService.sets` / `of_view` (pure `reconcile`). Volume, hard sets, progression
+(`coach.domain.strength.progression`) and interference (`coach.planning.interference`) are
+versioned rules with reason codes; unknown effort or data stays unknown or *possible*, never
+assumed. Regions an exercise loads and pain-location names are in
+`coach.domain.strength.regions`. Tests: `World.strength` and `World.strength_sessions`, SETS
+blobs in `World.segments`; synthetic FIT sets from `file_samples.fit_set` and
+`strength_session`.
 

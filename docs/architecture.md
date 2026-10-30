@@ -65,6 +65,17 @@ Domain packages (P2): `common` (errors, time, units, quality, provenance, sport,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
 `onboarding`; `raw` (P3); `activity` (P5); `ingestion` (P6).
 
+P10 additions:
+
+| Package | Content |
+|---|---|
+| `coach.domain` | `strength.vocabulary` (patterns, muscle groups, body regions, contraindication tags, interference levels), `strength.exercise` and `strength.catalogue` (catalogue 1.0.0, aliases), `strength.sets` (SETS stream), `strength.session` (StrengthSession, reconciliation into StrengthSetResults), `strength.regions` (regions loaded, region names), `strength.progression` (rules 1.0.0), `strength.prescription` (rules 1.0.0); `athlete.profile` exercise aliases |
+| `coach.metrics` | `strength` (volume load, hard sets, muscle shares); `str.volume_load`, `str.volume_load_total`, `str.weekly_sets_by_muscle`; dimension MUSCLE |
+| `coach.planning` | `interference` (demands of planned and completed sessions, baseline rules 1.0.0, modifiers) |
+| `coach.application` | `StrengthService` (set entries, relabels, watch-sets choice, executed sets); engine volume load and `ActivityService.refresh`; `AnalyticsService.strength_week`, `progression`, `interference`; `strength.strengthSessionId` in the EFFECTIVE view; codecs for exercises, sets, strength sessions and the strength block of a workout |
+| `coach.integrations.files` | FIT set messages (parser 1.2.0, parser output 1.2.0), FIT exercise mapping 1.0.0, normalisation rules 1.2.0 |
+| `coach.cli` | `strength exercises`, `alias`, `sets`, `log`, `relabel`, `watch-sets`, `week`, `progress`, `interference` |
+
 P9 additions:
 
 | Package | Content |
@@ -169,8 +180,9 @@ Integration statuses (P7) are aggregates in `aggregates` (kind `integration_stat
 capability snapshot, sync state with reason codes, freshness, `notBefore` and the cursor. The
 coaching state with its conditions is kind `coaching_state`.
 
-Time series, laps and pool lengths (P9) are content-addressed JSON blobs in the athlete's
-blob store, referenced from observations. Uploads wait in `<data_dir>/quarantine/` under random names only while they are
+Time series, laps and pool lengths (P9) and strength sets (P10) are content-addressed JSON
+blobs in the athlete's blob store, referenced from observations. Strength sessions (P10) are
+aggregates in `aggregates` (kind `strength_session`), one per activity. Uploads wait in `<data_dir>/quarantine/` under random names only while they are
 processed.
 
 RAW bytes live in `<data_dir>/raw/<athlete_id>/<sha256[0:2]>/<sha256>`, written atomically,
@@ -208,6 +220,14 @@ swimming per stroke and per set; tennis regional load); `coach analysis trend` g
 metric's sessions into comparable groups and fits a trend per group, never across groups.
 `coach activity reprocess` re-reads stored RAW with newer normalisation rules and adds
 observation revisions.
+
+**Strength (P10, ADR-031):** a FIT strength session's set messages become its SETS
+stream (exercises mapped to the catalogue only when exactly equivalent); the athlete's
+`coach strength log`, `relabel` and `watch-sets` change the activity's StrengthSession; the
+executed sets are reconciled from both on every read and change, and the change recomputes
+the activity's volume load. `coach strength week` materialises hard sets per muscle group
+and the volume load; `progress` and `interference` are read models of rules 1.0.0, with
+reason codes and evidence.
 
 **Adaptive loop:** activity ingested -> workout execution matching -> metrics -> recovery
 assessment -> insights -> decision (code thresholds plus AI interpretation) -> policy engine
@@ -252,7 +272,10 @@ engine for proposals -> AgentDecision audit.
 | A-15 | Women's health and nutrition data not ingested | Proposed |
 | A-16 | Deduplication tolerances and weights as in the deduplication spec (rules 1.0.0), versioned | Proposed |
 | A-17 | V1 is for adults (18 or older) | Proposed |
-| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability, the metric input ranges and the 20 s sample gap of time in zones from P8, and the P9 sport analytics parameters: warm-up, steadiness, splits, repetition tolerances, power zone fractions and FTP window, set sizes, tennis load levels, terrain bands and trend thresholds) are initial, versioned values to be reviewed with real data | Proposed |
+| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability, the metric input ranges and the 20 s sample gap of time in zones from P8, and the P9 sport analytics parameters: warm-up, steadiness, splits, repetition tolerances, power zone fractions and FTP window, set sizes, tennis load levels, terrain bands and trend thresholds, and the P10 strength parameters: hard-set thresholds, heavy session
+size, calf-intensive size, long-run duration, hard run and swim RPE, region tables, FIT
+exercise mapping, progression RPE overshoot) are initial, versioned values to be reviewed with
+real data | Proposed |
 | A-19 | At most one ACTIVE priority-A goal | Proposed |
 | A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
 
@@ -273,8 +296,8 @@ Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md
 | P7 | FitnessProvider port and fake provider, capability model and POL-CAPABILITY, IntegrationStatus, LocalWorkoutPublisher, Garmin Personal adapter (token broker, thin transport, request budget, `garmin_activity` normaliser 1.0.0), SyncService with windows, cursor, retries and degradation (ADR-026), provider payloads through the ingestion pipeline, CLI `garmin sync` and `garmin status` | Done |
 | P8 | Deterministic metrics engine: subject dimensions, aggregations, speed and pace, time in heart-rate zones, period totals materialised on read, week report with external and internal load, recomputation, SQLite units of work (ADR-027), age-predicted zones as a labelled estimate (ADR-028), CLI `load`, `metrics`, `activity show`, `profile hr-zones`, `profile birth-date` | Done |
 | P9 | Laps, pool lengths and power sensors from files with re-normalisation (ADR-029); running, cycling, swimming analytics and tennis load as stream analyses (ADR-030); measured power attribution; per-stroke dimension; qualifying-only work total; comparable groups and trends; CLI `activity reprocess`, `activity correct`, `profile sensor`, `profile ftp`, `analysis trend` | Done |
-| P10 | Exercise catalogue, strength prescription and execution, interference | Next |
-| P11 | Check-in, recovery, patterns, insights, report data | |
+| P10 | Exercise catalogue 1.0.0 and athlete aliases; FIT strength sets (SETS stream, normalisation rules 1.2.0) and StrengthSession reconciliation; volume load and weekly hard sets per muscle group (MUSCLE dimension); progression rules 1.0.0; strength prescription rules 1.0.0 (workout contract 1.1.0); interference engine rules 1.0.0 (ADR-031); CLI `strength` | Done |
+| P11 | Check-in, recovery, patterns, insights, report data | Next |
 | P12 | Policy engine (full), planning, versioning, execution, adaptive loop | |
 | P13 | AI coach: tools, prompts, LLM adapter, agent evaluations, UI | |
 | P14 | Garmin workout publication | Deferred: needs a tier with `trainingPublish` |

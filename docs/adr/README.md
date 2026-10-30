@@ -35,3 +35,4 @@ change is a new ADR that supersedes the old one (status `Superseded by ADR-NNN`)
 | [ADR-028](ADR-028-age-predicted-heart-rate-zones.md) | Age-predicted heart-rate zones as a labelled estimate | Accepted |
 | [ADR-029](ADR-029-renormalisation-and-segment-streams.md) | Re-normalisation by observation revisions; laps, lengths and the power sensor | Accepted |
 | [ADR-030](ADR-030-sport-session-analytics.md) | Sport session analytics: stream analyses, measured power, strokes and trends | Accepted |
+| [ADR-031](ADR-031-strength-execution-and-engines.md) | Strength execution, volume, progression and interference | Accepted |

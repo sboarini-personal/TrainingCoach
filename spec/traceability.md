@@ -42,6 +42,7 @@ each acceptance test are executed so far.
 
 ## Current state
 
-After P9: 111 of 152 requirements have passing tests (100 after P8, 99 after P7); the rest
+After P10: 114 of 152 requirements have passing tests (111 after P9, 100 after P8, 99 after
+P7); the rest
 are UNTESTED until their implementation phases (see `docs/architecture.md`, section
 "Delivery phases").
