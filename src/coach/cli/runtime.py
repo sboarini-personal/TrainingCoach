@@ -52,6 +52,7 @@ from coach.application.providers import FitnessProvider
 from coach.application.recovery import RecoveryService
 from coach.application.recovery_assessment import RecoveryAssessmentService
 from coach.application.recovery_sync import RecoverySyncService
+from coach.application.reports import ReportService
 from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
 from coach.application.strength import StrengthService, session_reader
@@ -150,6 +151,7 @@ class Runtime:
     recovery_sync: RecoverySyncService
     recovery_assessment: RecoveryAssessmentService
     insights: InsightService
+    reports: ReportService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
@@ -336,6 +338,16 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+    reports = ReportService(
+        activities=activities,
+        analytics=analytics,
+        assessments=recovery_assessment,
+        insights=insights,
+        conditions=conditions,
+        consents=gate,
+        today=recovery.today,
+        clock=clock,
+    )
     ingestion_records = SqliteIngestionRecordRepository(database)
     ingestion = IngestionService(
         formats=LocalFileFormats(ParserSandbox(layout.quarantine)),
@@ -408,6 +420,7 @@ def build_runtime(
         recovery_sync=recovery_sync,
         recovery_assessment=recovery_assessment,
         insights=insights,
+        reports=reports,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

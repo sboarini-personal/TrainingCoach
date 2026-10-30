@@ -474,6 +474,14 @@ class AnalyticsService:
             )
         return MetricInput(value.value, evidence, confidence, reasons)
 
+    # ------------------------------------------------------------------ activities
+
+    def activities(self, scope: OwnerScope, period: DateRange) -> list[Activity]:
+        """The ACTIVE activities (EFFECTIVE view) whose training day falls in the period."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        with self._batch():
+            return self._members(scope, period)
+
     # ------------------------------------------------------------------ zones
 
     def zone_sessions(self, scope: OwnerScope, period: DateRange) -> list[ZoneSession]:

@@ -1,12 +1,15 @@
-"""`coach insights` (P11; insights spec): detection end to end with SQLite."""
+"""`coach insights` and `coach report` (P11; insights and reporting specs), end to end with
+SQLite."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from cli_harness import Cli
+from schemas import validation_errors
 
 
 @pytest.fixture
@@ -52,3 +55,29 @@ def test_with_the_activities_consent_and_no_data_nothing_is_found(cli: Cli) -> N
     assert output.startswith("insights to 2026-10-25: 0 found (0 new)")
     assert "PATTERN.MONOTONY" not in output
     assert cli.run("insights", "list") == (0, "no insights in these days\n")
+
+
+@pytest.mark.req("FR-RPT-002", "FR-RPT-003", "FR-AGT-004")
+def test_reports_print_their_data_part_and_their_document(cli: Cli) -> None:
+    assert cli.run("checkin", "add", "--fatigue", "4", "--sleep", "2", "--soreness", "4")[0] == 0
+    assert cli.run("recovery", "status")[0] == 0  # REST: a recovery block today
+    code, output = cli.run("report", "week")
+    assert code == 0, output
+    lines = output.splitlines()
+    assert lines[0] == "weekly report 2026-W43 (2026-10-19 to 2026-10-25)"
+    assert "Adherence: not available (NEEDS_PLANS)" in lines
+    assert "Volume by sport: not available (NO_CONSENT)" in lines
+    assert "  recovery 2026-10-25: REST (THREE_GROUPS)" in lines
+    assert "  condition: RECOVERY_BLOCK" in lines
+    assert lines[-2].startswith("Confidence: LOW")
+    assert lines[-1].startswith(
+        "Missing data: Adherence (NEEDS_PLANS), Volume by sport (NO_CONSENT)"
+    )
+    code, output = cli.run("report", "month", "--json")
+    assert code == 0, output
+    document = json.loads(output)
+    assert validation_errors("report-data", document) == []
+    assert (document["kind"], document["subject"]) == ("MONTHLY", "2026-10")
+    assert cli.run("report", "month", "--month", "2026-13")[0] == 2
+    code, output = cli.run("report", "activity", "0193b2a0-0000-7000-8000-000000000999")
+    assert (code, "coach consent grant activities" in output) == (2, True)

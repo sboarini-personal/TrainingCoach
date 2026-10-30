@@ -32,3 +32,50 @@ recovery, strength progression, risks, cautious forecast, recommendations.
 
 The forecast states its assumptions, confidence and uncertainty reasons and never promises an
 outcome (FR-GOL-005).
+
+## Data part 1.0.0 (P11, precision)
+
+`coach report activity <id>`, `coach report week [--week]`, `coach report month [--month]`,
+each with `--json` (contract
+[../contracts/report-data.schema.json](../contracts/report-data.schema.json)). Reports are
+read models: computed when asked, never stored.
+
+- Every item is a number with at least one evidence reference (enforced by the domain and
+  the contract), a code or text, or unknown (null).
+- A section the data cannot fill yet is **not available**, with its reason, never filled
+  with an invented value:
+  - `NEEDS_PLANS`: Planned vs Actual, Deviations, Plan Impact, Adherence, Changes for the
+    following week (P12);
+  - `NEEDS_GOAL_METRICS`: Progression toward the A goal, Cautious forecast (P12; a forecast
+    never promises an outcome, FR-GOL-005);
+  - `NARRATIVE`: What Went Well, Recommendations (the AI coach, P13);
+  - `NO_CONSENT`: activity sections without the ACTIVITIES consent;
+  - `NO_DATA`: nothing to report in the period.
+- **Confidence** is the lowest confidence of the report's numbers (LOW without any), with the
+  union of their uncertainty reasons, plus MISSING_DATA when data is missing. **Missing
+  data** lists the sections not available and the items whose value is unknown.
+- **Post-activity:**
+  - Summary: sport, training day, the recorded totals, average heart rate and RPE (field
+    evidence), and the activity's current derived values;
+  - Insights whose days include the training day;
+  - Recovery: the assessment in force for the training day.
+- **Weekly (ISO week):**
+  - Volume by sport: per sport the activities and period totals, and the cross-sport
+    totals;
+  - Intensity distribution: zone time of five-zone models, per zone;
+  - Strength by muscle group: hard sets and volume load;
+  - Tennis load: sessions, `ten.neuromuscular_load` and session RPE load;
+  - Recovery: the assessment of each day;
+  - Trends: monotony and strain of an ended week, and trend and load insights;
+  - Alerts: active conditions and the other insights.
+- **Monthly (calendar month):**
+  - Performance evolution: the comparable-group trends of `run.efficiency_hr`,
+    `run.hr_drift` and `cyc.power_fade` over the 5 weeks to the month's end;
+  - Comparison with the previous period: activities and the sums of the daily session RPE
+    load and elapsed time, this month and the month before (unknown when a day's total is);
+  - Consistency: sessions, training days, the longest gap between training days;
+  - Training load: the session RPE load, monotony and strain of the weeks the month
+    touches;
+  - Recovery: days per assessment status;
+  - Strength progression: volume load per week;
+  - Risks: the month's insights.

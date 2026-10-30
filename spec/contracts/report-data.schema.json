@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:report-data:1",
+  "title": "ReportData",
+  "description": "The data part of a post-activity, weekly or monthly report (FR-RPT-001 to FR-RPT-003), computed in code. Every number has at least one evidence reference. A section the data cannot fill yet is not available, with its reason (NEEDS_PLANS, NEEDS_GOAL_METRICS: P12; NARRATIVE: the AI coach, P13; NO_CONSENT; NO_DATA). confidence is the lowest confidence of the report's numbers; missingData lists the sections not available and the items whose value is unknown. The narrative part (P13) uses no number absent from this document (FR-AGT-004). A read model, never stored. Owner spec: spec/functional/reporting.spec.md.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "kind",
+    "athleteId",
+    "subject",
+    "period",
+    "generatedAt",
+    "sections",
+    "confidence",
+    "uncertaintyReasons",
+    "missingData"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "kind": { "enum": ["POST_ACTIVITY", "WEEKLY", "MONTHLY"] },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "subject": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "period": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+        "end": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+      }
+    },
+    "generatedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
+    "confidence": { "$ref": "urn:coach:schema:common:1#/$defs/confidence" },
+    "uncertaintyReasons": { "$ref": "#/$defs/reasons" },
+    "missingData": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["section", "reason", "item"],
+        "additionalProperties": false,
+        "properties": {
+          "section": { "type": "string", "maxLength": 100 },
+          "reason": { "oneOf": [{ "$ref": "#/$defs/unavailable" }, { "type": "null" }] },
+          "item": { "type": ["string", "null"], "maxLength": 200 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "unavailable": {
+      "enum": ["NEEDS_PLANS", "NEEDS_GOAL_METRICS", "NARRATIVE", "NO_CONSENT", "NO_DATA"]
+    },
+    "reasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/uncertaintyReason" }
+    },
+    "section": {
+      "type": "object",
+      "required": ["name", "unavailable", "items"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "unavailable": { "oneOf": [{ "$ref": "#/$defs/unavailable" }, { "type": "null" }] },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item" } }
+      }
+    },
+    "item": {
+      "type": "object",
+      "required": ["label", "value", "unit", "evidence", "confidence", "uncertaintyReasons"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "value": { "type": ["number", "string", "null"] },
+        "unit": { "type": ["string", "null"], "maxLength": 20 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
+        },
+        "confidence": {
+          "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/confidence" }, { "type": "null" }]
+        },
+        "uncertaintyReasons": { "$ref": "#/$defs/reasons" }
+      },
+      "if": { "properties": { "value": { "type": "number" } } },
+      "then": { "properties": { "evidence": { "minItems": 1 } } }
+    }
+  }
+}

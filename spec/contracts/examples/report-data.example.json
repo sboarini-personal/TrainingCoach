@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "1.0.0",
+  "kind": "WEEKLY",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "subject": "2026-W43",
+  "period": { "start": "2026-10-19", "end": "2026-10-25" },
+  "generatedAt": "2026-10-27T12:00:00Z",
+  "sections": [
+    { "name": "Adherence", "unavailable": "NEEDS_PLANS", "items": [] },
+    {
+      "name": "Volume by sport",
+      "unavailable": null,
+      "items": [
+        {
+          "label": "TENNIS activities",
+          "value": 2.0,
+          "unit": null,
+          "evidence": [
+            { "kind": "ACTIVITY", "id": "0193b2a0-0000-7000-8000-000000000101" },
+            { "kind": "ACTIVITY", "id": "0193b2a0-0000-7000-8000-000000000102" }
+          ],
+          "confidence": "MEDIUM",
+          "uncertaintyReasons": []
+        },
+        {
+          "label": "TENNIS any.srpe_load_total",
+          "value": 1080.0,
+          "unit": "AU",
+          "evidence": [{ "kind": "DERIVED_METRIC", "id": "0193b2a0-0000-7000-8000-000000000903" }],
+          "confidence": "MEDIUM",
+          "uncertaintyReasons": []
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "unavailable": null,
+      "items": [
+        {
+          "label": "condition",
+          "value": "RECOVERY_BLOCK",
+          "unit": null,
+          "evidence": [],
+          "confidence": null,
+          "uncertaintyReasons": []
+        }
+      ]
+    },
+    { "name": "Recovery", "unavailable": "NO_DATA", "items": [] }
+  ],
+  "confidence": "MEDIUM",
+  "uncertaintyReasons": ["MISSING_DATA"],
+  "missingData": [
+    { "section": "Adherence", "reason": "NEEDS_PLANS", "item": null },
+    { "section": "Recovery", "reason": "NO_DATA", "item": null }
+  ]
+}

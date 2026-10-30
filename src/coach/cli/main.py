@@ -32,6 +32,7 @@ from coach.cli import analytics as analytics_commands
 from coach.cli import garmin as garmin_commands
 from coach.cli import insights as insight_commands
 from coach.cli import recovery as recovery_commands
+from coach.cli import reports as report_commands
 from coach.cli import strength as strength_commands
 from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.athlete.physiology import SensorType
@@ -224,6 +225,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     recovery_commands.add_parsers(commands)
     insight_commands.add_parsers(commands)
+    report_commands.add_parsers(commands)
     garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
         dest="action", required=True
     )
@@ -433,6 +435,12 @@ def main(
                 return insight_commands.detect(runtime, _session(runtime), stream)
             case ("insights", "list"):
                 return insight_commands.list_insights(runtime, _session(runtime), args, stream)
+            case ("report", "activity"):
+                return report_commands.activity(runtime, _session(runtime), args, stream)
+            case ("report", "week"):
+                return report_commands.week(runtime, _session(runtime), args, stream)
+            case ("report", "month"):
+                return report_commands.month(runtime, _session(runtime), args, stream)
             case ("safety", "status"):
                 return recovery_commands.status(runtime, _session(runtime), stream)
             case ("safety", "release"):

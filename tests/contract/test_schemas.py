@@ -50,7 +50,7 @@ def test_expected_contracts_exist() -> None:
         "ingestion-record", "parser-output", "time-series", "integration-status",
         "laps", "lengths", "exercise", "sets", "strength-session", "daily-checkin",
         "recovery-observation", "recovery-payload",
-        "recovery-assessment", "recovery-prescription",
+        "recovery-assessment", "recovery-prescription", "report-data",
     }  # fmt: skip
     assert expected <= SCHEMAS.keys(), sorted(expected - SCHEMAS.keys())
 
