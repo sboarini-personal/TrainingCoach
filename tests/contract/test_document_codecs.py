@@ -27,7 +27,9 @@ from coach.application.contracts import (
     OBSERVATION_CODEC,
     PROFILE_CODEC,
     RAW_SOURCE_CODEC,
+    SETS_CODEC,
     SPORT_EVENT_CODEC,
+    STRENGTH_SESSION_CODEC,
     TIME_SERIES_CODEC,
     DocumentCodec,
     UnsupportedSchemaVersionError,
@@ -49,6 +51,8 @@ from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.coaching.state import CoachingState
 from coach.domain.consent.ledger import ConsentLedger
 from coach.domain.strength.exercise import ExerciseAlias
+from coach.domain.strength.session import SetEntry, StrengthSession
+from coach.domain.strength.sets import SetType, WatchSet, WatchSets
 from samples import (
     ACTIVITY,
     ATHLETE,
@@ -190,6 +194,46 @@ ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
         ),
     ),
     (LENGTHS_CODEC, Lengths(start_time_utc=NOW, lengths=(SwimLength(start_offset_seconds=0.0),))),
+    (
+        SETS_CODEC,
+        WatchSets(
+            start_time_utc=NOW,
+            sets=(
+                WatchSet(start_offset_seconds=0.0),
+                WatchSet(
+                    start_offset_seconds=30.0,
+                    duration_seconds=42.5,
+                    type=SetType.ACTIVE,
+                    repetitions=0,
+                    weight_kg=0.0,
+                    exercise_id="ex.plank",
+                    provider_exercise="fit:plank/plank",
+                ),
+            ),
+        ),
+    ),
+    (STRENGTH_SESSION_CODEC, StrengthSession.new(ATHLETE, ACTIVITY).with_version(1)),
+    (
+        STRENGTH_SESSION_CODEC,
+        StrengthSession.new(ATHLETE, ACTIVITY)
+        .record(
+            SetEntry(
+                exercise_id="ex.back_squat",
+                set_number=2,
+                recorded_at=NOW,
+                completed_reps=7,
+                actual_load_kg=62.5,
+                actual_rpe=8.5,
+                actual_rir=1,
+                target_reps=8,
+                target_load_kg=60.0,
+                target_rpe=8.0,
+            )
+        )
+        .relabel("fit:squat", "ex.goblet_squat")
+        .watch_sets(False)
+        .with_version(4),
+    ),
     (
         DATA_OVERRIDE_CODEC,
         sample_override(

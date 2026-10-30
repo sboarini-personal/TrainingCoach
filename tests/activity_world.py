@@ -13,6 +13,7 @@ from coach.application.consent import ConsentGate, ConsentService
 from coach.application.derived_metrics import DerivedMetricService
 from coach.application.ownership import OwnerScope
 from coach.application.screening import SecretScreen
+from coach.application.strength import StrengthService
 from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import PowerSensor, StreamKind
 from coach.domain.activity.issues import DataQualityIssue
@@ -25,6 +26,8 @@ from coach.domain.athlete.settings import AnalysisSettings
 from coach.domain.common.sport import Sport
 from coach.domain.consent.ledger import ConsentLedger, ConsentType
 from coach.domain.raw.source import DetectedType, MalwareScan, RawSource, SourceOrigin
+from coach.domain.strength.session import StrengthSession
+from coach.domain.strength.sets import WatchSets
 from coach.infrastructure.memory import (
     InMemoryActivityRepository,
     InMemoryAuditLog,
@@ -66,8 +69,14 @@ class World:
         self.observations = InMemoryObservationRepository()
         self.overrides = InMemoryOverrideRepository()
         self.issues = InMemoryRepository[DataQualityIssue]()
+        self.strength_sessions = InMemoryRepository[StrengthSession]()
         self.stores = ActivityStores(
-            self.activities, self.observations, self.overrides, self.issues, self.raw
+            self.activities,
+            self.observations,
+            self.overrides,
+            self.issues,
+            self.raw,
+            self.strength_sessions,
         )
         self.derived = InMemoryDerivedValueRepository()
         self.clock = MutableClock()
@@ -95,7 +104,8 @@ class World:
         self.pool_length: float | None = None  # the athlete's usual pool (resources)
         self.series: dict[str, TimeSeries] = {}
         self.series_reads: list[str] = []
-        self.segments: dict[str, Laps | Lengths] = {}  # LAPS and LENGTHS blobs (P9)
+        # LAPS and LENGTHS blobs (P9), SETS blobs (P10)
+        self.segments: dict[str, Laps | Lengths | WatchSets] = {}
         self.engine = ActivityMetricsEngine(
             self.metrics,
             athlete=lambda _scope: AnalysisSettings(
@@ -118,6 +128,15 @@ class World:
             ids=self.ids,
             screen=SecretScreen(self.events),
             engine=self.engine,
+        )
+        self.strength = StrengthService(
+            self.strength_sessions,
+            self.service,
+            consents=self.consents_gate,
+            streams=self.read_stream,
+            audit=self.audit,
+            events=self.events,
+            clock=self.clock,
         )
 
     def read_series(self, _scope: OwnerScope, digest: str) -> TimeSeries | None:

@@ -64,6 +64,7 @@ SESSION_KEYS: Final = frozenset(
         "samples",
         "laps",
         "lengths",
+        "sets",
         "sensors",
     }
 )
@@ -84,6 +85,10 @@ LAP_KEYS: Final = frozenset(
 LENGTH_KEYS: Final = frozenset(
     {"startOffsetSeconds", "elapsedSeconds", "timerSeconds", "type", "strokes", "strokeType"}
 )
+SET_KEYS: Final = frozenset(
+    {"startOffsetSeconds", "durationSeconds", "repetitions", "weightKg", "type", "exercises"}
+)
+MAX_SET_EXERCISES: Final = 4
 SEGMENT_LABELS: Final = frozenset({"intensity", "trigger", "type", "strokeType"})
 MAX_SENSORS: Final = 32
 OUTPUT_KEYS: Final = frozenset(
@@ -95,6 +100,7 @@ WORKER_REASONS: Final = {
     "SEMANTIC_INVALID": RejectionReason.SEMANTIC_INVALID,
 }
 _CODE: Final = re.compile(r"^[a-z0-9_]{1,40}$")
+_EXERCISE_CODE: Final = re.compile(r"^[a-z0-9_]{1,40}(/[a-z0-9_]{1,80})?$")
 _SEMVER: Final = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _UTC_INSTANT: Final = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$")
 
@@ -109,6 +115,15 @@ class ParsedSegment:
 
     numbers: Mapping[str, float]
     labels: Mapping[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedSet:
+    """A strength set in the file's vocabulary; ``exercises`` are the file's codes."""
+
+    numbers: Mapping[str, float]
+    type: str | None
+    exercises: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +142,7 @@ class ParsedSession:
     samples: Mapping[str, tuple[float | None, ...]]
     laps: tuple[ParsedSegment, ...] = ()
     lengths: tuple[ParsedSegment, ...] = ()
+    sets: tuple[ParsedSet, ...] = ()
     sensors: tuple[str, ...] = ()
 
 
@@ -212,9 +228,24 @@ def _segment(value: Any, keys: frozenset[str]) -> ParsedSegment:
     return ParsedSegment(numbers, labels)
 
 
-def _segments(value: Any, keys: frozenset[str]) -> tuple[ParsedSegment, ...]:
+def _list(value: Any) -> list[Any]:
     _check(isinstance(value, list))
-    return tuple(_segment(item, keys) for item in value)
+    return list(value)
+
+
+def _segments(value: Any, keys: frozenset[str]) -> tuple[ParsedSegment, ...]:
+    return tuple(_segment(item, keys) for item in _list(value))
+
+
+def _set(value: Any) -> ParsedSet:
+    document = _object(value, SET_KEYS, SET_KEYS)
+    exercises = document.pop("exercises")
+    _check(isinstance(exercises, list) and len(exercises) <= MAX_SET_EXERCISES)
+    _check(all(isinstance(item, str) and _EXERCISE_CODE.match(item) for item in exercises))
+    label = _text(document.pop("type"), 64)
+    numbers = {key: _number(item) for key, item in document.items() if item is not None}
+    _check("startOffsetSeconds" in numbers)
+    return ParsedSet(numbers, label, tuple(exercises))
 
 
 def _sensors(value: Any) -> tuple[str, ...]:
@@ -253,6 +284,7 @@ def _session(value: Any) -> ParsedSession:
         samples=columns,
         laps=_segments(document["laps"], LAP_KEYS),
         lengths=_segments(document["lengths"], LENGTH_KEYS),
+        sets=tuple(_set(item) for item in _list(document["sets"])),
         sensors=_sensors(document["sensors"]),
     )
 

@@ -86,6 +86,34 @@ effort cues.
 (ATHLETE, FIT). Sets recorded by a watch and sets entered by the athlete are reconciled per
 field (FR-ACT-005); the athlete's entry wins for RPE and RIR.
 
+Reconciliation (P10, precision of this section):
+
+- The watch's sets are the SETS stream of the activity (files spec 8.7). The athlete's
+  declarations about one strength activity are a `StrengthSession` (contract
+  [../contracts/strength-session.schema.json](../contracts/strength-session.schema.json)),
+  one per activity, its ID derived from the activity's: set entries (exercise, set number,
+  any of completed repetitions, load, RPE, RIR and the targets), relabels and whether the
+  watch's sets are used. Its ID is the activity's `strength.strengthSessionId` in the
+  EFFECTIVE view. Sets are entered only on ACTIVE strength activities, and only for
+  catalogue exercises (an ID, a catalogue name or an own alias; never guessed).
+- `StrengthSetResult`s are a pure function of the SETS stream and the session. The watch
+  numbers its ACTIVE sets per exercise in time order (REST sets are the rests between sets
+  and are not results); an entry matches the watch set of the same exercise and set number.
+- A field the athlete states wins: the entry corrects that set, as a DataOverride corrects
+  an activity field (FR-ACT-006). RPE, RIR and targets come only from the athlete; duration
+  and time only from the watch. `source` says who recorded the set (FIT when the watch did);
+  each value keeps who supplied it. `recordedAt` is when the set was done (watch), else when
+  the athlete entered it.
+- A watch set no entry names stays as recorded; an entry no watch set matches is a set of its
+  own. So a set is never counted twice.
+- The watch may name an exercise wrongly or not at all (its own code without a catalogue
+  equivalent: the exercise is UNKNOWN). A relabel names it for the whole session (only names
+  the watch used in that session); the athlete can also ignore the watch's sets for a session,
+  and then only the entries count.
+- `workoutId` is UNKNOWN until planned workouts exist (P12). Commands: `coach strength sets`,
+  `log`, `relabel` and `watch-sets`. Changes are audited (`strength.session_changed`) with
+  identifiers only.
+
 ## 6. Progression (FR-STR-006)
 
 Progression and regression decisions use **execution history** (StrengthSetResult), not only

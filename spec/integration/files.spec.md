@@ -8,7 +8,7 @@ pool lengths and power sensors from P9 (normalisation rules 1.1.0).
 
 | Format | Parser | Notes |
 |---|---|---|
-| FIT | official Garmin FIT Python SDK (`garmin-fit-sdk`), CRC check enabled | messages used: file_id, session, record, activity; from P9 lap, length and device_info |
+| FIT | official Garmin FIT Python SDK (`garmin-fit-sdk`), CRC check enabled | messages used: file_id, session, record, activity; from P9 lap, length and device_info; from P10 set |
 | TCX | hardened XML parser (`defusedxml`) | Garmin TrainingCenterDatabase v2 root element required |
 | GPX | hardened XML parser (`defusedxml`) | GPX 1.1 (1.0 accepted); heart rate and cadence only from recognised extension namespaces |
 | CSV | standard library `csv` with limits | only the application's own documented templates (section 8.4) |
@@ -17,7 +17,7 @@ pool lengths and power sensors from P9 (normalisation rules 1.1.0).
 Third-party CSV exports are not supported in V1: their formats are not specified here and are
 not guessed. A template can be added once a real sample is reviewed. P6 imports session
 summaries and the time series; P9 adds laps, pool lengths and power sensors (section 8.6);
-strength sets follow in P10.
+P10 adds the strength sets of FIT files (section 8.7).
 
 ## 2. Pipeline (INT-FIL-002)
 
@@ -125,15 +125,17 @@ format's own labels (sport, sub-sport, manufacturer), its start time and UTC off
 format states one, summary values keyed by name (section 8), untrusted texts, the location of
 each summary value in the file and a columnar time series. From version 1.1.0 (P9) a session
 also carries its laps, its pool lengths and the device types of the file's sensors (section
-8.6); every parser emits them, empty when its format has none. The parent decodes the JSON
-strictly: unknown keys, wrong types, non-finite numbers, unequal sample columns or too many
+8.6); every parser emits them, empty when its format has none. From version 1.2.0 (P10) a
+session also carries its strength sets (section 8.7), empty for every format but FIT. The
+parent decodes the JSON strictly: unknown keys, wrong types, non-finite numbers, unequal sample columns or too many
 sessions are `SCHEMA_INVALID`.
 
-## 8. Normalisation rules 1.1.0
+## 8. Normalisation rules 1.2.0
 
 Each normaliser has a name and version recorded on the observations it produces (`fit`,
 `tcx`, `gpx`, `csv_activity`; 1.0.0 in P6, 1.1.0 from P9, which adds laps, pool lengths
-and the power sensor, section 8.6). Observations of an older version are brought up to date
+and the power sensor, section 8.6, and 1.2.0 from P10, which adds strength sets, section
+8.7). Observations of an older version are brought up to date
 by re-normalisation (activities spec section 1.1). Values are converted to canonical units in code;
 nothing is inferred that the file does not state. Formats without a timezone or offset leave
 the training day to the athlete's timezone (activities spec section 2).
@@ -177,7 +179,7 @@ One observation per `session` message (part = session index).
 
 Laps, lengths and `device_info` follow section 8.6. Not mapped: `avg_temperature` (the
 device's own sensor, not ambient temperature), calories, the heart-rate sensor type (a
-session does not state it) and set messages (P10).
+session does not state it). Set messages follow section 8.7.
 
 | FIT sport | sub_sport | Sport, subtype |
 |---|---|---|
@@ -250,7 +252,8 @@ start_time_utc,utc_offset,sport,subtype,elapsed_seconds,moving_seconds,distance_
   removes one leading quote when the rest of the cell starts with `=`, `+`, `-`, `@`, tab or
   carriage return, so an export can be imported again. The cell stays data either way.
 
-Strength sets get their own template with the strength domain (P10).
+Strength sets get their own template with the strength domain (P10, after the athlete's
+set entries of strength spec section 5).
 
 ### 8.5 Time series
 
@@ -303,6 +306,39 @@ others' offsets never decrease and lie inside the
 session, their known durations are above 0 and at most 86,400 s, and counts and values are
 non-negative. A lap or length list that breaks these rules is not stored (the session is
 still imported); analyses that need it are then UNKNOWN with MISSING_DATA.
+
+### 8.7 Strength sets (rules 1.2.0, P10)
+
+The FIT `set` messages of a session that resolves to STRENGTH, inside its time window (as for
+laps), become the SETS stream: a content-addressed blob of the source (contract
+[../contracts/sets.schema.json](../contracts/sets.schema.json)), resolved with the other
+streams (activities spec section 3, `STREAMS_PREFER_FIT`). Other sports keep no sets, and the
+other formats have none.
+
+| FIT `set` | Set field |
+|---|---|
+| `start_time` minus session start | `startOffsetSeconds` (a set without a start time is left out) |
+| `duration` | `durationSeconds` |
+| `set_type`: active, rest | `type`: ACTIVE, REST (the rest between sets) |
+| `repetitions` | `repetitions` |
+| `weight` (kilograms in the file, whatever the display unit) | `weightKg`; 0 is bodyweight only |
+| `category` and `category_subtype` (arrays; at most 4 pairs read) | `exerciseId` and `providerExercise` |
+
+Exercises: the parser writes each pair as the file's own code, `category/name` with the
+exercise name of the subtype in the SDK profile (`<category>_exercise_name`),
+`category/<number>` when the profile names no such subtype, or `category` alone when the
+subtype is unknown; unknown categories are left out. The parent maps the codes through the
+FIT exercise mapping 1.0.0 (`coach.integrations.files.fit_exercises`): only exact
+equivalents of catalogue exercises are listed, a loaded variant ("weighted_...") being the
+same exercise, since its load is the set's weight. The set names a catalogue exercise only
+when every code of the set maps to the same one; otherwise `exerciseId` is UNKNOWN and the
+athlete can name it (strength spec section 5). `providerExercise` keeps the first code with
+the `fit:` prefix, as provenance: it is never shown as an exercise name. Every name of the
+mapping is checked against the SDK profile by a test, so none is invented.
+
+Validation: a duration of 0 or above 86,400 s, repetitions that are not whole numbers from 0
+to 1,000 and weights outside 0 to 1,000 kg are UNKNOWN. A set list whose offsets go back or
+leave the session is not stored (the session is still imported).
 
 ## 9. Ingestion record
 

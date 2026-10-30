@@ -1,20 +1,24 @@
-"""``coach strength`` commands: the exercise catalogue and the athlete's aliases (P10;
-strength spec section 3)."""
+"""``coach strength`` commands: the exercise catalogue, the athlete's aliases and the sets of
+strength activities (P10; strength spec sections 3 and 5)."""
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from typing import TextIO
 
-from coach.application.errors import NotFoundError
+from coach.application.consent import ConsentRequiredError
+from coach.application.errors import InvalidOperationError, NotFoundError
 from coach.application.ownership import OwnerScope
-from coach.cli.activities import CommandError
+from coach.application.strength import SessionSets
+from coach.cli.activities import CONSENT_HINT, CommandError
 from coach.cli.runtime import Runtime
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.exercise import Exercise, ExerciseAlias, normalise_alias, own_aliases
+from coach.domain.strength.session import SetEntry, SetSource, StrengthSetResult
 from coach.domain.strength.vocabulary import MovementPattern
 
 
@@ -123,3 +127,137 @@ def _save(
         runtime.profiles.add(scope, updated)
     else:
         runtime.profiles.update(scope, updated, expected_version=stored.version)
+
+
+# --------------------------------------------------------------------------- sets
+
+
+@contextmanager
+def _translated() -> Iterator[None]:
+    try:
+        yield
+    except NotFoundError:
+        raise CommandError("activity not found") from None
+    except ConsentRequiredError:
+        raise CommandError(CONSENT_HINT) from None
+    except (DomainValidationError, InvalidOperationError) as error:
+        raise CommandError(str(error)) from None
+
+
+def _exercise(runtime: Runtime, scope: OwnerScope, text: str) -> str:
+    """A catalogue exercise named by ID, catalogue name or alias; never guessed."""
+    profile, _ = _profile(runtime, scope)
+    found = CATALOGUE.resolve(text, own_aliases(profile.exercise_aliases))
+    if found is None:
+        raise CommandError(f"unknown exercise {text!r}: see coach strength exercises")
+    return found.exercise_id
+
+
+def _number(value: float | None) -> str:
+    return "-" if value is None else f"{value:g}"
+
+
+def _source(item: StrengthSetResult) -> str:
+    sources = {item.source, *item.field_sources.values()}
+    return "+".join(source.value for source in SetSource if source in sources)
+
+
+def _target(item: StrengthSetResult) -> str:
+    parts = []
+    if item.target_reps is not None:
+        parts.append(f"{item.target_reps} reps")
+    if item.target_load_kg is not None:
+        parts.append(f"{item.target_load_kg:g} kg")
+    if item.target_rpe is not None:
+        parts.append(f"RPE {item.target_rpe:g}")
+    return ", ".join(parts) or "-"
+
+
+def _show(found: SessionSets, out: TextIO) -> None:
+    view = found.activity
+    watch = "none" if found.watch is None else "used"
+    if found.session is not None and not found.session.use_watch_sets:
+        watch = "ignored"
+    print(f"activity {view.activity_id}  {view.training_day}  watch sets: {watch}", file=out)
+    if not found.sets:
+        print("no sets: enter them with coach strength log", file=out)
+        return
+    print(
+        f"{'exercise':<34} {'set':>3} {'reps':>5} {'load kg':>8} {'RPE':>5} {'RIR':>4}  "
+        f"{'target':<22} source",
+        file=out,
+    )
+    unknown: list[str] = []
+    for item in found.sets:
+        exercise = item.exercise_id
+        if exercise is None:
+            exercise = f"? {item.watch_exercise or 'unnamed'}"
+            if item.watch_exercise is not None and item.watch_exercise not in unknown:
+                unknown.append(item.watch_exercise)
+        print(
+            f"{exercise:<34} {item.set_number:>3} {_number(item.completed_reps):>5} "
+            f"{_number(item.actual_load_kg):>8} {_number(item.actual_rpe):>5} "
+            f"{_number(item.actual_rir):>4}  {_target(item):<22} {_source(item)}",
+            file=out,
+        )
+    named = {item.exercise_id for item in found.sets if item.exercise_id is not None}
+    print(f"{len(found.sets)} sets, {len(named)} named exercises", file=out)
+    if unknown:
+        print(
+            "the watch did not name: " + ", ".join(unknown) + " (coach strength relabel)",
+            file=out,
+        )
+
+
+def sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    with _translated():
+        found = runtime.strength.sets(scope, args.activity_id)
+    _show(found, out)
+    return 0
+
+
+def log(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    exercise_id = _exercise(runtime, scope, args.exercise)
+    with _translated():
+        if args.remove:
+            if args.set_number is None:
+                raise CommandError("name the set to forget with --set")
+            found = runtime.strength.remove(scope, args.activity_id, exercise_id, args.set_number)
+        else:
+            number = args.set_number
+            if number is None:
+                current = runtime.strength.sets(scope, args.activity_id)
+                done = [item.set_number for item in current.sets if item.exercise_id == exercise_id]
+                number = max(done, default=0) + 1
+            entry = SetEntry(
+                exercise_id=exercise_id,
+                set_number=number,
+                recorded_at=runtime.clock(),
+                completed_reps=args.reps,
+                actual_load_kg=args.load,
+                actual_rpe=args.rpe,
+                actual_rir=args.rir,
+                target_reps=args.target_reps,
+                target_load_kg=args.target_load,
+                target_rpe=args.target_rpe,
+            )
+            found = runtime.strength.record(scope, args.activity_id, entry)
+    _show(found, out)
+    return 0
+
+
+def relabel(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    if args.remove == (args.exercise is not None):
+        raise CommandError("name the exercise, or forget the relabel with --remove")
+    exercise_id = None if args.remove else _exercise(runtime, scope, args.exercise)
+    with _translated():
+        found = runtime.strength.relabel(scope, args.activity_id, args.watch_exercise, exercise_id)
+    _show(found, out)
+    return 0
+
+
+def watch_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    with _translated():
+        found = runtime.strength.use_watch_sets(scope, args.activity_id, args.choice == "use")
+    _show(found, out)
+    return 0

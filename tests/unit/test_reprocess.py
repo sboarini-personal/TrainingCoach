@@ -181,7 +181,7 @@ def test_history_gains_laps_lengths_and_power_sensor(
     key = after.sources[0].key
     assert [item.normaliser_version for item in world.observations.revisions(SCOPE, key)] == [
         "1.0.0",
-        "1.1.0",
+        "1.2.0",
     ]
     assert (EventName.ACTIVITY_REPROCESSED, {"reprocessed": "2", "skipped": "0"}) in (
         world.events.events

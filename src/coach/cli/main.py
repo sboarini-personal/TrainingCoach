@@ -168,6 +168,34 @@ def _parser() -> argparse.ArgumentParser:
     naming.add_argument("text", nargs="?", help="your name for the exercise")
     naming.add_argument("exercise_id", nargs="?", help="for example ex.bulgarian_split_squat")
     naming.add_argument("--remove", action="store_true", help="forget this alias")
+    executed = strength.add_parser("sets", help="the sets of a strength activity as executed")
+    executed.add_argument("activity_id", type=UUID)
+    logging = strength.add_parser(
+        "log",
+        help="enter a set (same exercise and set number: replaced); the watch's set wins"
+        " only where you leave a value out",
+    )
+    logging.add_argument("activity_id", type=UUID)
+    logging.add_argument("exercise", help="an ID, a catalogue name or one of your aliases")
+    logging.add_argument("--set", type=int, dest="set_number", help="default: the next set")
+    logging.add_argument("--reps", type=int, help="repetitions completed")
+    logging.add_argument("--load", type=float, help="external load in kg (0: bodyweight)")
+    logging.add_argument("--rpe", type=float, help="1 to 10 in steps of 0.5")
+    logging.add_argument("--rir", type=int, help="repetitions in reserve, 0 to 10")
+    logging.add_argument("--target-reps", type=int)
+    logging.add_argument("--target-load", type=float)
+    logging.add_argument("--target-rpe", type=float)
+    logging.add_argument("--remove", action="store_true", help="forget your entry for this set")
+    relabelling = strength.add_parser(
+        "relabel", help="name an exercise the watch recorded wrongly or did not recognise"
+    )
+    relabelling.add_argument("activity_id", type=UUID)
+    relabelling.add_argument("watch_exercise", help="as `coach strength sets` shows it")
+    relabelling.add_argument("exercise", nargs="?", help="an ID, a catalogue name or an alias")
+    relabelling.add_argument("--remove", action="store_true", help="forget the relabel")
+    watching = strength.add_parser("watch-sets", help="use or ignore the watch's sets")
+    watching.add_argument("activity_id", type=UUID)
+    watching.add_argument("choice", choices=["use", "ignore"])
     analysis = commands.add_parser("analysis", help="sport analytics").add_subparsers(
         dest="action", required=True
     )
@@ -342,6 +370,14 @@ def main(
                 return strength_commands.exercises(runtime, _session(runtime), args, stream)
             case ("strength", "alias"):
                 return strength_commands.alias(runtime, _session(runtime), args, stream)
+            case ("strength", "sets"):
+                return strength_commands.sets(runtime, _session(runtime), args, stream)
+            case ("strength", "log"):
+                return strength_commands.log(runtime, _session(runtime), args, stream)
+            case ("strength", "relabel"):
+                return strength_commands.relabel(runtime, _session(runtime), args, stream)
+            case ("strength", "watch-sets"):
+                return strength_commands.watch_sets(runtime, _session(runtime), args, stream)
             case ("analysis", "trend"):
                 return analytics_commands.trend(runtime, _session(runtime), args, stream)
             case ("load", "week"):

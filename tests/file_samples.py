@@ -117,6 +117,51 @@ def fit_length(
     return length
 
 
+def fit_set(
+    start: datetime,
+    seconds: float,
+    *,
+    reps: int | None = None,
+    weight: float | None = None,
+    set_type: str = "active",
+    category: str | list[str] | None = None,
+    subtype: int | list[int | None] | None = None,
+) -> dict[str, Any]:
+    """A FIT strength set message; ``subtype`` numbers an exercise name of the category in
+    the SDK profile (for example squat 6 is barbell_back_squat)."""
+    message: dict[str, Any] = {
+        "mesg_num": NUMS["SET"],
+        "timestamp": start + timedelta(seconds=seconds),
+        "start_time": start,
+        "duration": float(seconds),
+        "set_type": set_type,
+    }
+    for key, value in (
+        ("repetitions", reps),
+        ("weight", weight),
+        ("category", category),
+        ("category_subtype", subtype),
+    ):
+        if value is not None:
+            message[key] = value
+    return message
+
+
+def strength_session(
+    sets: Iterable[dict[str, Any]], *, start: datetime = START, seconds: int = 1800
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """A strength session (FIT training / strength_training) with its set messages."""
+    records, session = fit_session(
+        start=start,
+        seconds=seconds,
+        sport="training",
+        sub_sport="strength_training",
+        distance_per_second=0.0,
+        heart_rate=110,
+    )
+    return [*records[::60], *sets], session
+
+
 def fit_device(device_type: int, *, source: str = "antplus") -> dict[str, Any]:
     """A FIT device_info message; ANT+ 11 is bike_power and 17 fitness_equipment, BLE 7 is
     bike_trainer. The serial number is there to prove it is never copied."""

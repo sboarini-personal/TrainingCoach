@@ -1,9 +1,9 @@
 {
-  "schemaVersion": "1.1.0",
+  "schemaVersion": "1.2.0",
   "format": "FIT",
   "parser": {
     "name": "fit",
-    "version": "1.1.0"
+    "version": "1.2.0"
   },
   "recordCount": 9,
   "fileType": "activity",
@@ -79,6 +79,7 @@
         }
       ],
       "lengths": [],
+      "sets": [],
       "sensors": [
         "heart_rate"
       ]

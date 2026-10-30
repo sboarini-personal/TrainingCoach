@@ -61,6 +61,12 @@ from coach.application.contracts.segments import (
     lengths_from_contract,
     lengths_to_contract,
 )
+from coach.application.contracts.strength import (
+    sets_from_contract,
+    sets_to_contract,
+    strength_session_from_contract,
+    strength_session_to_contract,
+)
 from coach.application.credentials import CredentialRecord
 from coach.domain.activity.activity import Activity
 from coach.domain.activity.issues import DataQualityIssue
@@ -76,6 +82,8 @@ from coach.domain.goals.goal import Goal, SportEvent
 from coach.domain.ingestion.record import IngestionRecord
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.raw.source import RawSource
+from coach.domain.strength.session import StrengthSession
+from coach.domain.strength.sets import WatchSets
 from coach.metrics.derived import DerivedMetricValue
 
 
@@ -160,6 +168,15 @@ LAPS_CODEC: Final[DocumentCodec[Laps]] = DocumentCodec(
 LENGTHS_CODEC: Final[DocumentCodec[Lengths]] = DocumentCodec(
     "lengths", "lengths", lengths_to_contract, lengths_from_contract
 )
+SETS_CODEC: Final[DocumentCodec[WatchSets]] = DocumentCodec(
+    "sets", "sets", sets_to_contract, sets_from_contract
+)
+STRENGTH_SESSION_CODEC: Final[DocumentCodec[StrengthSession]] = DocumentCodec(
+    "strength_session",
+    "strength-session",
+    strength_session_to_contract,
+    strength_session_from_contract,
+)
 INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
     "integration_status",
     "integration-status",
@@ -184,5 +201,7 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     TIME_SERIES_CODEC,
     LAPS_CODEC,
     LENGTHS_CODEC,
+    SETS_CODEC,
+    STRENGTH_SESSION_CODEC,
     INTEGRATION_STATUS_CODEC,
 )

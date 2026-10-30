@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:sets:1",
+  "title": "Sets",
+  "description": "Strength sets a watch recorded in one session, stored as a content-addressed blob and referenced as the SETS stream of an observation (P10). Offsets are seconds from startTimeUtc, never decreasing (checked in code). exerciseId names a catalogue exercise only when the file's own exercise maps to one exactly (files spec 8.7); providerExercise keeps the file's code. null = UNKNOWN. Owner specs: spec/integration/files.spec.md section 8.7, spec/functional/strength.spec.md section 5.",
+  "type": "object",
+  "required": ["schemaVersion", "startTimeUtc", "sets"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "startTimeUtc": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "sets": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/set" } }
+  },
+  "$defs": {
+    "set": {
+      "type": "object",
+      "required": [
+        "startOffsetSeconds",
+        "durationSeconds",
+        "type",
+        "repetitions",
+        "weightKg",
+        "exerciseId",
+        "providerExercise"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "startOffsetSeconds": { "type": "number", "minimum": 0 },
+        "durationSeconds": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0,
+          "maximum": 86400
+        },
+        "type": { "description": "REST is the rest between sets.", "enum": ["ACTIVE", "REST", null] },
+        "repetitions": { "type": ["integer", "null"], "minimum": 0, "maximum": 1000 },
+        "weightKg": {
+          "description": "External load; 0 is bodyweight only.",
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "exerciseId": {
+          "oneOf": [
+            { "$ref": "urn:coach:schema:workout:1#/$defs/exerciseId" },
+            { "type": "null" }
+          ]
+        },
+        "providerExercise": {
+          "description": "The file's own exercise code, for example fit:squat/barbell_back_squat. Provenance only.",
+          "type": ["string", "null"],
+          "pattern": "^[a-z]{2,10}:[a-z0-9_]{1,40}(/[a-z0-9_]{1,80})?$"
+        }
+      }
+    }
+  }
+}

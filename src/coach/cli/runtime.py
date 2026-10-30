@@ -29,6 +29,8 @@ from coach.application.contracts import (
     LAPS_CODEC,
     LENGTHS_CODEC,
     PROFILE_CODEC,
+    SETS_CODEC,
+    STRENGTH_SESSION_CODEC,
     TIME_SERIES_CODEC,
     DocumentCodec,
 )
@@ -42,6 +44,7 @@ from coach.application.ports import Clock, CredentialProvider
 from coach.application.providers import FitnessProvider
 from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
+from coach.application.strength import StrengthService
 from coach.application.sync import SyncService
 from coach.domain.activity.fields import StreamKind
 from coach.domain.activity.issues import DataQualityIssue
@@ -130,6 +133,7 @@ class Runtime:
     activities: ActivityService
     ingestion: IngestionService
     analytics: AnalyticsService
+    strength: StrengthService
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
     sync: SyncService
@@ -208,6 +212,7 @@ def build_runtime(
         StreamKind.TIME_SERIES: TIME_SERIES_CODEC,
         StreamKind.LAPS: LAPS_CODEC,
         StreamKind.LENGTHS: LENGTHS_CODEC,
+        StreamKind.SETS: SETS_CODEC,
     }
 
     def read_stream(scope: OwnerScope, kind: StreamKind, digest: str) -> object | None:
@@ -227,6 +232,7 @@ def build_runtime(
         streams=read_stream,
     )
     overrides = SqliteOverrideRepository(database)
+    strength_sessions = SqliteAggregateRepository(database, STRENGTH_SESSION_CODEC)
     activities = ActivityService(
         ActivityStores(
             activity_store,
@@ -234,6 +240,7 @@ def build_runtime(
             overrides,
             issue_store,
             raw_sources,
+            strength_sessions,
         ),
         consents=gate,
         metrics=derived,
@@ -252,6 +259,16 @@ def build_runtime(
         overrides=overrides,
         metrics=derived,
         consents=gate,
+        batch=database.batch,
+    )
+    strength = StrengthService(
+        strength_sessions,
+        activities,
+        consents=gate,
+        streams=read_stream,
+        audit=audit,
+        events=events,
+        clock=clock,
         batch=database.batch,
     )
     ingestion_records = SqliteIngestionRecordRepository(database)
@@ -310,6 +327,7 @@ def build_runtime(
         activities=activities,
         ingestion=ingestion,
         analytics=analytics,
+        strength=strength,
         integrations=integrations,
         conditions=conditions,
         sync=sync,

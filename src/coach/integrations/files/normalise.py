@@ -1,8 +1,9 @@
-"""Semantic validation and normalisation rules 1.1.0 (stages 10 and 11; files spec 8).
+"""Semantic validation and normalisation rules 1.2.0 (stages 10 and 11; files spec 8).
 
 Maps parser output in each format's own vocabulary to canonical field values, converting
 units in code. Nothing is inferred that the file does not state; text stays untrusted.
-1.1.0 (P9) adds laps, pool lengths and the power sensor (files spec 8.6).
+1.1.0 (P9) adds laps, pool lengths and the power sensor (files spec 8.6); 1.2.0 (P10) the
+strength sets of FIT files and their exercises (files spec 8.7).
 """
 
 from __future__ import annotations
@@ -41,10 +42,19 @@ from coach.domain.common.sport import Sport
 from coach.domain.common.time import format_utc_offset
 from coach.domain.ingestion.record import RejectionReason
 from coach.domain.raw.source import DetectedType
+from coach.domain.strength.sets import (
+    MAX_LOAD_KG,
+    MAX_REPETITIONS,
+    MAX_SET_SECONDS,
+    SetType,
+    WatchSet,
+    WatchSets,
+)
+from coach.integrations.files.fit_exercises import map_exercises
 from coach.integrations.files.output import ParsedFile, ParsedSegment, ParsedSession
 from coach.metrics.quality import detect_gps_jumps
 
-RULES_VERSION: Final = "1.1.0"
+RULES_VERSION: Final = "1.2.0"
 NORMALISERS: Final = {
     DetectedType.FIT: "fit",
     DetectedType.TCX: "tcx",
@@ -153,6 +163,7 @@ _TRIGGERS: Final[Mapping[DetectedType, Mapping[str, LapTrigger]]] = {
     },
 }
 _LENGTH_TYPES: Final = {"active": LengthType.ACTIVE, "idle": LengthType.IDLE}
+_SET_TYPES: Final = {"active": SetType.ACTIVE, "rest": SetType.REST}
 # FIT device types that measure power (files spec 8.6); a dedicated meter wins.
 _POWER_METERS: Final = frozenset({"bike_power"})
 _SMART_TRAINERS: Final = frozenset({"fitness_equipment", "bike_trainer"})
@@ -463,6 +474,50 @@ def _strokes(value: float | None) -> int | None:
     return None if value is None else whole(value)
 
 
+def _within(value: float | None, low: float, high: float, *, exclusive: bool = False) -> bool:
+    if value is None:
+        return False
+    return (low < value if exclusive else low <= value) and value <= high
+
+
+def _sets(session: ParsedSession, fmt: DetectedType, sport: Sport) -> WatchSets | None:
+    """FIT strength sets (files spec 8.7). A value outside its range is UNKNOWN; a set list
+    whose offsets leave the session or go back is not stored (the session still is)."""
+    if fmt is not DetectedType.FIT or sport is not Sport.STRENGTH or not session.sets:
+        return None
+    offsets = [item.numbers["startOffsetSeconds"] for item in session.sets]
+    if not _inside(offsets, session):
+        return None
+    sets = []
+    try:
+        for item in session.sets:
+            numbers = item.numbers
+            duration = numbers.get("durationSeconds")
+            reps = numbers.get("repetitions")
+            weight = numbers.get("weightKg")
+            exercise_id, code = map_exercises(item.exercises)
+            sets.append(
+                WatchSet(
+                    start_offset_seconds=numbers["startOffsetSeconds"],
+                    duration_seconds=(
+                        duration if _within(duration, 0, MAX_SET_SECONDS, exclusive=True) else None
+                    ),
+                    type=_SET_TYPES.get(item.type or ""),
+                    repetitions=(
+                        int(reps)
+                        if reps is not None and _within(reps, 0, MAX_REPETITIONS) and reps % 1 == 0
+                        else None
+                    ),
+                    weight_kg=weight if _within(weight, 0, MAX_LOAD_KG) else None,
+                    exercise_id=exercise_id,
+                    provider_exercise=code,
+                )
+            )
+        return WatchSets(start_time_utc=session.start, sets=tuple(sets))
+    except DomainValidationError:
+        return None
+
+
 def normalise(parsed: ParsedFile, *, received_at: datetime) -> list[DecodedSession]:
     """Canonical sessions of a parsed file; rejects the whole file on any problem."""
     # The file type is checked first: wellness files (monitoring, sleep, metrics) have no
@@ -513,6 +568,7 @@ def normalise(parsed: ParsedFile, *, received_at: datetime) -> list[DecodedSessi
                 time_series=series,
                 laps=_laps(session, parsed.format, classification.sport),
                 lengths=_lengths(session, classification.sport),
+                sets=_sets(session, parsed.format, classification.sport),
             )
         )
     return decoded

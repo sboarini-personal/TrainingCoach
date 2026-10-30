@@ -14,7 +14,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from enum import StrEnum
-from typing import Concatenate
+from typing import Concatenate, Final
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -75,10 +75,14 @@ from coach.domain.activity.resolution import RESOLUTION_RULES_VERSION, resolve
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.raw.source import RawSource
+from coach.domain.strength.session import StrengthSession, session_id_of
 from coach.metrics.catalog import ACTIVITY_BINDINGS, ActivityBinding
 from coach.metrics.quality import QUALITY_RULES_VERSION, assess, detect_anomalies
 
 _CANDIDATE_WINDOW = timedelta(seconds=START_ZERO_SECONDS)
+
+
+STRENGTH_SESSION_FIELD: Final = "strength.strengthSessionId"
 
 
 class IngestOutcome(StrEnum):
@@ -128,6 +132,8 @@ class ActivityStores:
     overrides: OverrideRepository
     issues: OwnedRepository[DataQualityIssue]
     raw_sources: RawSourceRepository
+    # the athlete's strength sessions: they link to their activity (P10, strength spec 5)
+    strength_sessions: OwnedRepository[StrengthSession] | None = None
 
 
 def build_activity(
@@ -458,6 +464,9 @@ class ActivityService:
         applied = apply_overrides(activity, overrides)
         values = dict(applied.values)
         values.update(self.engine.targets(scope, replace(activity, values=applied.values)))
+        session = self._strength_session(scope, activity.activity_id)
+        if session is not None:
+            values[STRENGTH_SESSION_FIELD] = session
         normalized_detected = set(
             detect_anomalies(activity.values, imported_at=activity.imported_at)
         )
@@ -467,6 +476,17 @@ class ActivityService:
         quality = assess(values, imported_at=activity.imported_at, source_anomalies=from_sources)
         view = replace(activity, values=values, provenance=applied.provenance, quality=quality)
         return EffectiveActivity(activity, view, overrides)
+
+    def _strength_session(self, scope: OwnerScope, activity_id: UUID) -> UUID | None:
+        """``strength.strengthSessionId``: the athlete's strength session of the activity,
+        when there is one (canonical model section 6)."""
+        sessions = self._stores.strength_sessions
+        if sessions is None:
+            return None
+        try:
+            return sessions.get(scope, session_id_of(activity_id)).session_id
+        except NotFoundError:
+            return None
 
     # ------------------------------------------------------------------ corrections
 

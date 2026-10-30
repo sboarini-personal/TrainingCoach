@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:strength-session:1",
+  "title": "StrengthSession",
+  "description": "What the athlete declared about the sets of one strength activity (FR-STR-005): set entries, relabels of exercises the watch named wrongly or not at all, and whether the watch's sets are used. The executed sets (StrengthSetResult) are reconciled in code from this document and the activity's SETS stream (strength spec section 5). sessionId is derived from activityId (UUID v5, one session per activity). Owner spec: spec/functional/strength.spec.md section 5.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "sessionId",
+    "athleteId",
+    "activityId",
+    "version",
+    "useWatchSets",
+    "relabels",
+    "entries"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "sessionId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "activityId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "useWatchSets": {
+      "description": "false: only the athlete's entries count for this session.",
+      "type": "boolean"
+    },
+    "relabels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["watchExercise", "exerciseId"],
+        "additionalProperties": false,
+        "properties": {
+          "watchExercise": {
+            "description": "What the watch named: a catalogue ID or the file's exercise code.",
+            "type": "string",
+            "pattern": "^(ex\\.[a-z0-9_]+|[a-z]{2,10}:[a-z0-9_]{1,40}(/[a-z0-9_]{1,80})?)$"
+          },
+          "exerciseId": { "$ref": "urn:coach:schema:workout:1#/$defs/exerciseId" }
+        }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "maxItems": 300,
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "reps": { "type": ["integer", "null"], "minimum": 0, "maximum": 1000 },
+    "load": { "type": ["number", "null"], "minimum": 0, "maximum": 1000 },
+    "rpe": { "type": ["number", "null"], "minimum": 1, "maximum": 10, "multipleOf": 0.5 },
+    "entry": {
+      "type": "object",
+      "required": [
+        "exerciseId",
+        "setNumber",
+        "recordedAt",
+        "completedReps",
+        "actualLoadKg",
+        "actualRpe",
+        "actualRir",
+        "targetReps",
+        "targetLoadKg",
+        "targetRpe"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "exerciseId": { "$ref": "urn:coach:schema:workout:1#/$defs/exerciseId" },
+        "setNumber": { "type": "integer", "minimum": 1, "maximum": 50 },
+        "recordedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+        "completedReps": { "$ref": "#/$defs/reps" },
+        "actualLoadKg": { "$ref": "#/$defs/load" },
+        "actualRpe": { "$ref": "#/$defs/rpe" },
+        "actualRir": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+        "targetReps": { "$ref": "#/$defs/reps" },
+        "targetLoadKg": { "$ref": "#/$defs/load" },
+        "targetRpe": { "$ref": "#/$defs/rpe" }
+      }
+    }
+  }
+}

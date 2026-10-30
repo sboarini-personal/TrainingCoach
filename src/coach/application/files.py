@@ -20,6 +20,7 @@ from coach.domain.common.quality import Anomaly
 from coach.domain.ingestion.limits import IngestionLimits
 from coach.domain.ingestion.record import RejectionReason, check_code
 from coach.domain.raw.source import DetectedType, MalwareScan
+from coach.domain.strength.sets import WatchSets
 
 
 class FileRejectedError(ApplicationError):
@@ -63,6 +64,7 @@ class DecodedSession:
     time_series: TimeSeries | None = None
     laps: Laps | None = None
     lengths: Lengths | None = None
+    sets: WatchSets | None = None
 
 
 class FileFormats(Protocol):

@@ -33,7 +33,7 @@ Owner of FR-ACT-001. Master spec §18, §52. Contract:
 | training | `aerobicEffect`, `anaerobicEffect` (provider metrics), `load.external`, `load.internal` (session RPE load, provider load) |
 | subjective | `rpe`, `soreness`, `pain`, `comments` (untrusted) |
 | environment | `temperatureC`, `humidityPct`, `windMps`, `altitudeMeters`, `terrain`, `surface`, `poolLengthMeters` |
-| streams | references to stored stream blobs (not inline): TIME_SERIES, LAPS and LENGTHS (P9, files spec 8.6), SETS (P10) |
+| streams | references to stored stream blobs (not inline): TIME_SERIES, LAPS and LENGTHS (P9, files spec 8.6), SETS (P10, files spec 8.7) |
 | quality | completeness, reliability, anomalies, confidence, uncertainty reasons, warnings |
 
 ## 3. Enumerations
@@ -92,7 +92,9 @@ speed and stored for convenience with their unit in the field name.
   speed: 1000 / speed and 100 / speed), `cardiovascular.hrZones` (application zone model, P8:
   filled in the EFFECTIVE view from the current `any.hr_zone_time` values, metrics spec 9.2),
   `training.load.internal.sessionRpeLoad` (the current `any.srpe_load` value, filled in the
-  EFFECTIVE view only) and `strength.strengthSessionId` (linked by strength ingestion, P10).
+  EFFECTIVE view only) and `strength.strengthSessionId` (the athlete's strength session of
+  the activity, filled in the EFFECTIVE view when there is one; strength spec section 5,
+  P10).
 - `status`: ACTIVE activities count toward totals. PENDING_REVIEW holds a source whose match
   was ambiguous until the athlete decides (deduplication spec section 3); it is excluded from
   totals. MERGED is the record of a pending activity whose sources moved to `mergedIntoId`; it

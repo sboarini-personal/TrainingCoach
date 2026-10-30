@@ -57,3 +57,7 @@ Codes added in P5: `activity.corrected` (target type `DATA_OVERRIDE`), `dedup.me
 (target the Activity that received the sources), `dedup.kept_separate` and `dedup.split`
 (target the Activity that stays or becomes separate). The override reason, field values and
 activity names never enter the audit log.
+
+Codes added in P10: `strength.session_changed` (target type `STRENGTH_SESSION`): the athlete
+entered, replaced or removed a set, relabelled an exercise of the watch or chose whether the
+watch's sets are used. Exercises, repetitions, loads, RPE and RIR never enter the audit log.

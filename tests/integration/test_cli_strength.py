@@ -1,12 +1,15 @@
-"""`coach strength exercises` and `coach strength alias` (P10; strength spec section 3)."""
+"""`coach strength` (P10; strength spec sections 3 and 5): the catalogue, aliases and the
+sets of imported strength activities, end to end through the parser sandbox and SQLite."""
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from cli_harness import Cli
+from file_samples import START, fit_file, fit_set, strength_session
 
 
 @pytest.fixture
@@ -64,3 +67,79 @@ def test_aliases_never_shadow_the_catalogue_or_invent_exercises(
     assert code == 2
     assert output.startswith("error:")
     assert message in output
+
+
+# --------------------------------------------------------------------------- sets
+
+
+def _imported_workout(cli: Cli, tmp_path: Path) -> str:
+    """Two back squat sets and one squat the mapping does not name, through the sandbox."""
+    assert cli.run("consent", "grant", "activities")[0] == 0
+    assert cli.run("profile", "timezone", "America/Argentina/Buenos_Aires")[0] == 0
+    at = START + timedelta(seconds=60)
+    sets = [
+        fit_set(at, 40, reps=8, weight=60.0, category="squat", subtype=6),
+        fit_set(at + timedelta(seconds=40), 120, set_type="rest"),
+        fit_set(at + timedelta(seconds=160), 40, reps=8, weight=62.5, category="squat", subtype=6),
+        fit_set(at + timedelta(seconds=400), 40, reps=12, weight=20.0, category="squat"),
+    ]
+    path = tmp_path / "gym.fit"
+    path.write_bytes(fit_file([strength_session(sets)]))
+    code, output = cli.run("import", str(path))
+    assert code == 0, output
+    return cli.run("activity", "list")[1].splitlines()[0].split()[-1]
+
+
+def _rows(output: str) -> list[list[str]]:
+    lines = output.splitlines()
+    start = next(index for index, line in enumerate(lines) if line.startswith("exercise"))
+    return [line.split() for line in lines[start + 1 :] if line.startswith(("ex.", "?"))]
+
+
+@pytest.mark.req("FR-STR-005", "INT-FIL-001")
+def test_imported_sets_are_shown_corrected_and_completed(cli: Cli, tmp_path: Path) -> None:
+    activity = _imported_workout(cli, tmp_path)
+    code, output = cli.run("strength", "sets", activity)
+    assert code == 0, output
+    assert "watch sets: used" in output
+    assert _rows(output) == [
+        ["ex.back_squat", "1", "8", "60", "-", "-", "-", "FIT"],
+        ["ex.back_squat", "2", "8", "62.5", "-", "-", "-", "FIT"],
+        ["?", "fit:squat", "1", "12", "20", "-", "-", "-", "FIT"],
+    ]
+    assert "the watch did not name: fit:squat (coach strength relabel)" in output
+    code, output = cli.run(
+        "strength", "log", activity, "sentadilla con barra", "--set", "2", "--reps", "7",
+        "--rpe", "9", "--target-reps", "8",
+    )  # fmt: skip
+    assert code == 0, output
+    assert _rows(output)[1] == [
+        "ex.back_squat", "2", "7", "62.5", "9", "-", "8", "reps", "FIT+ATHLETE",
+    ]  # fmt: skip
+    code, output = cli.run("strength", "relabel", activity, "fit:squat", "goblet squat")
+    assert code == 0, output
+    assert _rows(output)[2][:2] == ["ex.goblet_squat", "1"]
+    code, output = cli.run(
+        "strength", "log", activity, "ex.romanian_deadlift", "--reps", "10", "--load", "50"
+    )
+    assert _rows(output)[3] == ["ex.romanian_deadlift", "1", "10", "50", "-", "-", "-", "ATHLETE"]
+    code, output = cli.run("strength", "watch-sets", activity, "ignore")
+    assert "watch sets: ignored" in output
+    assert [row[0] for row in _rows(output)] == ["ex.back_squat", "ex.romanian_deadlift"]
+    code, output = cli.run("activity", "show", activity)
+    assert code == 0, output
+
+
+@pytest.mark.req("FR-STR-005", "FR-PRF-002")
+def test_sets_need_a_known_exercise_and_a_strength_activity(cli: Cli, tmp_path: Path) -> None:
+    activity = _imported_workout(cli, tmp_path)
+    code, output = cli.run("strength", "log", activity, "sentadilla rara", "--reps", "8")
+    assert (code, "unknown exercise 'sentadilla rara'" in output) == (2, True)
+    code, output = cli.run("strength", "log", activity, "ex.back_squat")
+    assert (code, "at least one value" in output) == (2, True)
+    code, output = cli.run("strength", "log", activity, "ex.back_squat", "--remove")
+    assert (code, "--set" in output) == (2, True)
+    code, output = cli.run("strength", "relabel", activity, "fit:lunge", "ex.reverse_lunge")
+    assert (code, "recorded no fit:lunge" in output) == (2, True)
+    missing = "0193b2a0-0000-7000-8000-00000000ffff"
+    assert cli.run("strength", "sets", missing) == (2, "error: activity not found\n")

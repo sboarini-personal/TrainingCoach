@@ -106,7 +106,7 @@ def test_fit_laps_become_the_laps_stream(tmp_path: Path) -> None:
     )
     assert (second.average_hr, second.average_cadence) == (150.0, 170.0)  # strides x 2
     assert laps.cadence_unit is CadenceUnit.STEPS_PER_MIN
-    assert session.normaliser_version == "1.1.0"
+    assert session.normaliser_version == "1.2.0"
 
 
 @pytest.mark.req("INT-FIL-001")

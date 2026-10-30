@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "1.0.0",
+  "startTimeUtc": "2026-10-20T21:00:00Z",
+  "sets": [
+    {
+      "startOffsetSeconds": 10.0,
+      "durationSeconds": 30.5,
+      "type": "ACTIVE",
+      "repetitions": 8,
+      "weightKg": 42.5,
+      "exerciseId": "ex.back_squat",
+      "providerExercise": "fit:squat/barbell_back_squat"
+    },
+    {
+      "startOffsetSeconds": 40.0,
+      "durationSeconds": 90.0,
+      "type": "REST",
+      "repetitions": null,
+      "weightKg": null,
+      "exerciseId": null,
+      "providerExercise": null
+    },
+    {
+      "startOffsetSeconds": 130.0,
+      "durationSeconds": 30.0,
+      "type": "ACTIVE",
+      "repetitions": 10,
+      "weightKg": null,
+      "exerciseId": null,
+      "providerExercise": "fit:squat"
+    }
+  ]
+}

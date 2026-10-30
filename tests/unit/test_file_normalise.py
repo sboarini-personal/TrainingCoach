@@ -182,7 +182,7 @@ def test_fit_run_is_normalised_with_unit_conversions(tmp_path: Path) -> None:
     assert "timing.movingSeconds" not in values  # timer time is not moving time
     assert "performance.power" not in values
     assert session.source_paths["distance.meters"] == "session[0].total_distance"
-    assert (session.normaliser, session.normaliser_version) == ("fit", "1.1.0")
+    assert (session.normaliser, session.normaliser_version) == ("fit", "1.2.0")
     series = session.time_series
     assert series is not None
     assert len(series) == 601

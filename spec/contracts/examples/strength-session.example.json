@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0.0",
+  "sessionId": "2c217d79-399d-5594-868d-1c3fe59817aa",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "activityId": "0193b2a0-0000-7000-8000-000000000101",
+  "version": 3,
+  "useWatchSets": true,
+  "relabels": [
+    { "watchExercise": "fit:squat", "exerciseId": "ex.goblet_squat" }
+  ],
+  "entries": [
+    {
+      "exerciseId": "ex.back_squat",
+      "setNumber": 1,
+      "recordedAt": "2026-10-20T22:05:00Z",
+      "completedReps": null,
+      "actualLoadKg": null,
+      "actualRpe": 7.5,
+      "actualRir": 2,
+      "targetReps": 8,
+      "targetLoadKg": null,
+      "targetRpe": 7.0
+    },
+    {
+      "exerciseId": "ex.romanian_deadlift",
+      "setNumber": 1,
+      "recordedAt": "2026-10-20T22:06:00Z",
+      "completedReps": 10,
+      "actualLoadKg": 50.0,
+      "actualRpe": 8.0,
+      "actualRir": null,
+      "targetReps": null,
+      "targetLoadKg": null,
+      "targetRpe": null
+    }
+  ]
+}

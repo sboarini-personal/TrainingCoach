@@ -1,8 +1,9 @@
 """FIT parser (runs in the sandbox): official Garmin FIT SDK with the CRC check enabled.
 
-Reads file_id, session, activity and record messages into the parser-output document, and
-from P9 lap, length and device_info messages (device types only, never identifiers); the
-mapping to canonical fields happens in the parent (spec/integration/files.spec.md 8.1, 8.6).
+Reads file_id, session, activity and record messages into the parser-output document, from
+P9 lap, length and device_info messages (device types only, never identifiers) and from P10
+set messages (strength sets, the exercise as the file's own code); the mapping to canonical
+fields happens in the parent (spec/integration/files.spec.md 8.1, 8.6, 8.7).
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, cast
 
-from garmin_fit_sdk import Decoder, Stream
+from garmin_fit_sdk import Decoder, Profile, Stream
 
 from coach.integrations.files.parsing import (
     ParserLimits,
@@ -26,7 +27,7 @@ from coach.integrations.files.parsing import (
 )
 
 PARSER: Final = "fit"
-VERSION: Final = "1.1.0"
+VERSION: Final = "1.2.0"
 FIT_EPOCH: Final = datetime(1989, 12, 31, tzinfo=UTC)
 MAX_OFFSET_SECONDS: Final = 14 * 3600
 _CODE: Final = re.compile(r"^[a-z0-9_]{1,40}$")
@@ -52,6 +53,14 @@ _SUMMARY: Final = (
     ("lengthCount", ("num_active_lengths", "num_lengths")),
 )
 
+
+# A set names at most this many exercises (FIT category and category_subtype arrays).
+MAX_SET_EXERCISES: Final = 4
+_EXERCISE_NAMES: Final[dict[str, dict[int, str]]] = {
+    name.removesuffix("_exercise_name"): table
+    for name, table in Profile["types"].items()
+    if name.endswith("_exercise_name")
+}
 
 # device_info subfields that name a device type (the SDK expands them by source_type)
 _DEVICE_TYPES: Final = ("antplus_device_type", "ble_device_type")
@@ -225,6 +234,48 @@ def _lengths(data: SessionData, lengths: list[dict[str, Any]], window: _Window) 
         )
 
 
+def _listed(value: Any) -> list[Any]:
+    """The SDK decodes a one-element array as its element."""
+    return list(value) if isinstance(value, list | tuple) else [value]
+
+
+def _exercises(message: dict[str, Any]) -> list[str]:
+    """The set's exercises as the file's codes: ``category/name`` (the SDK's exercise name of
+    the subtype), ``category/<number>`` when the profile has no name, ``category`` alone when
+    the subtype is unknown. Unknown categories are left out."""
+    categories = _listed(message.get("category"))
+    subtypes = _listed(message.get("category_subtype"))
+    codes: list[str] = []
+    for index, category in enumerate(categories[:MAX_SET_EXERCISES]):
+        code = _code(category)
+        if code is None or code == "unknown":
+            continue
+        subtype = subtypes[index] if index < len(subtypes) else None
+        if isinstance(subtype, int) and not isinstance(subtype, bool):
+            name = _code(_EXERCISE_NAMES.get(code, {}).get(subtype)) or str(subtype)
+            code = f"{code}/{name}"
+        if code not in codes:
+            codes.append(code)
+    return codes
+
+
+def _sets(data: SessionData, sets: list[dict[str, Any]], window: _Window) -> None:
+    for message in sorted(sets, key=_start_key):
+        offset = _inside(message, window)
+        if offset is None:
+            continue
+        data.sets.append(
+            {
+                "startOffsetSeconds": offset,
+                "durationSeconds": number(message.get("duration")),
+                "repetitions": number(message.get("repetitions")),
+                "weightKg": number(message.get("weight")),
+                "type": _code(message.get("set_type")),
+                "exercises": _exercises(message),
+            }
+        )
+
+
 def _start_key(message: dict[str, Any]) -> float:
     start = message.get("start_time")
     return start.timestamp() if isinstance(start, datetime) else 0.0
@@ -284,6 +335,7 @@ def parse_fit(path: Path, limits: ParserLimits) -> dict[str, Any]:
         _samples(data, records, window)
         _laps(data, decoded.get("lap_mesgs", []), window)
         _lengths(data, decoded.get("length_mesgs", []), window)
+        _sets(data, decoded.get("set_mesgs", []), window)
         data.sensors = list(sensors)
         sessions.append(data)
     return output(

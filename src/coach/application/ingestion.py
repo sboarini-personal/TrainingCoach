@@ -25,7 +25,12 @@ from uuid import UUID, uuid4
 
 from coach.application.activities import ActivityService, RenormalisationRefusedError
 from coach.application.consent import ConsentGate
-from coach.application.contracts import LAPS_CODEC, LENGTHS_CODEC, TIME_SERIES_CODEC
+from coach.application.contracts import (
+    LAPS_CODEC,
+    LENGTHS_CODEC,
+    SETS_CODEC,
+    TIME_SERIES_CODEC,
+)
 from coach.application.errors import ApplicationError, NotFoundError
 from coach.application.events import EventName
 from coach.application.files import (
@@ -563,7 +568,8 @@ class IngestionService:
         )
 
     def _streams(self, scope: OwnerScope, session: DecodedSession) -> tuple[StreamRef, ...]:
-        """Stream blobs of a session: time series, laps and lengths (files spec 8.5, 8.6)."""
+        """Stream blobs of a session: time series, laps, lengths and strength sets (files
+        spec 8.5 to 8.7)."""
         documents: list[tuple[StreamKind, dict[str, object]]] = []
         if session.time_series is not None:
             documents.append((StreamKind.TIME_SERIES, TIME_SERIES_CODEC.dump(session.time_series)))
@@ -571,6 +577,8 @@ class IngestionService:
             documents.append((StreamKind.LAPS, LAPS_CODEC.dump(session.laps)))
         if session.lengths is not None:
             documents.append((StreamKind.LENGTHS, LENGTHS_CODEC.dump(session.lengths)))
+        if session.sets is not None:
+            documents.append((StreamKind.SETS, SETS_CODEC.dump(session.sets)))
         return tuple(
             StreamRef(kind, self._blobs.put(scope, _canonical(document)))
             for kind, document in documents
