@@ -13,12 +13,13 @@ from coach.application.errors import InvalidOperationError, NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.application.strength import SessionSets
 from coach.cli.activities import CONSENT_HINT, CommandError
-from coach.cli.analytics import total_text, week_argument
+from coach.cli.analytics import athlete_today, total_text, week_argument
 from coach.cli.runtime import Runtime
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.exercise import Exercise, ExerciseAlias, normalise_alias, own_aliases
+from coach.domain.strength.progression import PROGRESSION_RULES_VERSION, Reason
 from coach.domain.strength.session import SetEntry, SetSource, StrengthSetResult
 from coach.domain.strength.vocabulary import MovementPattern
 
@@ -294,4 +295,44 @@ def week(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
             "(coach strength relabel)",
             file=out,
         )
+    return 0
+
+
+_REASONS = {
+    Reason.TWO_EXPOSURES_MET: "the last two sessions met their target reps at or below target RPE",
+    Reason.TARGETS_MET_ABOVE_RPE: "targets met, but above the target RPE",
+    Reason.NOT_TWO_EXPOSURES_MET: "not two sessions in a row met the targets at or below RPE",
+    Reason.ONE_EXPOSURE_MISSED: "one of the last two sessions missed its targets",
+    Reason.TWO_EXPOSURES_MISSED: "reps missed or RPE over target + 1.5 in the last two sessions",
+    Reason.PAIN_IN_REGION: "pain reported for a region this exercise loads",
+    Reason.PAIN_REGION_UNKNOWN: "pain reported without a region it names: no progression",
+    Reason.FEWER_THAN_TWO_EXPOSURES: "fewer than two sessions with this exercise",
+    Reason.NO_TARGETS: "a session has no targets (coach strength log --target-reps --target-rpe)",
+    Reason.NO_TARGET_RPE: "no target RPE to judge the effort by",
+    Reason.MISSING_VALUES: "a value the targets need (reps or RPE) is missing",
+}
+
+
+def progress(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Progression decisions from the execution history (strength spec 6)."""
+    exercise_id = None if args.exercise is None else _exercise(runtime, scope, args.exercise)
+    until = athlete_today(runtime, scope)
+    with _translated():
+        decisions = runtime.analytics.progression(
+            scope, until=until, weeks=args.weeks, exercise_id=exercise_id
+        )
+    print(
+        f"progression rules {PROGRESSION_RULES_VERSION}, the {args.weeks} weeks to {until}",
+        file=out,
+    )
+    if not decisions:
+        print("no strength sets in these weeks", file=out)
+    for decision in decisions:
+        reasons = "; ".join(_REASONS[reason] for reason in decision.reasons)
+        sessions = ", ".join(
+            f"{exposure.training_day} {found.value}" for exposure, found in decision.exposures
+        )
+        print(f"{decision.exercise_id:<34} {decision.decision.value:<18} {reasons}", file=out)
+        if sessions:
+            print(f"{'':<34} {'':<18} sessions: {sessions}", file=out)
     return 0

@@ -32,6 +32,13 @@ plus four joint and tendon regions that muscle groups do not cover: ACHILLES_REG
 SHOULDERS and ELBOWS. The tennis regions of the tennis spec are body regions (calves,
 soleus, Achilles region, knees, adductors, shoulders, elbows).
 
+Regions an exercise loads (region rules 1.0.0, P10): the regions of its primary and secondary
+muscle groups, plus KNEES for SQUAT and LUNGE, ACHILLES_REGION for CALF_RAISE, SHOULDERS and
+ELBOWS for the push and pull patterns, SHOULDERS for SCAPULAR_STABILITY, KNEES and
+ACHILLES_REGION for the HIGH_IMPACT tag and SHOULDERS for the OVERHEAD tag. Each region has
+English and Spanish names (for example KNEES: knee, knees, rodilla, rodillas) that a pain
+location must equal, normalised, to name it (`coach.domain.strength.regions`).
+
 Contraindication tags (P10): AXIAL_LOAD (load through the spine), OVERHEAD, HIGH_IMPACT
 (jumps, landings), DEEP_KNEE_FLEXION, SPINAL_FLEXION, GRIP_INTENSIVE. They let a health
 constraint (P11, P12) exclude exercises by tag, never by name.
@@ -134,6 +141,33 @@ planned workouts. Initial rules (versioned, P10):
 - Hold when targets were met with RPE above target.
 - Regress when reps were missed or RPE exceeded the target by more than 1.5 in two exposures,
   or pain was reported for that region.
+
+Rules 1.0.0 (P10, precision of this section):
+
+- An exposure is an ACTIVE strength activity in which the exercise has executed sets
+  (section 5). The decision reads the last two exposures within the weeks it covers (12 by
+  default) and each one's sets against their own targets (the athlete's targets until planned
+  workouts exist, P12): repetitions met when every set with a target reached it; the RPE gap
+  is the actual RPE minus the target. An actual RIR without an RPE reads as RPE 10 - RIR
+  (section 8). An exposure is MET (repetitions met at or below the target RPE), MET_ABOVE_RPE
+  (met, at most 1.5 above), MISSED (repetitions missed or more than 1.5 above, whatever else
+  is unknown), REPS_MET (no target RPE), NO_TARGETS or UNKNOWN (a value its targets need is
+  unknown).
+- Decision, in this order: REGRESS when pain was reported for a region the exercise loads
+  since the first of the two exposures (any ACTIVE activity's pain; regions of section 2);
+  INSUFFICIENT_DATA with fewer than two exposures; REGRESS when both were MISSED;
+  INSUFFICIENT_DATA when one has no targets or an unknown value; HOLD when one was MISSED;
+  INSUFFICIENT_DATA without a target RPE; PROGRESS when both were MET, except HOLD when pain
+  was reported whose location names no region; otherwise HOLD (targets met above the target
+  RPE, or not two exposures in a row met).
+- A pain location is the athlete's free text: it names a region only when, normalised like an
+  alias, it is exactly one of the region names (English and Spanish, for example "rodilla"
+  for KNEES); anything else names no region and is never interpreted. Such pain can block a
+  progression, never regress an exercise it may not concern. This is load management, not a
+  diagnosis (SAFE-MED-001); red flags follow the safety spec.
+- Each decision lists its reasons (codes), the exposures and their outcomes, and its evidence
+  (the executed sets of each exposure and the pain reports used); it is a read model
+  (`coach strength progress [exercise] [--weeks]`), not a stored decision.
 
 ## 7. Interference engine (FR-STR-007)
 

@@ -1,5 +1,6 @@
 """Analytics reads: period totals, the week report, recomputation (metrics spec 9.3 to 9.5)
-and the strength week: hard sets per muscle group and volume load (strength spec 8).
+the strength week: hard sets per muscle group and volume load (strength spec 8), and the
+progression decisions of each exercise from its execution history (strength spec 6).
 
 Every read requires the ACTIVITIES consent and is owner-scoped. Period totals are materialised
 when requested from the EFFECTIVE views of the period's ACTIVE activities: an unchanged
@@ -27,7 +28,7 @@ from coach.application.ownership import OwnerScope
 from coach.application.ports import ActivityRepository, Batch, OverrideRepository
 from coach.application.strength import StrengthService
 from coach.domain.activity.activity import Activity
-from coach.domain.activity.fields import Cadence, CadenceUnit, StrokeType
+from coach.domain.activity.fields import Cadence, CadenceUnit, Pain, StrokeType
 from coach.domain.activity.overrides import TRAINING_DAY_FIELD, EntityType
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
@@ -35,6 +36,14 @@ from coach.domain.common.quality import UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange, TrainingDayBasis
 from coach.domain.consent.ledger import ConsentType
+from coach.domain.strength.progression import (
+    EXPOSURES,
+    Exposure,
+    PainReport,
+    ProgressionDecision,
+    decide,
+)
+from coach.domain.strength.session import StrengthSetResult
 from coach.domain.strength.vocabulary import MuscleGroup
 from coach.metrics.catalog import (
     CATALOG,
@@ -61,6 +70,7 @@ _START_MARGIN: Final = timedelta(days=2)
 _BASIS_FIELD: Final = "timing.trainingDayBasis"
 RECOMPUTE_CHUNK: Final = 50  # activities per unit of work: short write locks (ADR-027)
 CADENCE_FIELD: Final = "performance.cadence"  # the average running cadence (metrics spec 11)
+PAIN_FIELD: Final = "subjective.pain"
 MAX_TREND_WEEKS: Final = 104
 
 
@@ -388,6 +398,52 @@ class AnalyticsService:
         return StrengthWeek(
             subject, subject.period(), len(members), sets, unattributed, tuple(muscles), volume
         )
+
+    def progression(
+        self,
+        scope: OwnerScope,
+        *,
+        until: date,
+        weeks: int = 12,
+        exercise_id: str | None = None,
+    ) -> list[ProgressionDecision]:
+        """A decision per exercise done in the weeks ending ``until`` (or for one exercise),
+        from its executed sets and the pain reported since its last two exposures (strength
+        spec 6). Decisions are read models: nothing is stored."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        if self._strength is None:
+            raise DomainValidationError("strength sessions are not available here")
+        if not 1 <= weeks <= MAX_TREND_WEEKS:
+            raise DomainValidationError(f"weeks must be 1 to {MAX_TREND_WEEKS}")
+        catalogue = self._strength.catalogue
+        if exercise_id is not None and exercise_id not in catalogue:
+            raise DomainValidationError(f"unknown exercise: {exercise_id}")
+        period = DateRange(until - timedelta(days=weeks * 7 - 1), until)
+        by_exercise: dict[str, list[Exposure]] = {}
+        pains: list[PainReport] = []
+        with self._batch():
+            for view in self._members(scope, period):
+                pain = view.values.get(PAIN_FIELD)
+                if isinstance(pain, Pain) and pain.flag:
+                    pains.append(PainReport(view.activity_id, view.training_day, pain))
+                if view.sport is not Sport.STRENGTH:
+                    continue
+                grouped: dict[str, list[StrengthSetResult]] = {}
+                for item in self._strength.of_view(scope, view).sets:
+                    if item.exercise_id is not None:
+                        grouped.setdefault(item.exercise_id, []).append(item)
+                for found, sets in grouped.items():
+                    by_exercise.setdefault(found, []).append(
+                        Exposure(view.activity_id, view.training_day, tuple(sets))
+                    )
+        decisions = []
+        for found in [exercise_id] if exercise_id is not None else sorted(by_exercise):
+            exposures = by_exercise.get(found, [])
+            recent = exposures[-EXPOSURES:]  # members come in time order
+            since = recent[0].training_day if recent else period.start
+            covered = [report for report in pains if report.training_day >= since]
+            decisions.append(decide(catalogue.get(found), exposures, covered))
+        return decisions
 
     def _strength_volume(
         self, scope: OwnerScope, subject: MetricSubject, members: Sequence[Activity]

@@ -144,7 +144,8 @@ def _totals(totals: Mapping[str, TotalReport]) -> str:
 # ------------------------------------------------------------------ helpers
 
 
-def _today(runtime: Runtime, scope: OwnerScope) -> date:
+def athlete_today(runtime: Runtime, scope: OwnerScope) -> date:
+    """Today in the athlete's timezone."""
     try:
         zone = athlete_timezone(runtime.profiles, scope)
     except TimezoneRequiredError:
@@ -155,7 +156,7 @@ def _today(runtime: Runtime, scope: OwnerScope) -> date:
 def week_argument(text: str | None, runtime: Runtime, scope: OwnerScope) -> str:
     """The ISO week of ``--week``, this week (athlete's timezone) by default."""
     if text is None:
-        return week_key(_today(runtime, scope))
+        return week_key(athlete_today(runtime, scope))
     try:
         return MetricSubject(SubjectKind.WEEK, text).key
     except DomainValidationError:
@@ -194,7 +195,7 @@ def load_week(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out
 def load_weeks(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
     if not 1 <= args.count <= 104:
         raise CommandError("count must be between 1 and 104")
-    today = _today(runtime, scope)
+    today = athlete_today(runtime, scope)
     try:
         for back in range(args.count - 1, -1, -1):
             report = runtime.analytics.week(scope, week_key(today - timedelta(weeks=back)))
@@ -229,7 +230,7 @@ def trend(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Te
     stroke = None if args.stroke is None else StrokeType(args.stroke)
     try:
         report = runtime.analytics.trend(
-            scope, args.metric, until=_today(runtime, scope), weeks=args.weeks, stroke=stroke
+            scope, args.metric, until=athlete_today(runtime, scope), weeks=args.weeks, stroke=stroke
         )
     except ConsentRequiredError:
         raise CommandError(CONSENT_HINT) from None
@@ -364,8 +365,8 @@ def hr_zones(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out:
         for line in [_model_text(model) for model in models] or ["no heart-rate zone models"]:
             print(line, file=out)
         return 0
-    today = _today(runtime, scope) if args.age_predicted else None
-    valid_from = args.valid_from or today or _today(runtime, scope)
+    today = athlete_today(runtime, scope) if args.age_predicted else None
+    valid_from = args.valid_from or today or athlete_today(runtime, scope)
     try:
         model = _zone_model(args, profile, valid_from)
     except DomainValidationError as error:
@@ -436,7 +437,7 @@ def ftp(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Text
             how = "measured" if known.measured else "not measured"
             print(f"{known.watts} W on {known.on.isoformat()} ({how})", file=out)
         return 0
-    on = args.on or _today(runtime, scope)
+    on = args.on or athlete_today(runtime, scope)
     try:
         value = FtpValue(args.watts, on, measured=args.measured)
     except DomainValidationError as error:

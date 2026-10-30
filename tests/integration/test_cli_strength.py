@@ -190,3 +190,17 @@ def test_an_entry_without_reps_names_its_set(cli: Cli, tmp_path: Path) -> None:
     )
     assert code == 0, output
     assert _rows(output)[-1][:5] == ["ex.back_squat", "3", "5", "70", "-"]  # a new set
+
+
+@pytest.mark.req("FR-STR-006")
+def test_progress_explains_each_decision(cli: Cli, tmp_path: Path) -> None:
+    _imported_workout(cli, tmp_path)
+    code, output = cli.run("strength", "progress")
+    assert code == 0, output
+    lines = output.splitlines()
+    assert lines[0] == "progression rules 1.0.0, the 12 weeks to 2026-10-25"
+    assert lines[1].split()[:2] == ["ex.back_squat", "INSUFFICIENT_DATA"]
+    assert "fewer than two sessions with this exercise" in lines[1]
+    assert lines[2].split() == ["sessions:", "2026-10-20", "NO_TARGETS"]
+    code, output = cli.run("strength", "progress", "sentadilla rara")
+    assert (code, "unknown exercise" in output) == (2, True)
