@@ -18,7 +18,7 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import MetricOrigin
 from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
-from coach.metrics import running
+from coach.metrics import cycling, running
 from coach.metrics.analyses import StreamAnalysis
 from coach.metrics.registry import (
     Aggregation,
@@ -45,6 +45,14 @@ SEILER_2006: Final = (
     "Seiler KS, Kjerland GØ. Quantifying training intensity distribution in elite endurance "
     'athletes: is there evidence for an "optimal" distribution? Scand J Med Sci Sports. '
     "2006;16(1):49-56 (time-in-zone method)"
+)
+ALLEN_COGGAN_2010: Final = (
+    "Allen H, Coggan A. Training and Racing with a Power Meter. 2nd ed. VeloPress; 2010 "
+    "(power training levels as fractions of FTP)"
+)
+SI_WORK: Final = (
+    "BIPM. The International System of Units (SI), 9th edition, 2019: one joule is the work "
+    "done by one watt during one second"
 )
 PERIODS: Final = frozenset({SubjectKind.DAY, SubjectKind.WEEK})
 DISTANCE_SPORTS: Final = frozenset({Sport.RUNNING, Sport.CYCLING, Sport.SWIMMING})
@@ -165,7 +173,7 @@ HR_ZONE_TIME: Final = MetricDefinition(
     origin=MetricOrigin.STANDARD_CALCULATION,
     reference=SEILER_2006,
     calculate=_seconds_in_zone,
-    dimension=DimensionKind.HR_ZONE,
+    dimension=DimensionKind.ZONE,
 )
 
 
@@ -270,6 +278,108 @@ RUN_EFFICIENCY_HR: Final = MetricDefinition(
     calculate=_per_heartbeat,
 )
 _RUNNING: Final = frozenset({Sport.RUNNING})
+
+
+# ------------------------------------------------------------------ cycling (P9)
+
+MAX_WATTS: Final = 3000.0
+
+
+def _watts(name: str, description: str, *, exclusive: bool = False) -> InputSpec:
+    return InputSpec(name, "W", 0, MAX_WATTS, minimum_exclusive=exclusive, description=description)
+
+
+def _work(inputs: Mapping[str, float]) -> float:
+    return inputs["work_kilojoules"]
+
+
+def _fade(inputs: Mapping[str, float]) -> float:
+    first = inputs["first_half_watts"]
+    return (first - inputs["second_half_watts"]) / first * 100.0
+
+
+def _consistency(inputs: Mapping[str, float]) -> float:
+    return inputs["repetition_stdev_watts"] / inputs["repetition_mean_watts"] * 100.0
+
+
+def _power_zone_seconds(inputs: Mapping[str, float]) -> float:
+    return inputs["seconds_in_zone"]
+
+
+CYC_WORK_KJ: Final = MetricDefinition(
+    metric_id="cyc.work_kj",
+    name="Mechanical work",
+    sport=Sport.CYCLING,
+    unit="kJ",
+    method=(
+        "Sum of power x duration over the intervals of at most 20 s with a known power, "
+        "/ 1000; measured power only (cycling spec 6)"
+    ),
+    required_inputs=(InputSpec("work_kilojoules", "kJ", 0, 100_000),),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=SI_WORK,
+    calculate=_work,
+)
+CYC_POWER_FADE: Final = MetricDefinition(
+    metric_id="cyc.power_fade",
+    name="Power fade",
+    sport=Sport.CYCLING,
+    unit="%",
+    method=(
+        "(mean power of the first half - of the second half) / first x 100, halves of the "
+        "time with a known power; measured power only (cycling spec 6)"
+    ),
+    required_inputs=(
+        _watts("first_half_watts", "Mean power of the first half", exclusive=True),
+        _watts("second_half_watts", "Mean power of the second half"),
+    ),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    calculate=_fade,
+)
+CYC_INTERVAL_POWER_CONSISTENCY: Final = MetricDefinition(
+    metric_id="cyc.interval_power_consistency",
+    name="Interval power consistency",
+    sport=Sport.CYCLING,
+    unit="%",
+    method=(
+        "Coefficient of variation of the average power of the comparable work laps of a "
+        "structured interval session; measured power only (cycling spec 6)"
+    ),
+    required_inputs=(
+        _watts("repetition_mean_watts", "Mean of the repetitions' power", exclusive=True),
+        _watts("repetition_stdev_watts", "Standard deviation of the repetitions' power"),
+    ),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    calculate=_consistency,
+)
+CYC_POWER_ZONE_TIME: Final = MetricDefinition(
+    metric_id="cyc.power_zone_time",
+    name="Time in power zone",
+    sport=Sport.CYCLING,
+    unit="s",
+    method=(
+        "Intervals of at most 20 s summed by the power zone, as a fraction of FTP, of the "
+        "power at their start (cycling spec 6.1); measured power only"
+    ),
+    required_inputs=(
+        InputSpec("seconds_in_zone", "s", 0, MAX_SESSION_SECONDS),
+        InputSpec("ftp_watts", "W", 50, 600),
+    ),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=ALLEN_COGGAN_2010,
+    calculate=_power_zone_seconds,
+    dimension=DimensionKind.ZONE,
+)
+_CYCLING: Final = frozenset({Sport.CYCLING})
+_POWER: Final = ("performance.power",)
 STREAM_ANALYSES: Final = (
     StreamAnalysis(
         definition=RUN_HR_DRIFT,
@@ -295,6 +405,33 @@ STREAM_ANALYSES: Final = (
         analyse=running.interval_degradation,
         unknown_without_stream=False,
         anomaly_fields=("distance.",),
+    ),
+    StreamAnalysis(
+        definition=CYC_WORK_KJ,
+        stream=StreamKind.TIME_SERIES,
+        sports=_CYCLING,
+        analyse=cycling.work,
+        unknown_without_stream=True,
+        anomaly_fields=_POWER,
+        requires=cycling.measured_power,
+    ),
+    StreamAnalysis(
+        definition=CYC_POWER_FADE,
+        stream=StreamKind.TIME_SERIES,
+        sports=_CYCLING,
+        analyse=cycling.fade,
+        unknown_without_stream=True,
+        anomaly_fields=_POWER,
+        requires=cycling.measured_power,
+    ),
+    StreamAnalysis(
+        definition=CYC_INTERVAL_POWER_CONSISTENCY,
+        stream=StreamKind.LAPS,
+        sports=_CYCLING,
+        analyse=cycling.interval_consistency,
+        unknown_without_stream=False,
+        anomaly_fields=_POWER,
+        requires=cycling.measured_power,
     ),
 )
 
@@ -358,6 +495,15 @@ ELEVATION_GAIN_TOTAL: Final = _total(
     InputSpec("elevation_gain_meters", "m", 0, 100_000),
     cross_sport=False,
 )
+CYC_WORK_TOTAL: Final = _total(
+    "cyc.work_total",
+    "Mechanical work",
+    "kJ",
+    InputSpec("work_kilojoules", "kJ", 0, 10_000_000),
+    cross_sport=False,
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=SI_WORK + " (work adds up)",
+)
 SRPE_LOAD_TOTAL: Final = _total(
     "any.srpe_load_total",
     "Session RPE load",
@@ -384,6 +530,11 @@ CATALOG: Final = MetricRegistry(
         RUN_PACE_VARIABILITY,
         RUN_INTERVAL_DEGRADATION,
         RUN_EFFICIENCY_HR,
+        CYC_WORK_KJ,
+        CYC_POWER_FADE,
+        CYC_INTERVAL_POWER_CONSISTENCY,
+        CYC_POWER_ZONE_TIME,
+        CYC_WORK_TOTAL,
     )
 )
 
@@ -451,6 +602,9 @@ class PeriodTotal:
     field: str | None = None
     activity_metric: MetricDefinition | None = None
     sports: frozenset[Sport] | None = None
+    # Only activities with a current value of the per-activity metric contribute; the others
+    # are left out and counted (cyc.work_total: rides without measured power).
+    qualifying_only: bool = False
 
     def __post_init__(self) -> None:
         if self.sports is not None and self.definition.cross_sport:
@@ -461,6 +615,8 @@ class PeriodTotal:
             raise DomainValidationError("a total adds up a field or a per-activity metric")
         if self.field is not None:
             field_spec(self.field)
+        if self.qualifying_only and self.activity_metric is None:
+            raise DomainValidationError("only a per-activity metric total leaves activities out")
 
     def applies_to(self, sport: Sport) -> bool:
         return self.sports is None or sport in self.sports
@@ -476,4 +632,5 @@ PERIOD_TOTALS: Final = (
         sports=frozenset({Sport.RUNNING, Sport.CYCLING}),
     ),
     PeriodTotal(SRPE_LOAD_TOTAL, activity_metric=SRPE_LOAD),
+    PeriodTotal(CYC_WORK_TOTAL, activity_metric=CYC_WORK_KJ, sports=_CYCLING, qualifying_only=True),
 )

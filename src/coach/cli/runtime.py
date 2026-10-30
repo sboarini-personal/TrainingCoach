@@ -45,8 +45,8 @@ from coach.application.screening import SecretScreen
 from coach.application.sync import SyncService
 from coach.domain.activity.fields import StreamKind
 from coach.domain.activity.issues import DataQualityIssue
-from coach.domain.athlete.physiology import HeartRateZones
 from coach.domain.athlete.profile import AthleteProfile
+from coach.domain.athlete.settings import AnalysisSettings
 from coach.domain.common.time import parse_timezone
 from coach.domain.integration.status import IntegrationStatus
 from coach.infrastructure.blobs import BlobIntegrityError, FileBlobStore
@@ -88,14 +88,15 @@ class TimezoneRequiredError(ApplicationError):
         super().__init__("athlete timezone not set")
 
 
-def heart_rate_zones(
+def analysis_settings(
     profiles: SqliteAggregateRepository[AthleteProfile], scope: OwnerScope
-) -> HeartRateZones:
-    """The athlete's heart-rate zone models (profile spec 1.1); none without a profile."""
+) -> AnalysisSettings:
+    """Zones, reliable power sensors and FTP from the profile (metrics spec 10); none without
+    a profile."""
     try:
-        return profiles.get(scope, scope.athlete_id).heart_rate_zones
+        return profiles.get(scope, scope.athlete_id).analysis_settings
     except NotFoundError:
-        return HeartRateZones()
+        return AnalysisSettings()
 
 
 def athlete_timezone(
@@ -222,7 +223,7 @@ def build_runtime(
 
     engine = ActivityMetricsEngine(
         derived,
-        zones=lambda scope: heart_rate_zones(profiles, scope),
+        athlete=lambda scope: analysis_settings(profiles, scope),
         streams=read_stream,
     )
     overrides = SqliteOverrideRepository(database)

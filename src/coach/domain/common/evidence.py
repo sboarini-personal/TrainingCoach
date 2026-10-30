@@ -21,6 +21,7 @@ class EvidenceKind(StrEnum):
     INSIGHT = "INSIGHT"
     PLAN_VERSION = "PLAN_VERSION"
     HR_ZONE_MODEL = "HR_ZONE_MODEL"
+    ATHLETE_PROFILE = "ATHLETE_PROFILE"  # a profile field, for example the FTP (P9)
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,4 +1,5 @@
-"""Time in heart-rate zones, method 1.0.0 (metrics spec section 9.2).
+"""Time in heart-rate zones, method 1.0.0 (metrics spec section 9.2); also power zones (P9,
+cycling spec 6.1), with power in place of heart rate.
 
 Each interval between consecutive samples counts toward the zone of the heart rate at its
 start, when that heart rate is known and the interval lasts more than 0 and at most
@@ -37,7 +38,7 @@ class ZoneTimes:
         return None if total == 0 else known / total
 
 
-def _zone(heart_rate: float, boundaries: Sequence[int]) -> int | None:
+def _zone(heart_rate: float, boundaries: Sequence[float]) -> int | None:
     """Zero-based zone index; ``None`` below the first boundary."""
     if heart_rate < boundaries[0]:
         return None
@@ -50,7 +51,7 @@ def _zone(heart_rate: float, boundaries: Sequence[int]) -> int | None:
 def time_in_zones(
     offsets: Sequence[float],
     heart_rates: Sequence[float | None],
-    boundaries: Sequence[int],
+    boundaries: Sequence[float],
     *,
     max_gap_seconds: float = MAX_SAMPLE_GAP_SECONDS,
 ) -> ZoneTimes:

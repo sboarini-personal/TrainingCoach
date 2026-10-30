@@ -31,6 +31,7 @@ from coach.cli import activities as activity_commands
 from coach.cli import analytics as analytics_commands
 from coach.cli import garmin as garmin_commands
 from coach.cli.runtime import Runtime, build_runtime
+from coach.domain.athlete.physiology import SensorType
 from coach.domain.common.errors import DomainValidationError
 from coach.infrastructure.datadir import SyncedDataDirError, ensure_layout, resolve_data_dir
 from coach.infrastructure.logs import attach_file_log, detach_file_log
@@ -95,6 +96,21 @@ def _parser() -> argparse.ArgumentParser:
         "--age-predicted",
         action="store_true",
         help="boundaries are %% of 220 - age on each training day: an estimate (ADR-028)",
+    )
+    sensors = profile.add_parser(
+        "sensor", help="show declared sensors, or declare one (a power meter makes power MEASURED)"
+    )
+    sensors.add_argument("type", nargs="?", choices=sorted(item.value for item in SensorType))
+    sensors.add_argument("--model", help="free text, for example the device name")
+    sensors.add_argument(
+        "--reliable", action="store_true", help="reliable for training (cycling spec 2)"
+    )
+    sensors.add_argument("--remove", action="store_true", help="forget this sensor")
+    threshold = profile.add_parser("ftp", help="show or set the functional threshold power")
+    threshold.add_argument("watts", nargs="?", type=int, help="50 to 600")
+    threshold.add_argument("--on", type=date.fromisoformat, help="YYYY-MM-DD; default today")
+    threshold.add_argument(
+        "--measured", action="store_true", help="from a test with measured power"
     )
     birth = profile.add_parser("birth-date", help="show or set the birth date")
     birth.add_argument("date", nargs="?", type=date.fromisoformat, help="YYYY-MM-DD")
@@ -275,6 +291,10 @@ def main(
                 return activity_commands.import_files(runtime, _session(runtime), args, stream)
             case ("profile", "hr-zones"):
                 return analytics_commands.hr_zones(runtime, _session(runtime), args, stream)
+            case ("profile", "sensor"):
+                return analytics_commands.sensor(runtime, _session(runtime), args, stream)
+            case ("profile", "ftp"):
+                return analytics_commands.ftp(runtime, _session(runtime), args, stream)
             case ("profile", "birth-date"):
                 return analytics_commands.birth_date(runtime, _session(runtime), args, stream)
             case ("activity", "show"):

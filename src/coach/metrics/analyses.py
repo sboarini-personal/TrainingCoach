@@ -11,6 +11,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import StreamKind
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.quality import UncertaintyReason
@@ -32,9 +33,10 @@ class StreamAnalysis:
     """How one metric is read from one stream kind.
 
     ``unknown_without_stream``: a session without the stream is UNKNOWN (MISSING_INPUT);
-    otherwise it does not qualify. ``anomaly_fields``: activity field prefixes whose
-    anomalies add SENSOR_QUALITY. ``stream_reasons``: the reasons ``analyse`` may add, kept
-    when a stored value is reused for the same stream.
+    otherwise it does not qualify. ``requires``: a condition on the EFFECTIVE view without
+    which the session does not qualify (measured power). ``anomaly_fields``: activity field
+    prefixes whose anomalies add SENSOR_QUALITY. ``stream_reasons``: the reasons ``analyse``
+    may add, kept when a stored value is reused for the same stream.
     """
 
     definition: MetricDefinition
@@ -44,6 +46,7 @@ class StreamAnalysis:
     unknown_without_stream: bool
     anomaly_fields: tuple[str, ...] = ()
     stream_reasons: frozenset[UncertaintyReason] = field(default_factory=frozenset)
+    requires: Callable[[Activity], bool] | None = None
 
     def __post_init__(self) -> None:
         if self.definition.calculate is None:
@@ -53,6 +56,10 @@ class StreamAnalysis:
 
     def applies_to(self, sport: Sport) -> bool:
         return sport in self.sports
+
+    def qualifies(self, view: Activity) -> bool:
+        """The sport and the view's own condition (for example measured power)."""
+        return self.applies_to(view.sport) and (self.requires is None or self.requires(view))
 
     @property
     def input_names(self) -> tuple[str, ...]:

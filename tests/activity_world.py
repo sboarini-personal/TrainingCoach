@@ -14,12 +14,14 @@ from coach.application.derived_metrics import DerivedMetricService
 from coach.application.ownership import OwnerScope
 from coach.application.screening import SecretScreen
 from coach.domain.activity.activity import Activity
-from coach.domain.activity.fields import StreamKind
+from coach.domain.activity.fields import PowerSensor, StreamKind
 from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.activity.observation import Observation, SourceKind
 from coach.domain.activity.segments import Laps, Lengths
 from coach.domain.activity.streams import TimeSeries
+from coach.domain.athlete.experience import FtpValue
 from coach.domain.athlete.physiology import HeartRateZoneModel, HeartRateZones
+from coach.domain.athlete.settings import AnalysisSettings
 from coach.domain.common.sport import Sport
 from coach.domain.consent.ledger import ConsentLedger, ConsentType
 from coach.domain.raw.source import DetectedType, MalwareScan, RawSource, SourceOrigin
@@ -88,12 +90,18 @@ class World:
         # Zone models and time series blobs the metrics engine reads (metrics spec 9.2).
         self.zone_models: list[HeartRateZoneModel] = []
         self.birth_date: date | None = None  # for age-predicted models (ADR-028)
+        self.reliable_power: set[PowerSensor] = set()  # declared reliable devices (P9)
+        self.ftp: FtpValue | None = None
         self.series: dict[str, TimeSeries] = {}
         self.series_reads: list[str] = []
         self.segments: dict[str, Laps | Lengths] = {}  # LAPS and LENGTHS blobs (P9)
         self.engine = ActivityMetricsEngine(
             self.metrics,
-            zones=lambda _scope: HeartRateZones(tuple(self.zone_models), self.birth_date),
+            athlete=lambda _scope: AnalysisSettings(
+                HeartRateZones(tuple(self.zone_models), self.birth_date),
+                frozenset(self.reliable_power),
+                self.ftp,
+            ),
             streams=self.read_stream,
         )
         self.consents_gate = ConsentGate(self.ledgers, policy_version="1.0")

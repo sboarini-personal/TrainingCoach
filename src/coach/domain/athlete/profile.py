@@ -29,6 +29,7 @@ from coach.domain.athlete.physiology import (
     age_on,
 )
 from coach.domain.athlete.resources import Resources
+from coach.domain.athlete.settings import AnalysisSettings, reliable_power
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import FieldValue
 from coach.domain.common.sport import Sport
@@ -136,6 +137,16 @@ class AthleteProfile:
     def heart_rate_zones(self) -> HeartRateZones:
         """Zone models with the birth date that age-predicted ones are applied with."""
         return HeartRateZones(self.zone_models, _known(self.birth_date))
+
+    @property
+    def analysis_settings(self) -> AnalysisSettings:
+        """What the per-activity analyses read from the profile (metrics spec 10)."""
+        cycling = _known(self.cycling_experience)
+        return AnalysisSettings(
+            zones=self.heart_rate_zones,
+            reliable_power=reliable_power(_known(self.sensors) or ()),
+            ftp=None if cycling is None else cycling.ftp,
+        )
 
     @property
     def effective_language(self) -> str:

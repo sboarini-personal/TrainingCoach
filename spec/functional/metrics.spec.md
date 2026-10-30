@@ -27,7 +27,7 @@ Every metric is registered in code with:
 | reference | literature or provider documentation, when the method is not original |
 | provider, providerMetricName | provider metrics only: the provider and its own name for the metric |
 | subjectKinds | the subject kinds a value may describe (section 4); P8 |
-| dimension | optional qualifier of the subject: SPORT or HR_ZONE (section 4); P8 |
+| dimension | optional qualifier of the subject: SPORT or ZONE (section 4); P8 (ZONE was HR_ZONE until P9, when power zones joined) |
 | crossSport | SPORT dimension only: whether a value may also cover all sports together; P8 |
 | aggregation | SUM: a period total over contributions of the metric's single input; P8 |
 
@@ -76,7 +76,8 @@ Registry rules (enforced when the registry is built):
 - `subject` is `{kind, key}`: ACTIVITY (UUID), DAY (ISO date), WEEK (ISO week, `2026-W44`),
   EXERCISE (exercise ID).
 - (P8, contract 1.1.0) `subject.dimension` optionally qualifies the subject: a sport code
-  (`RUNNING`, ...) for the SPORT dimension, `Z1` to `Z10` for the HR_ZONE dimension. The
+  (`RUNNING`, ...) for the SPORT dimension, `Z1` to `Z10` for the ZONE dimension (heart-rate
+  or power zones, by metric). The
   dimension is part of the subject: one current value exists per athlete, metric, kind, key
   and dimension. A metric declares whether it has a dimension; a value of a dimensioned
   metric without a dimension exists only for cross-sport metrics and covers all sports.
@@ -153,7 +154,8 @@ until a reference is recorded.
 | `run.hr_drift` | APPLICATION_DERIVED (P9 decision, running spec 4) | P9 | first-half vs second-half speed:HR of a steady run |
 | `run.interval_degradation` | APPLICATION_DERIVED | P9 | running spec 4.3 |
 | `run.pace_variability`, `run.efficiency_hr` | APPLICATION_DERIVED | P9 | added in P9: pacing stability and efficiency inputs (FR-RUN-003, FR-RUN-004); running spec 4 |
-| `cyc.power_distribution` | STANDARD_CALCULATION | P9 | measured power only |
+| `cyc.power_distribution` | STANDARD_CALCULATION | P9 | measured power only; registered as `cyc.power_zone_time` per zone (cycling spec 6) |
+| `cyc.work_kj`, `cyc.work_total`, `cyc.power_fade`, `cyc.interval_power_consistency` | STANDARD_CALCULATION (work), APPLICATION_DERIVED (others) | P9 | added in P9: measured power only (cycling spec 6) |
 | `swim.swolf_avg` | RAW_PROVIDER or STANDARD_CALCULATION | P9 | valid pool lengths only |
 | `str.volume_load` | STANDARD_CALCULATION | P10 | sets x reps x kg |
 | `str.weekly_sets_by_muscle` | APPLICATION_DERIVED | P10 | primary muscles count 1, secondary 0.5 (proposed) |
@@ -228,7 +230,7 @@ and the computed values stay in its history.
 | Field | Value |
 |---|---|
 | Origin | STANDARD_CALCULATION |
-| Subject | ACTIVITY, dimension HR_ZONE (`Z1` is the lowest zone) |
+| Subject | ACTIVITY, dimension ZONE (`Z1` is the lowest zone) |
 | Unit | s |
 | Zone model | the athlete's zone model (profile spec 1.1) with the latest `validFrom` on or before the activity's training day; without one, nothing is computed. An AGE_PREDICTED model is applied to the training day: its bpm boundaries come from 220 minus the athlete's age on that day; when it gives no zones (age outside 18 to 100), nothing is computed |
 | Series | the activity's resolved TIME_SERIES stream, heart-rate column |
@@ -256,6 +258,7 @@ exists).
 | `any.distance_total` | APPLICATION_DERIVED | m | `distance.meters` | SPORT only | RUNNING, CYCLING, SWIMMING |
 | `any.elevation_gain_total` | APPLICATION_DERIVED | m | `elevation.gainMeters` | SPORT only | RUNNING, CYCLING |
 | `any.srpe_load_total` | STANDARD_CALCULATION (Foster 2001: weekly load as the sum of session loads) | AU | the current `any.srpe_load` value (evidence: the derived value) | SPORT, cross-sport | all |
+| `cyc.work_total` (P9) | STANDARD_CALCULATION (SI: work adds up) | kJ | the current `cyc.work_kj` value; only rides that have one (measured power) contribute, and the report names how many rides had none | SPORT only | CYCLING |
 
 A total is computed only for the sports it applies to: a tennis or strength week has no
 distance total (not an UNKNOWN one), and OTHER, which groups unrelated activities, has none
@@ -284,7 +287,7 @@ number of unknown ones, so a partial total is shown as such and never as the tot
 sports, only the cross-sport totals (time and session RPE load, FR-MET-006). Distances and
 elevation are never summed across sports. External load (duration, distance, elevation) and
 internal load (session RPE load) are reported separately (FR-MET-005). Mechanical work needs
-measured power and arrives with cycling analytics (P9); time in zones per period arrives with
+measured power: from P9 `cyc.work_total` for rides with measured power; time in zones per period arrives with
 recovery and insights (P11).
 
 ### 9.5 Reads, consent and recomputation

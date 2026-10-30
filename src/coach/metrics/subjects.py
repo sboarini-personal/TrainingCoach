@@ -35,7 +35,7 @@ class SubjectKind(StrEnum):
 
 class DimensionKind(StrEnum):
     SPORT = "SPORT"
-    HR_ZONE = "HR_ZONE"
+    ZONE = "ZONE"  # heart-rate or power zones, by metric (HR_ZONE until P9)
 
 
 PERIOD_KINDS: Final = frozenset({SubjectKind.DAY, SubjectKind.WEEK})
@@ -70,7 +70,7 @@ _KEY_RULES: Final[dict[SubjectKind, Callable[[str], bool]]] = {
 def dimension_kind(code: str) -> DimensionKind:
     """The kind of a dimension code: a sport code or a zone code ``Z1`` to ``Z10``."""
     if _ZONE.match(code):
-        return DimensionKind.HR_ZONE
+        return DimensionKind.ZONE
     if code in Sport.__members__.values():
         return DimensionKind.SPORT
     raise DomainValidationError(f"invalid subject dimension: {code!r}")

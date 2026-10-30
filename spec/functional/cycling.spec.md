@@ -50,3 +50,37 @@ valid), within-session fade, interval power consistency, and mechanical work (kJ
 Without measured power, cycling analysis uses duration, distance, speed (with terrain and
 wind caveats, `ENVIRONMENT`), heart rate when reliable, cadence and RPE. Speed is not used as
 an intensity proxy across different terrain.
+
+## 6. Session metrics (P9, version 1.0.0)
+
+Computed in code for each live CYCLING activity (metrics spec section 10), only when its
+power is MEASURED in the EFFECTIVE view (section 2): a ride without measured power has none
+of these values (AT-CYC-001). Parameters are initial values (assumption A-18).
+
+| metricId | Origin | Unit | Method |
+|---|---|---|---|
+| `cyc.work_kj` | STANDARD_CALCULATION | kJ | mechanical work: the sum of power x duration over the intervals of the time series at most 20 s long with a known power, / 1000 (SI: 1 J = 1 W x 1 s) |
+| `cyc.power_zone_time` | STANDARD_CALCULATION | s | time in each of 7 power zones relative to FTP (6.1); dimension ZONE `Z1` to `Z7` |
+| `cyc.power_fade` | APPLICATION_DERIVED | % | (mean power of the first half - of the second half) / first x 100, halves of the moving time with a known power; rides with at least 1,200 s of it |
+| `cyc.interval_power_consistency` | APPLICATION_DERIVED | % | coefficient of variation of the average power of the work laps of a structured interval session (running spec 4.3 rules: a REST or RECOVERY lap, at least 3 work laps, timer times within 15 % of their median) |
+
+Precision (P9, intentional): the catalogue's `cyc.power_distribution` is the set of
+`cyc.power_zone_time` values, one per zone, like `any.hr_zone_time`.
+
+Moving time here is every interval of at most 20 s (a coasting second at 0 W counts, as in
+average power); an interval without a power value is unknown time.
+
+The week report adds `cyc.work_total` (metrics spec 9.3): the sum of `cyc.work_kj` of the
+week's rides with measured power, naming how many rides had none.
+
+### 6.1 Power zones
+
+- FTP applies to a ride whose training day is at most 183 days (the 6-month freshness
+  window of the onboarding spec) before or after the FTP's date; otherwise the ride has no
+  power zones. An FTP not measured in a test with measured power adds ESTIMATED_VALUE.
+- Zones as fractions of FTP (Allen H, Coggan A. Training and Racing with a Power Meter. 2nd
+  ed. VeloPress; 2010): Z1 below 0.55, Z2 0.55 to 0.75, Z3 0.75 to 0.90, Z4 0.90 to 1.05,
+  Z5 1.05 to 1.20, Z6 1.20 to 1.50, Z7 1.50 and above; each zone includes its lower bound.
+- Inputs per zone: `seconds_in_zone` (the stream as evidence) and `ftp_watts` (evidence:
+  the athlete profile, field `experience.cycling.ftp`). Coverage below 90 % of the
+  intervals with a known power adds MISSING_DATA, as for heart-rate zones.

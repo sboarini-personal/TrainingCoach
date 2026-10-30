@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Final, TextIO
 
@@ -19,9 +20,12 @@ from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError, athlete_timezone
+from coach.domain.athlete.experience import CyclingExperience, FtpValue
 from coach.domain.athlete.physiology import (
     PREDICTION_AGES,
     HeartRateZoneModel,
+    Sensor,
+    SensorType,
     ZoneMethod,
     ZoneSource,
     age_on,
@@ -44,7 +48,9 @@ _LABELS: Final = {
     "any.distance_total": "distance",
     "any.elevation_gain_total": "elevation",
     "any.srpe_load_total": "sRPE",
+    "cyc.work_total": "work",
 }
+_LEFT_OUT: Final = {"cyc.work_total": "without measured power"}
 
 
 # ------------------------------------------------------------------ formatting
@@ -75,6 +81,8 @@ def amount(value: float, unit: str) -> str:
             return f"{minutes(value)} /100m"
         case "AU":
             return f"{value:.0f} AU"
+        case "kJ":
+            return f"{value:.0f} kJ"
         case "%":
             return f"{value:.1f} %"
         case "m/beat":
@@ -84,6 +92,13 @@ def amount(value: float, unit: str) -> str:
 
 
 def total_text(report: TotalReport) -> str:
+    text = _total_value_text(report)
+    if report.left_out:
+        text += f" ({report.left_out} {_LEFT_OUT.get(report.metric_id, 'left out')})"
+    return text
+
+
+def _total_value_text(report: TotalReport) -> str:
     value = report.value
     if value.status is DerivedStatus.COMPUTED and value.value is not None:
         return amount(value.value, report.unit)
@@ -312,6 +327,63 @@ def hr_zones(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out:
             + " ".join(str(bpm) for bpm in applied.boundaries_bpm),
             file=out,
         )
+    return recompute(runtime, scope, out)
+
+
+def sensor(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Show, set or remove a declared sensor (profile spec 1; cycling spec 2)."""
+    stored = _stored_profile(runtime, scope)
+    profile = stored or AthleteProfile.new(scope.athlete_id)
+    current = tuple(profile.sensors.value or ()) if profile.sensors is not None else ()
+    if args.type is None:
+        for item in current or ():
+            reliable = "reliable" if item.reliable_for_training else "not reliable"
+            model = "" if item.model is None else f"  {item.model}"
+            print(f"{item.sensor_type.value:<20} {reliable}{model}", file=out)
+        if not current:
+            print("no sensors declared", file=out)
+        return 0
+    kind = SensorType(args.type)
+    kept = tuple(item for item in current if item.sensor_type is not kind)
+    if args.remove:
+        sensors = kept
+    else:
+        try:
+            added = Sensor(kind, args.model, reliable_for_training=args.reliable)
+        except DomainValidationError as error:
+            raise CommandError(str(error)) from None
+        sensors = (*kept, added)
+    now = runtime.clock()
+    updated = profile.apply(ProfileUpdate(sensors=FieldValue.declared(sensors, at=now)))
+    _save(runtime, scope, stored, updated)
+    state = "removed" if args.remove else ("reliable" if args.reliable else "not reliable")
+    print(f"sensor {kind.value} {state}", file=out)
+    return recompute(runtime, scope, out)
+
+
+def ftp(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Show or set the FTP (cycling spec 3, 6.1)."""
+    stored = _stored_profile(runtime, scope)
+    profile = stored or AthleteProfile.new(scope.athlete_id)
+    cycling = profile.cycling_experience.value if profile.cycling_experience else None
+    if args.watts is None:
+        known = None if cycling is None else cycling.ftp
+        if known is None:
+            print("not set", file=out)
+        else:
+            how = "measured" if known.measured else "not measured"
+            print(f"{known.watts} W on {known.on.isoformat()} ({how})", file=out)
+        return 0
+    on = args.on or _today(runtime, scope)
+    try:
+        value = FtpValue(args.watts, on, measured=args.measured)
+    except DomainValidationError as error:
+        raise CommandError(str(error)) from None
+    experience = replace(cycling or CyclingExperience(), ftp=value)
+    now = runtime.clock()
+    update = ProfileUpdate(cycling_experience=FieldValue.declared(experience, at=now))
+    _save(runtime, scope, stored, profile.apply(update))
+    print(f"FTP set to {value.watts} W on {on.isoformat()}", file=out)
     return recompute(runtime, scope, out)
 
 

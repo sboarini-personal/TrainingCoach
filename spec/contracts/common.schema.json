@@ -116,7 +116,8 @@
             "RECOVERY_ASSESSMENT",
             "INSIGHT",
             "PLAN_VERSION",
-            "HR_ZONE_MODEL"
+            "HR_ZONE_MODEL",
+            "ATHLETE_PROFILE"
           ]
         },
         "id": { "$ref": "#/$defs/id" },

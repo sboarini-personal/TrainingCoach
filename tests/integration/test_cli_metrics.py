@@ -12,7 +12,7 @@ from uuid import UUID
 import pytest
 
 from cli_harness import Cli
-from file_samples import fit_file, fit_session
+from file_samples import fit_device, fit_file, fit_session
 
 WEEK = "2026-W43"  # the synthetic run starts on 2026-10-20 (training day in Buenos Aires)
 
@@ -177,3 +177,38 @@ def test_running_metrics_of_an_imported_steady_run(cli: Cli, tmp_path: Path) -> 
     assert drift.endswith("6.7 %")
     assert any(line.strip().startswith("run.pace_variability") for line in shown.splitlines())
     assert any(line.strip().startswith("run.efficiency_hr") for line in shown.splitlines())
+
+
+@pytest.mark.req("FR-CYC-002", "FR-CYC-003", "FR-CYC-004", "FR-PRF-001")
+@pytest.mark.acceptance("AT-CYC-001")
+def test_power_metrics_need_a_declared_reliable_meter(cli: Cli, tmp_path: Path) -> None:
+    records, summary = fit_session(
+        seconds=2400, sport="cycling", distance_per_second=8.0, extra={"avg_power": 225}
+    )
+    for record in records:  # 250 W for 20 minutes, then 200 W
+        elapsed = (record["timestamp"] - summary["start_time"]).total_seconds()
+        record["power"] = 250 if elapsed < 1200 else 200
+    activity_id = imported(cli, tmp_path, fit_file([([*records, fit_device(11)], summary)]))
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    assert "cyc.work_kj" not in shown  # no meter declared yet: power is not MEASURED
+    assert cli.run("profile", "sensor") == (0, "no sensors declared\n")
+    code, output = cli.run("profile", "sensor", "CYCLING_POWER_METER", "--reliable")
+    assert output.splitlines() == [
+        "sensor CYCLING_POWER_METER reliable",
+        "metrics recomputed for 1 activities",
+    ]
+    assert cli.run("profile", "ftp") == (0, "not set\n")
+    code, output = cli.run("profile", "ftp", "250", "--on", "2026-10-01", "--measured")
+    assert (code, output.splitlines()[0]) == (0, "FTP set to 250 W on 2026-10-01")
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    work = next(line for line in shown.splitlines() if "cyc.work_kj" in line)
+    assert work.endswith("540 kJ")
+    fade = next(line for line in shown.splitlines() if "cyc.power_fade" in line)
+    assert fade.endswith("20.0 %")
+    zone_four = next(line for line in shown.splitlines() if "cyc.power_zone_time Z4" in line)
+    assert zone_four.endswith("0:20:00")  # 250 W is 1.0 x FTP
+    week = cli.run("load", "week", "--week", WEEK)[1]
+    cycling = next(line for line in week.splitlines() if line.strip().startswith("CYCLING"))
+    assert "work 540 kJ" in cycling
+    assert cli.run("profile", "sensor", "CYCLING_POWER_METER", "--remove")[0] == 0
+    assert "cyc.work_kj" not in cli.run("activity", "show", str(activity_id))[1]

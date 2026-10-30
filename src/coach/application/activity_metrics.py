@@ -12,34 +12,49 @@ through ``DerivedMetricService``: unchanged snapshots store nothing.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from coach.application.derived_metrics import DerivedMetricService
 from coach.application.ownership import OwnerScope
 from coach.domain.activity.activity import Activity
-from coach.domain.activity.fields import STREAM_KEYS, HrZones, StreamKind, StreamRef
+from coach.domain.activity.fields import (
+    STREAM_KEYS,
+    HrZones,
+    PowerSource,
+    PowerSummary,
+    StreamKind,
+    StreamRef,
+)
 from coach.domain.activity.segments import Laps, Lengths
 from coach.domain.activity.streams import TimeSeries
-from coach.domain.athlete.physiology import AppliedZones, HeartRateZones
+from coach.domain.athlete.experience import FtpValue
+from coach.domain.athlete.physiology import AppliedZones
+from coach.domain.athlete.settings import AnalysisSettings
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import Confidence, UncertaintyReason
+from coach.domain.common.sport import Sport
 from coach.metrics.analyses import Analysis, StreamAnalysis
 from coach.metrics.catalog import (
     ACTIVITY_BINDINGS,
+    CYC_POWER_ZONE_TIME,
     HR_ZONE_TIME,
     STREAM_ANALYSES,
     ActivityBinding,
 )
+from coach.metrics.cycling import POWER_ZONES, measured_power, power_zone_times
 from coach.metrics.derived import DerivedMetricValue, DerivedStatus, MetricInput, MetricSubject
 from coach.metrics.subjects import MAX_ZONES
 from coach.metrics.zones import MINIMUM_COVERAGE, time_in_zones
 
 HR_ZONES_FIELD: Final = "cardiovascular.hrZones"
+POWER_FIELD: Final = "performance.power"
+POWER_SENSOR_FIELD: Final = "performance.powerSensor"
 _HEART_RATE_PREFIX: Final = "cardiovascular."
 
-type ZoneSettings = Callable[[OwnerScope], HeartRateZones]
+# What the analyses read from the athlete's profile (zones, reliable power sensors, FTP).
+type AthleteSettings = Callable[[OwnerScope], AnalysisSettings]
 # None when the stored series cannot be read (missing or damaged blob): its zones are UNKNOWN.
 type SeriesReader = Callable[[OwnerScope, str], TimeSeries | None]
 # A stream by kind and blob digest; None when it cannot be read (its analyses are UNKNOWN).
@@ -109,14 +124,14 @@ class ActivityMetricsEngine:
         metrics: DerivedMetricService,
         *,
         bindings: Sequence[ActivityBinding] = ACTIVITY_BINDINGS,
-        zones: ZoneSettings | None = None,
+        athlete: AthleteSettings | None = None,
         time_series: SeriesReader | None = None,
         streams: StreamReader | None = None,
         analyses: Sequence[StreamAnalysis] = STREAM_ANALYSES,
     ) -> None:
         self._metrics = metrics
         self._bindings = tuple(bindings)
-        self._zone_settings = zones
+        self._athlete = athlete
         self._analyses = tuple(analyses)
         if streams is None and time_series is not None:
             series = time_series
@@ -143,23 +158,111 @@ class ActivityMetricsEngine:
             else:
                 self._metrics.retire(scope, binding.definition.metric_id, subject)
         streams = _Streams(scope, view, self._streams)
-        zones = self._applied(scope, view)
+        settings = self._settings(scope)
+        zones = settings.zones.on(view.training_day)
         if zones is not None:
             stored.extend(self._compute_zones(scope, view, zones, streams))
-        first_unused = 1 if zones is None else zones.zone_count + 1
-        for zone in range(first_unused, MAX_ZONES + 1):
-            self._metrics.retire(
-                scope, HR_ZONE_TIME.metric_id, MetricSubject.activity(view.activity_id, zone=zone)
-            )
+        self._retire_zones(
+            scope, HR_ZONE_TIME.metric_id, view, 0 if zones is None else zones.zone_count
+        )
+        power_zones = self._compute_power_zones(scope, view, settings, streams)
+        stored.extend(power_zones)
+        self._retire_zones(scope, CYC_POWER_ZONE_TIME.metric_id, view, len(power_zones))
         for analysis in self._analyses:
             value = None
-            if analysis.applies_to(view.sport):
+            if analysis.qualifies(view):
                 value = self._compute_analysis(scope, analysis, view, streams)
             if value is None:
                 self._metrics.retire(scope, analysis.definition.metric_id, subject)
             else:
                 stored.append(value)
         return stored
+
+    def _settings(self, scope: OwnerScope) -> AnalysisSettings:
+        return AnalysisSettings() if self._athlete is None else self._athlete(scope)
+
+    def _retire_zones(self, scope: OwnerScope, metric_id: str, view: Activity, kept: int) -> None:
+        """Retire the zone values beyond the ``kept`` zones now computed (metrics spec 4)."""
+        for zone in range(kept + 1, MAX_ZONES + 1):
+            self._metrics.retire(
+                scope, metric_id, MetricSubject.activity(view.activity_id, zone=zone)
+            )
+
+    def _compute_power_zones(
+        self, scope: OwnerScope, view: Activity, settings: AnalysisSettings, streams: _Streams
+    ) -> list[DerivedMetricValue]:
+        """Time in power zones (cycling spec 6.1): measured power and an FTP for the day."""
+        ftp = settings.ftp_on(view.training_day)
+        if view.sport is not Sport.CYCLING or not measured_power(view) or ftp is None:
+            return []
+        evidence = streams.evidence(StreamKind.TIME_SERIES)
+        seconds: tuple[float, ...] | None = None
+        low = False
+        if streams.ref(StreamKind.TIME_SERIES) is not None:
+            reused = self._stored_power_zones(scope, view, ftp, evidence)
+            if reused is not None:
+                seconds, low = reused
+            else:
+                series = streams.content(StreamKind.TIME_SERIES)
+                times = None
+                if isinstance(series, TimeSeries):
+                    times = power_zone_times(series, float(ftp.watts))
+                if times is not None:
+                    coverage = times.coverage
+                    seconds = times.seconds
+                    low = coverage is not None and coverage < MINIMUM_COVERAGE
+        power_anomaly = any(
+            anomaly.field.startswith("performance.power") for anomaly in view.quality.anomalies
+        )
+        base = {UncertaintyReason.SENSOR_QUALITY} if power_anomaly else set()
+        (seconds_spec,) = [
+            spec for spec in CYC_POWER_ZONE_TIME.required_inputs if spec.name == "seconds_in_zone"
+        ]
+        stored = []
+        for index in range(POWER_ZONES):
+            reasons = set(base)
+            value = None if seconds is None else seconds[index]
+            if low:
+                reasons.add(UncertaintyReason.MISSING_DATA)
+            if value is not None and value > seconds_spec.maximum:
+                value = None
+                reasons.add(UncertaintyReason.SENSOR_QUALITY)
+            inputs = {
+                "seconds_in_zone": MetricInput(
+                    value, evidence, view.quality.confidence, frozenset(reasons)
+                ),
+                "ftp_watts": _ftp_input(view, ftp),
+            }
+            stored.append(
+                self._metrics.compute(
+                    scope,
+                    CYC_POWER_ZONE_TIME.metric_id,
+                    MetricSubject.activity(view.activity_id, zone=index + 1),
+                    inputs,
+                )
+            )
+        return stored
+
+    def _stored_power_zones(
+        self, scope: OwnerScope, view: Activity, ftp: FtpValue, evidence: EvidenceRef
+    ) -> tuple[tuple[float, ...], bool] | None:
+        """The seconds of the current power-zone values, when they used this stream and FTP."""
+        seconds: list[float] = []
+        low = False
+        for zone in range(1, POWER_ZONES + 1):
+            subject = MetricSubject.activity(view.activity_id, zone=zone)
+            current = self._metrics.current(scope, CYC_POWER_ZONE_TIME.metric_id, subject)
+            if current is None or current.missing_inputs:
+                return None
+            records = {record.name: record for record in current.inputs}
+            record, used = records.get("seconds_in_zone"), records.get("ftp_watts")
+            if record is None or used is None or record.evidence != evidence:
+                return None
+            if used.value != float(ftp.watts):
+                return None
+            seconds.append(record.value)
+            low = low or UncertaintyReason.MISSING_DATA in current.uncertainty_reasons
+        return tuple(seconds), low
 
     def _compute_analysis(
         self, scope: OwnerScope, analysis: StreamAnalysis, view: Activity, streams: _Streams
@@ -331,9 +434,17 @@ class ActivityMetricsEngine:
                 continue
             current = self._metrics.current(scope, binding.definition.metric_id, subject)
             filled[binding.target] = None if current is None else current.value
-        zones = self._applied(scope, activity)
+        settings = self._settings(scope)
+        zones = settings.zones.on(activity.training_day)
         if zones is not None:
             filled[HR_ZONES_FIELD] = self._zones(scope, activity, zones)
+        power = activity.values.get(POWER_FIELD)
+        if (
+            activity.sport is Sport.CYCLING
+            and isinstance(power, PowerSummary)
+            and settings.measures_power(activity.values.get(POWER_SENSOR_FIELD))
+        ):
+            filled[POWER_FIELD] = replace(power, source=PowerSource.MEASURED)
         return filled
 
     def _zones(self, scope: OwnerScope, activity: Activity, zones: AppliedZones) -> HrZones | None:
@@ -360,7 +471,8 @@ class ActivityMetricsEngine:
                 current = self._metrics.current(scope, binding.definition.metric_id, subject)
                 if current is not None:
                     found.append(current)
-        zones = self._applied(scope, activity)
+        settings = self._settings(scope)
+        zones = settings.zones.on(activity.training_day)
         if zones is not None:
             for zone in range(1, zones.zone_count + 1):
                 current = self._metrics.current(
@@ -370,18 +482,36 @@ class ActivityMetricsEngine:
                 )
                 if current is not None and _from_model(current, zones, zone):
                     found.append(current)
+        ftp = settings.ftp_on(activity.training_day)
+        if activity.sport is Sport.CYCLING and measured_power(activity) and ftp is not None:
+            for zone in range(1, POWER_ZONES + 1):
+                current = self._metrics.current(
+                    scope,
+                    CYC_POWER_ZONE_TIME.metric_id,
+                    MetricSubject.activity(activity.activity_id, zone=zone),
+                )
+                if current is not None:
+                    found.append(current)
         for analysis in self._analyses:
-            if analysis.applies_to(activity.sport):
+            if analysis.qualifies(activity):
                 current = self._metrics.current(scope, analysis.definition.metric_id, subject)
                 if current is not None:
                     found.append(current)
         return found
 
-    def _applied(self, scope: OwnerScope, activity: Activity) -> AppliedZones | None:
-        """The zone model of the activity's training day, applied to it (profile spec 1.1)."""
-        if self._zone_settings is None:
-            return None
-        return self._zone_settings(scope).on(activity.training_day)
+
+def _ftp_input(view: Activity, ftp: FtpValue) -> MetricInput:
+    """The FTP from the profile; one not measured in a power test is an estimate."""
+    evidence = EvidenceRef(
+        EvidenceKind.ATHLETE_PROFILE,
+        view.athlete_id,
+        field="experience.cycling.ftp",
+        note=f"{ftp.watts} W on {ftp.on.isoformat()}",
+    )
+    if ftp.measured:
+        return MetricInput(float(ftp.watts), evidence, Confidence.HIGH)
+    estimated = frozenset({UncertaintyReason.ESTIMATED_VALUE})
+    return MetricInput(float(ftp.watts), evidence, Confidence.MEDIUM, estimated)
 
 
 def _boundary(zones: AppliedZones, index: int) -> MetricInput:

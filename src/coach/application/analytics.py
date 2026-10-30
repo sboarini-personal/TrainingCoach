@@ -55,6 +55,7 @@ class TotalReport:
     value: DerivedMetricValue
     known_total: float
     unknown: int
+    left_out: int = 0  # activities without a value of a qualifying-only total (P9)
 
     @property
     def metric_id(self) -> str:
@@ -128,25 +129,17 @@ class AnalyticsService:
             SportTotals(
                 sport,
                 len(group),
-                {
-                    item.definition.metric_id: self._total(
-                        scope, item, subject.with_dimension(sport.value), group
-                    )
-                    for item in self._totals
-                    if item.applies_to(sport)
-                },
+                self._totals_of(scope, subject.with_dimension(sport.value), sport, group),
             )
             for sport, group in sorted(by_sport.items(), key=lambda entry: entry[0].value)
         )
-        cross_sport = (
-            {
-                item.definition.metric_id: self._total(scope, item, subject, members)
-                for item in self._totals
-                if item.definition.cross_sport
-            }
-            if members
-            else {}
-        )
+        cross_sport: dict[str, TotalReport] = {}
+        if members:
+            for item in self._totals:
+                if item.definition.cross_sport:
+                    report = self._total(scope, item, subject, members)
+                    if report is not None:
+                        cross_sport[item.definition.metric_id] = report
         self._retire_stale(scope, subject, sports, cross_sport)
         return PeriodReport(subject, period, len(members), sports, cross_sport)
 
@@ -196,19 +189,52 @@ class AnalyticsService:
                 members.append(view)
         return sorted(members, key=lambda item: (item.start_time_utc, str(item.activity_id)))
 
+    def _totals_of(
+        self,
+        scope: OwnerScope,
+        subject: MetricSubject,
+        sport: Sport,
+        group: Sequence[Activity],
+    ) -> dict[str, TotalReport]:
+        totals = {}
+        for item in self._totals:
+            if not item.applies_to(sport):
+                continue
+            report = self._total(scope, item, subject, group)
+            if report is not None:
+                totals[item.definition.metric_id] = report
+        return totals
+
     def _total(
         self,
         scope: OwnerScope,
         item: PeriodTotal,
         subject: MetricSubject,
         members: Sequence[Activity],
-    ) -> TotalReport:
+    ) -> TotalReport | None:
+        """A period total; ``None`` when a qualifying-only total has no activity with a value
+        (it is then retired with the period's stale totals)."""
+        left_out = 0
+        if item.qualifying_only and item.activity_metric is not None:
+            metric_id = item.activity_metric.metric_id
+            qualifying = [
+                activity
+                for activity in members
+                if self._metrics.current(
+                    scope, metric_id, MetricSubject.activity(activity.activity_id)
+                )
+                is not None
+            ]
+            left_out = len(members) - len(qualifying)
+            if not qualifying:
+                return None
+            members = qualifying
         contributions = [self._contribution(scope, item, activity) for activity in members]
         value = self._metrics.compute_total(
             scope, item.definition.metric_id, subject, contributions
         )
         known = [entry.value for entry in contributions if entry.value is not None]
-        return TotalReport(value, math.fsum(known), len(contributions) - len(known))
+        return TotalReport(value, math.fsum(known), len(contributions) - len(known), left_out)
 
     def _contribution(
         self, scope: OwnerScope, item: PeriodTotal, activity: Activity

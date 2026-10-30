@@ -83,7 +83,7 @@ def test_subjects_carry_an_optional_dimension() -> None:
         "Z3",
         3,
         None,
-        DimensionKind.HR_ZONE,
+        DimensionKind.ZONE,
     )
     assert dimension_kind("TENNIS") is DimensionKind.SPORT
     for bad in ("Z0", "Z11", "running", "SKIING", "Z1/RUNNING"):
@@ -143,7 +143,7 @@ def definition(**overrides: Any) -> MetricDefinition:
         },
         {"subject_kinds": frozenset({SubjectKind.ACTIVITY})},
         {"subject_kinds": frozenset()},
-        {"dimension": DimensionKind.HR_ZONE, "cross_sport": True},
+        {"dimension": DimensionKind.ZONE, "cross_sport": True},
         {
             "metric_id": "garmin.total",
             "origin": MetricOrigin.PROVIDER_DERIVED,
@@ -242,7 +242,8 @@ def test_cross_sport_totals_cover_time_and_session_rpe_only() -> None:
         item.definition.metric_id for item in PERIOD_TOTALS if not item.definition.cross_sport
     }
     assert cross_sport == {"any.duration_elapsed", "any.duration_moving", "any.srpe_load_total"}
-    assert sport_only == {"any.distance_total", "any.elevation_gain_total"}
+    # mechanical work is external load of one sport (P9): never added across sports
+    assert sport_only == {"any.distance_total", "any.elevation_gain_total", "cyc.work_total"}
     elapsed = total(DURATION_ELAPSED, WEEK, contribution(1, 3600.0), contribution(2, 1800.0))
     assert elapsed.value == 5400.0
 
@@ -268,6 +269,12 @@ def test_the_catalogue_is_registered_with_origins_and_references() -> None:
         "run.pace_variability": MetricOrigin.APPLICATION_DERIVED,
         "run.interval_degradation": MetricOrigin.APPLICATION_DERIVED,
         "run.efficiency_hr": MetricOrigin.APPLICATION_DERIVED,
+        # P9 (cycling spec 6): work and power zones are published methods
+        "cyc.work_kj": MetricOrigin.STANDARD_CALCULATION,
+        "cyc.work_total": MetricOrigin.STANDARD_CALCULATION,
+        "cyc.power_zone_time": MetricOrigin.STANDARD_CALCULATION,
+        "cyc.power_fade": MetricOrigin.APPLICATION_DERIVED,
+        "cyc.interval_power_consistency": MetricOrigin.APPLICATION_DERIVED,
     }
     assert {item.metric_id: item.origin for item in CATALOG} == expected
     for item in CATALOG:
@@ -277,7 +284,7 @@ def test_the_catalogue_is_registered_with_origins_and_references() -> None:
     assert "Foster" in (SRPE_LOAD_TOTAL.reference or "")
     assert "SI" in (SPEED_AVG.reference or "")
     assert (RUN_PACE_AVG.sport, SWIM_PACE_100M_AVG.sport) == (Sport.RUNNING, Sport.SWIMMING)
-    assert HR_ZONE_TIME.dimension is DimensionKind.HR_ZONE
+    assert HR_ZONE_TIME.dimension is DimensionKind.ZONE
 
 
 @pytest.mark.req("FR-MET-001")
