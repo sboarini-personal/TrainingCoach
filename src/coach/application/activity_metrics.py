@@ -35,17 +35,21 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
+from coach.metrics import swimming
 from coach.metrics.analyses import Analysis, StreamAnalysis
 from coach.metrics.catalog import (
     ACTIVITY_BINDINGS,
     CYC_POWER_ZONE_TIME,
     HR_ZONE_TIME,
     STREAM_ANALYSES,
+    SWIM_PER_SESSION,
+    SWIM_PER_STROKE,
     ActivityBinding,
 )
 from coach.metrics.cycling import POWER_ZONES, measured_power, power_zone_times
 from coach.metrics.derived import DerivedMetricValue, DerivedStatus, MetricInput, MetricSubject
-from coach.metrics.subjects import MAX_ZONES
+from coach.metrics.registry import MetricDefinition
+from coach.metrics.subjects import MAX_ZONES, STROKES
 from coach.metrics.zones import MINIMUM_COVERAGE, time_in_zones
 
 HR_ZONES_FIELD: Final = "cardiovascular.hrZones"
@@ -168,6 +172,7 @@ class ActivityMetricsEngine:
         power_zones = self._compute_power_zones(scope, view, settings, streams)
         stored.extend(power_zones)
         self._retire_zones(scope, CYC_POWER_ZONE_TIME.metric_id, view, len(power_zones))
+        stored.extend(self._compute_swimming(scope, view, settings, streams))
         for analysis in self._analyses:
             value = None
             if analysis.qualifies(view):
@@ -241,6 +246,80 @@ class ActivityMetricsEngine:
                     inputs,
                 )
             )
+        return stored
+
+    def _compute_swimming(
+        self, scope: OwnerScope, view: Activity, settings: AnalysisSettings, streams: _Streams
+    ) -> list[DerivedMetricValue]:
+        """Pool swimming metrics (swimming spec 5); values no longer produced are retired."""
+        produced: set[tuple[str, str | None]] = set()
+        stored: list[DerivedMetricValue] = []
+        pool = _pool_input(view, settings)
+        lengths = None
+        if _pool_swim(view) and pool is not None and streams.ref(StreamKind.LENGTHS) is not None:
+            content = streams.content(StreamKind.LENGTHS)
+            lengths = content if isinstance(content, Lengths) else None
+        if lengths is not None and pool is not None:
+            evidence = streams.evidence(StreamKind.LENGTHS)
+            confidence = view.quality.confidence
+
+            def stream(value: float) -> MetricInput:
+                return MetricInput(value, evidence, confidence)
+
+            for stroke, stats in swimming.by_stroke(lengths).items():
+                subject = MetricSubject.activity(view.activity_id, stroke=stroke)
+                per_stroke: dict[MetricDefinition, dict[str, MetricInput]] = {
+                    SWIM_PER_STROKE[0]: {
+                        "mean_length_seconds": stream(stats.mean_seconds),
+                        "mean_strokes": stream(stats.mean_strokes),
+                        "pool_length_meters": pool,
+                    },
+                    SWIM_PER_STROKE[1]: {
+                        "pool_length_meters": pool,
+                        "lengths": stream(float(stats.lengths)),
+                        "strokes": stream(float(stats.strokes)),
+                    },
+                    SWIM_PER_STROKE[2]: {
+                        "mean_length_seconds": stream(stats.mean_seconds),
+                        "stdev_length_seconds": stream(stats.stdev_seconds),
+                    },
+                }
+                for definition, inputs in per_stroke.items():
+                    stored.append(
+                        self._metrics.compute(scope, definition.metric_id, subject, inputs)
+                    )
+                    produced.add((definition.metric_id, stroke.value))
+            session = MetricSubject.activity(view.activity_id)
+            degradation, fatigue = (
+                swimming.pace_degradation(lengths),
+                swimming.technical_fatigue(lengths),
+            )
+            for definition, thirds, names in (
+                (
+                    SWIM_PER_SESSION[0],
+                    degradation,
+                    ("first_lengths_seconds", "last_lengths_seconds"),
+                ),
+                (SWIM_PER_SESSION[1], fatigue, ("first_lengths_strokes", "last_lengths_strokes")),
+            ):
+                if thirds is None:
+                    continue
+                inputs = {names[0]: stream(thirds.first), names[1]: stream(thirds.last)}
+                stored.append(self._metrics.compute(scope, definition.metric_id, session, inputs))
+                produced.add((definition.metric_id, None))
+        for definition in SWIM_PER_STROKE:
+            for stroke in STROKES:
+                if (definition.metric_id, stroke.value) not in produced:
+                    self._metrics.retire(
+                        scope,
+                        definition.metric_id,
+                        MetricSubject.activity(view.activity_id, stroke=stroke),
+                    )
+        for definition in SWIM_PER_SESSION:
+            if (definition.metric_id, None) not in produced:
+                self._metrics.retire(
+                    scope, definition.metric_id, MetricSubject.activity(view.activity_id)
+                )
         return stored
 
     def _stored_power_zones(
@@ -492,12 +571,42 @@ class ActivityMetricsEngine:
                 )
                 if current is not None:
                     found.append(current)
+        if _pool_swim(activity):
+            subjects = [
+                MetricSubject.activity(activity.activity_id, stroke=stroke) for stroke in STROKES
+            ]
+            for definition in SWIM_PER_STROKE:
+                for stroke_subject in subjects:
+                    current = self._metrics.current(scope, definition.metric_id, stroke_subject)
+                    if current is not None:
+                        found.append(current)
+            for definition in SWIM_PER_SESSION:
+                current = self._metrics.current(scope, definition.metric_id, subject)
+                if current is not None:
+                    found.append(current)
         for analysis in self._analyses:
             if analysis.qualifies(activity):
                 current = self._metrics.current(scope, analysis.definition.metric_id, subject)
                 if current is not None:
                     found.append(current)
         return found
+
+
+def _pool_swim(view: Activity) -> bool:
+    return view.sport is Sport.SWIMMING and view.values.get("classification.subtype") == "POOL"
+
+
+def _pool_input(view: Activity, settings: AnalysisSettings) -> MetricInput | None:
+    """The pool length: the activity's, else the athlete's usual pool (an estimate)."""
+    path = "environment.poolLengthMeters"
+    length = view.number(path)
+    if length is not None:
+        return MetricInput(length, field_evidence(view, path), view.quality.confidence)
+    if settings.pool_length_m is None:
+        return None
+    evidence = EvidenceRef(EvidenceKind.ATHLETE_PROFILE, view.athlete_id, field="resources.pool")
+    estimated = frozenset({UncertaintyReason.ESTIMATED_VALUE})
+    return MetricInput(settings.pool_length_m, evidence, Confidence.MEDIUM, estimated)
 
 
 def _ftp_input(view: Activity, ftp: FtpValue) -> MetricInput:

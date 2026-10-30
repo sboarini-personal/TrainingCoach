@@ -6,13 +6,14 @@ End to end: SQLite, the real parser sandbox and synthetic FIT files (a 10-minute
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 
 from cli_harness import Cli
-from file_samples import fit_device, fit_file, fit_session
+from file_samples import fit_device, fit_file, fit_length, fit_session
 
 WEEK = "2026-W43"  # the synthetic run starts on 2026-10-20 (training day in Buenos Aires)
 
@@ -212,3 +213,24 @@ def test_power_metrics_need_a_declared_reliable_meter(cli: Cli, tmp_path: Path) 
     assert "work 540 kJ" in cycling
     assert cli.run("profile", "sensor", "CYCLING_POWER_METER", "--remove")[0] == 0
     assert "cyc.work_kj" not in cli.run("activity", "show", str(activity_id))[1]
+
+
+@pytest.mark.req("FR-SWM-002", "FR-SWM-003")
+def test_pool_swim_metrics_of_an_imported_file(cli: Cli, tmp_path: Path) -> None:
+    records, summary = fit_session(
+        sport="swimming",
+        sub_sport="lap_swimming",
+        seconds=150,
+        distance_per_second=1.0,
+        extra={"pool_length": 25.0, "num_active_lengths": 6},
+    )
+    start = summary["start_time"]
+    lengths = [
+        fit_length(start + timedelta(seconds=25 * index), 25, 16 + index // 3) for index in range(6)
+    ]
+    activity_id = imported(cli, tmp_path, fit_file([([*records, *lengths], summary)]), "swim.fit")
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    swolf = next(line for line in shown.splitlines() if "swim.swolf_avg FREESTYLE" in line)
+    assert swolf.endswith("41.5")  # 25 s + 16.5 strokes per length
+    per_stroke = next(line for line in shown.splitlines() if "swim.distance_per_stroke" in line)
+    assert per_stroke.endswith(f"{150 / 99:.2f} m/stroke")

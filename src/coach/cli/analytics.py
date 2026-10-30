@@ -87,6 +87,10 @@ def amount(value: float, unit: str) -> str:
             return f"{value:.1f} %"
         case "m/beat":
             return f"{value:.2f} m/beat"
+        case "m/stroke":
+            return f"{value:.2f} m/stroke"
+        case "score":
+            return f"{value:.1f}"
         case _:
             return f"{value:g} {unit}"
 
@@ -236,10 +240,13 @@ def show_activity(
         number = view.number(path)
         print(f"  {path:<26} {'unknown' if number is None else amount(number, unit)}", file=out)
     print("metrics:", file=out)
-    for value in sorted(values, key=lambda item: (item.metric_id, item.subject.zone or 0)):
-        zone = "" if value.subject.zone is None else f" Z{value.subject.zone}"
-        name = f"{value.metric_id}{zone}"
-        print(f"  {name:<26} {value_text(value)}", file=out)
+    for value in sorted(
+        values,
+        key=lambda item: (item.metric_id, item.subject.zone or 0, item.subject.dimension or ""),
+    ):
+        dimension = "" if value.subject.dimension is None else f" {value.subject.dimension}"
+        name = f"{value.metric_id}{dimension}"
+        print(f"  {name:<36} {value_text(value)}", file=out)
     if not values:
         print("  none yet; run: coach metrics recompute", file=out)
     return 0

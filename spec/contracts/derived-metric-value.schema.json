@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:derived-metric-value:1",
   "title": "DerivedMetricValue",
-  "description": "Append-only value of an application metric with its method version and input snapshot (FR-MET-004). Version 1.1.0: optional subject dimension; an aggregation lists one input per known contribution and names its unknown ones; NOT_APPLICABLE retires a value whose metric no longer applies. Owner spec: spec/functional/metrics.spec.md section 4.",
+  "description": "Append-only value of an application metric with its method version and input snapshot (FR-MET-004). Version 1.2.0 (P9): the dimension may be a stroke type. Version 1.1.0: optional subject dimension; an aggregation lists one input per known contribution and names its unknown ones; NOT_APPLICABLE retires a value whose metric no longer applies. Owner spec: spec/functional/metrics.spec.md section 4.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -128,7 +128,7 @@
         "dimension": {
           "description": "Added in 1.1.0 (metrics spec section 4): a sport code for per-sport values, Z1 to Z10 for heart-rate zones.",
           "type": "string",
-          "pattern": "^(Z([1-9]|10)|RUNNING|CYCLING|SWIMMING|STRENGTH|TENNIS|OTHER)$"
+          "pattern": "^(Z([1-9]|10)|RUNNING|CYCLING|SWIMMING|STRENGTH|TENNIS|OTHER|FREESTYLE|BACKSTROKE|BREASTSTROKE|BUTTERFLY)$"
         }
       },
       "allOf": [

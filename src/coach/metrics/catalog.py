@@ -54,6 +54,10 @@ SI_WORK: Final = (
     "BIPM. The International System of Units (SI), 9th edition, 2019: one joule is the work "
     "done by one watt during one second"
 )
+CRAIG_PENDERGAST_1979: Final = (
+    "Craig AB Jr, Pendergast DR. Relationships of stroke rate, distance per stroke, and "
+    "velocity in competitive swimming. Med Sci Sports. 1979;11(3):278-283"
+)
 PERIODS: Final = frozenset({SubjectKind.DAY, SubjectKind.WEEK})
 DISTANCE_SPORTS: Final = frozenset({Sport.RUNNING, Sport.CYCLING, Sport.SWIMMING})
 
@@ -380,6 +384,132 @@ CYC_POWER_ZONE_TIME: Final = MetricDefinition(
 )
 _CYCLING: Final = frozenset({Sport.CYCLING})
 _POWER: Final = ("performance.power",)
+
+
+# ------------------------------------------------------------------ swimming (P9)
+
+MAX_LENGTH_SECONDS: Final = 600.0
+MAX_LENGTH_STROKES: Final = 200.0
+_POOL_LENGTH: Final = InputSpec(
+    "pool_length_meters", "m", 0, 100, minimum_exclusive=True, description="Pool length"
+)
+
+
+def _length_seconds(name: str, *, exclusive: bool = True) -> InputSpec:
+    return InputSpec(name, "s", 0, MAX_LENGTH_SECONDS, minimum_exclusive=exclusive)
+
+
+def _length_strokes(name: str, *, exclusive: bool = False) -> InputSpec:
+    return InputSpec(name, "strokes", 0, MAX_LENGTH_STROKES, minimum_exclusive=exclusive)
+
+
+def _swolf(inputs: Mapping[str, float]) -> float:
+    return inputs["mean_length_seconds"] + inputs["mean_strokes"]
+
+
+def _distance_per_stroke(inputs: Mapping[str, float]) -> float:
+    return inputs["pool_length_meters"] * inputs["lengths"] / inputs["strokes"]
+
+
+def _length_variability(inputs: Mapping[str, float]) -> float:
+    return inputs["stdev_length_seconds"] / inputs["mean_length_seconds"] * 100.0
+
+
+def _change(first: str, last: str) -> Calculation:
+    def change(inputs: Mapping[str, float]) -> float:
+        return (inputs[last] - inputs[first]) / inputs[first] * 100.0
+
+    return change
+
+
+def _swim(
+    metric_id: str,
+    name: str,
+    unit: str,
+    method: str,
+    inputs: tuple[InputSpec, ...],
+    calculate: Calculation,
+    *,
+    per_stroke: bool,
+    origin: MetricOrigin = MetricOrigin.APPLICATION_DERIVED,
+    reference: str | None = None,
+) -> MetricDefinition:
+    return MetricDefinition(
+        metric_id=metric_id,
+        name=name,
+        sport=Sport.SWIMMING,
+        unit=unit,
+        method=method + " (swimming spec 5)",
+        required_inputs=inputs,
+        minimum_data_quality=Confidence.MEDIUM,
+        calculation_version="1.0.0",
+        origin=origin,
+        reference=reference,
+        calculate=calculate,
+        dimension=DimensionKind.STROKE if per_stroke else None,
+    )
+
+
+SWIM_SWOLF_AVG: Final = _swim(
+    "swim.swolf_avg",
+    "SWOLF",
+    "score",
+    "Mean length time in seconds plus mean strokes per length of a stroke type",
+    (_length_seconds("mean_length_seconds"), _length_strokes("mean_strokes"), _POOL_LENGTH),
+    _swolf,
+    per_stroke=True,
+)
+SWIM_DISTANCE_PER_STROKE: Final = _swim(
+    "swim.distance_per_stroke",
+    "Distance per stroke",
+    "m/stroke",
+    "Pool length x lengths / strokes of a stroke type",
+    (
+        _POOL_LENGTH,
+        InputSpec("lengths", "lengths", 0, 100_000, minimum_exclusive=True),
+        InputSpec("strokes", "strokes", 0, 10_000_000, minimum_exclusive=True),
+    ),
+    _distance_per_stroke,
+    per_stroke=True,
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=CRAIG_PENDERGAST_1979,
+)
+SWIM_PACE_VARIABILITY: Final = _swim(
+    "swim.pace_variability",
+    "Length pace variability",
+    "%",
+    "Coefficient of variation of the length times of a stroke type",
+    (
+        _length_seconds("mean_length_seconds"),
+        _length_seconds("stdev_length_seconds", exclusive=False),
+    ),
+    _length_variability,
+    per_stroke=True,
+)
+SWIM_PACE_DEGRADATION: Final = _swim(
+    "swim.pace_degradation",
+    "Pace degradation within sets",
+    "%",
+    "(mean time of the last third of each set's lengths - of the first third) / first x 100",
+    (_length_seconds("first_lengths_seconds"), _length_seconds("last_lengths_seconds")),
+    _change("first_lengths_seconds", "last_lengths_seconds"),
+    per_stroke=False,
+)
+SWIM_TECHNICAL_FATIGUE: Final = _swim(
+    "swim.technical_fatigue",
+    "Technical fatigue within sets",
+    "%",
+    "(mean strokes of the last third of the equal-pace sets' lengths - of the first third) "
+    "/ first x 100",
+    (
+        _length_strokes("first_lengths_strokes", exclusive=True),
+        _length_strokes("last_lengths_strokes"),
+    ),
+    _change("first_lengths_strokes", "last_lengths_strokes"),
+    per_stroke=False,
+)
+SWIM_PER_STROKE: Final = (SWIM_SWOLF_AVG, SWIM_DISTANCE_PER_STROKE, SWIM_PACE_VARIABILITY)
+SWIM_PER_SESSION: Final = (SWIM_PACE_DEGRADATION, SWIM_TECHNICAL_FATIGUE)
 STREAM_ANALYSES: Final = (
     StreamAnalysis(
         definition=RUN_HR_DRIFT,
@@ -535,6 +665,8 @@ CATALOG: Final = MetricRegistry(
         CYC_INTERVAL_POWER_CONSISTENCY,
         CYC_POWER_ZONE_TIME,
         CYC_WORK_TOTAL,
+        *SWIM_PER_STROKE,
+        *SWIM_PER_SESSION,
     )
 )
 

@@ -1,7 +1,8 @@
 """What the per-activity analyses read from the athlete's profile (metrics spec 9.2, 10).
 
 Heart-rate zone models with the birth date (profile spec 1.1), the power sensors the athlete
-declares reliable for training (cycling spec 2) and the FTP (cycling spec 3, 6.1).
+declares reliable for training (cycling spec 2), the FTP (cycling spec 3, 6.1) and the usual
+pool length (swimming spec 5).
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ class AnalysisSettings:
     zones: HeartRateZones = field(default_factory=HeartRateZones)
     reliable_power: frozenset[PowerSensor] = frozenset()
     ftp: FtpValue | None = None
+    pool_length_m: float | None = None  # the athlete's usual pool (resources), P9
 
     def measures_power(self, sensor: object) -> bool:
         """Whether power named by the file is MEASURED: the athlete declares that kind of

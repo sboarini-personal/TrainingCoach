@@ -275,6 +275,12 @@ def test_the_catalogue_is_registered_with_origins_and_references() -> None:
         "cyc.power_zone_time": MetricOrigin.STANDARD_CALCULATION,
         "cyc.power_fade": MetricOrigin.APPLICATION_DERIVED,
         "cyc.interval_power_consistency": MetricOrigin.APPLICATION_DERIVED,
+        # P9 (swimming spec 5): SWOLF is coaching practice; distance per stroke is published
+        "swim.swolf_avg": MetricOrigin.APPLICATION_DERIVED,
+        "swim.distance_per_stroke": MetricOrigin.STANDARD_CALCULATION,
+        "swim.pace_variability": MetricOrigin.APPLICATION_DERIVED,
+        "swim.pace_degradation": MetricOrigin.APPLICATION_DERIVED,
+        "swim.technical_fatigue": MetricOrigin.APPLICATION_DERIVED,
     }
     assert {item.metric_id: item.origin for item in CATALOG} == expected
     for item in CATALOG:

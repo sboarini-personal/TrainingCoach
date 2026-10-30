@@ -142,10 +142,13 @@ class AthleteProfile:
     def analysis_settings(self) -> AnalysisSettings:
         """What the per-activity analyses read from the profile (metrics spec 10)."""
         cycling = _known(self.cycling_experience)
+        resources = _known(self.resources)
+        pool = None if resources is None or resources.pool is None else resources.pool.length_m
         return AnalysisSettings(
             zones=self.heart_rate_zones,
             reliable_power=reliable_power(_known(self.sensors) or ()),
             ftp=None if cycling is None else cycling.ftp,
+            pool_length_m=pool,
         )
 
     @property

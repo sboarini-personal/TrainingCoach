@@ -27,7 +27,7 @@ Every metric is registered in code with:
 | reference | literature or provider documentation, when the method is not original |
 | provider, providerMetricName | provider metrics only: the provider and its own name for the metric |
 | subjectKinds | the subject kinds a value may describe (section 4); P8 |
-| dimension | optional qualifier of the subject: SPORT or ZONE (section 4); P8 (ZONE was HR_ZONE until P9, when power zones joined) |
+| dimension | optional qualifier of the subject: SPORT, ZONE or STROKE (section 4); P8 (ZONE was HR_ZONE until P9, when power zones joined; STROKE from P9) |
 | crossSport | SPORT dimension only: whether a value may also cover all sports together; P8 |
 | aggregation | SUM: a period total over contributions of the metric's single input; P8 |
 
@@ -77,7 +77,8 @@ Registry rules (enforced when the registry is built):
   EXERCISE (exercise ID).
 - (P8, contract 1.1.0) `subject.dimension` optionally qualifies the subject: a sport code
   (`RUNNING`, ...) for the SPORT dimension, `Z1` to `Z10` for the ZONE dimension (heart-rate
-  or power zones, by metric). The
+  or power zones, by metric), and from P9 (contract 1.2.0) a stroke type (`FREESTYLE`,
+  `BACKSTROKE`, `BREASTSTROKE`, `BUTTERFLY`) for the STROKE dimension. The
   dimension is part of the subject: one current value exists per athlete, metric, kind, key
   and dimension. A metric declares whether it has a dimension; a value of a dimensioned
   metric without a dimension exists only for cross-sport metrics and covers all sports.
@@ -156,7 +157,8 @@ until a reference is recorded.
 | `run.pace_variability`, `run.efficiency_hr` | APPLICATION_DERIVED | P9 | added in P9: pacing stability and efficiency inputs (FR-RUN-003, FR-RUN-004); running spec 4 |
 | `cyc.power_distribution` | STANDARD_CALCULATION | P9 | measured power only; registered as `cyc.power_zone_time` per zone (cycling spec 6) |
 | `cyc.work_kj`, `cyc.work_total`, `cyc.power_fade`, `cyc.interval_power_consistency` | STANDARD_CALCULATION (work), APPLICATION_DERIVED (others) | P9 | added in P9: measured power only (cycling spec 6) |
-| `swim.swolf_avg` | RAW_PROVIDER or STANDARD_CALCULATION | P9 | valid pool lengths only |
+| `swim.swolf_avg` | APPLICATION_DERIVED (P9 decision, swimming spec 5) | P9 | valid pool lengths only, per stroke type |
+| `swim.distance_per_stroke`, `swim.pace_variability`, `swim.pace_degradation`, `swim.technical_fatigue` | STANDARD_CALCULATION (distance per stroke), APPLICATION_DERIVED (others) | P9 | added in P9 (FR-SWM-002, FR-SWM-003); swimming spec 5 |
 | `str.volume_load` | STANDARD_CALCULATION | P10 | sets x reps x kg |
 | `str.weekly_sets_by_muscle` | APPLICATION_DERIVED | P10 | primary muscles count 1, secondary 0.5 (proposed) |
 | `ten.session_load` | STANDARD_CALCULATION | P9 | session RPE |

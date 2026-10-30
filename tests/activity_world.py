@@ -92,6 +92,7 @@ class World:
         self.birth_date: date | None = None  # for age-predicted models (ADR-028)
         self.reliable_power: set[PowerSensor] = set()  # declared reliable devices (P9)
         self.ftp: FtpValue | None = None
+        self.pool_length: float | None = None  # the athlete's usual pool (resources)
         self.series: dict[str, TimeSeries] = {}
         self.series_reads: list[str] = []
         self.segments: dict[str, Laps | Lengths] = {}  # LAPS and LENGTHS blobs (P9)
@@ -101,6 +102,7 @@ class World:
                 HeartRateZones(tuple(self.zone_models), self.birth_date),
                 frozenset(self.reliable_power),
                 self.ftp,
+                self.pool_length,
             ),
             streams=self.read_stream,
         )

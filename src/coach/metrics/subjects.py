@@ -1,8 +1,9 @@
 """What a derived value describes (spec/functional/metrics.spec.md section 4).
 
 A subject is a kind and a key (an activity, a day, an ISO week, an exercise) and, from P8, an
-optional dimension: a sport for per-sport period totals, or a heart-rate zone for time in
-zones. The dimension is part of the subject's identity.
+optional dimension: a sport for per-sport period totals, a zone (heart rate or power) for
+time in zones, or from P9 a swimming stroke type. The dimension is part of the subject's
+identity.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from enum import StrEnum
 from typing import Final
 from uuid import UUID
 
+from coach.domain.activity.fields import StrokeType
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
@@ -24,6 +26,13 @@ _WEEK = re.compile(r"^(?P<year>[0-9]{4})-W(?P<week>0[1-9]|[1-4][0-9]|5[0-3])$")
 _EXERCISE = re.compile(r"^ex\.[a-z0-9_]+$")
 _ZONE = re.compile(r"^Z(?P<zone>[1-9]|10)$")
 MAX_ZONES: Final = 10
+# Stroke types a per-stroke swimming metric describes; MIXED and DRILL lengths are left out.
+STROKES: Final = (
+    StrokeType.FREESTYLE,
+    StrokeType.BACKSTROKE,
+    StrokeType.BREASTSTROKE,
+    StrokeType.BUTTERFLY,
+)
 
 
 class SubjectKind(StrEnum):
@@ -36,6 +45,7 @@ class SubjectKind(StrEnum):
 class DimensionKind(StrEnum):
     SPORT = "SPORT"
     ZONE = "ZONE"  # heart-rate or power zones, by metric (HR_ZONE until P9)
+    STROKE = "STROKE"  # a swimming stroke type (P9)
 
 
 PERIOD_KINDS: Final = frozenset({SubjectKind.DAY, SubjectKind.WEEK})
@@ -73,6 +83,8 @@ def dimension_kind(code: str) -> DimensionKind:
         return DimensionKind.ZONE
     if code in Sport.__members__.values():
         return DimensionKind.SPORT
+    if code in STROKES:
+        return DimensionKind.STROKE
     raise DomainValidationError(f"invalid subject dimension: {code!r}")
 
 
@@ -100,10 +112,15 @@ class MetricSubject:
             dimension_kind(self.dimension)
 
     @classmethod
-    def activity(cls, activity_id: UUID, *, zone: int | None = None) -> MetricSubject:
-        return cls(
-            SubjectKind.ACTIVITY, str(activity_id), None if zone is None else zone_code(zone)
-        )
+    def activity(
+        cls, activity_id: UUID, *, zone: int | None = None, stroke: StrokeType | None = None
+    ) -> MetricSubject:
+        if zone is not None and stroke is not None:
+            raise DomainValidationError("a subject has one dimension")
+        dimension = None if zone is None else zone_code(zone)
+        if stroke is not None:
+            dimension = stroke.value
+        return cls(SubjectKind.ACTIVITY, str(activity_id), dimension)
 
     @classmethod
     def day(cls, day: date, *, sport: Sport | None = None) -> MetricSubject:
@@ -122,6 +139,12 @@ class MetricSubject:
         if self.dimension is None or self.dimension_kind is not DimensionKind.SPORT:
             return None
         return Sport(self.dimension)
+
+    @property
+    def stroke(self) -> StrokeType | None:
+        if self.dimension is None or self.dimension_kind is not DimensionKind.STROKE:
+            return None
+        return StrokeType(self.dimension)
 
     @property
     def zone(self) -> int | None:
