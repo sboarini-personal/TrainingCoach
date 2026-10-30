@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:athlete-profile:1",
   "title": "AthleteProfile",
-  "description": "Athlete profile (FR-PRF-001 to FR-PRF-007). Version 1.1.0: age-predicted heart-rate zone models (ADR-028). A tracked field that was never recorded is absent; a field recorded as UNKNOWN is {\"value\": null, \"provenance\": ...}. Owner spec: spec/functional/profile.spec.md.",
+  "description": "Athlete profile (FR-PRF-001 to FR-PRF-007). Version 1.1.0: age-predicted heart-rate zone models (ADR-028). Version 1.2.0: exercise aliases (P10). A tracked field that was never recorded is absent; a field recorded as UNKNOWN is {\"value\": null, \"provenance\": ...}. Owner spec: spec/functional/profile.spec.md.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -193,6 +193,19 @@
         "value": { "oneOf": [{ "$ref": "#/$defs/healthDeclaration" }, { "type": "null" }] }
       },
       "unevaluatedProperties": false
+    },
+    "exerciseAliases": {
+      "description": "Version 1.2.0 (P10): the athlete's own names for catalogue exercises (strength spec 3); absent when there are none.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "exerciseId"],
+        "additionalProperties": false,
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "exerciseId": { "$ref": "urn:coach:schema:workout:1#/$defs/exerciseId" }
+        }
+      }
     }
   },
   "$defs": {

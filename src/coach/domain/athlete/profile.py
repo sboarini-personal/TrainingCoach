@@ -35,6 +35,7 @@ from coach.domain.common.provenance import FieldValue
 from coach.domain.common.sport import Sport
 from coach.domain.common.text import clean_text
 from coach.domain.common.time import parse_timezone
+from coach.domain.strength.exercise import ExerciseAlias
 
 DEFAULT_LANGUAGE: Final = "es"
 ADULT_AGE: Final = 18
@@ -54,6 +55,7 @@ class ProfileUpdate:
     max_hr: FieldValue[int] | None = None
     zone_method: FieldValue[ZoneMethod] | None = None
     zone_models: tuple[HeartRateZoneModel, ...] | None = None
+    exercise_aliases: tuple[ExerciseAlias, ...] | None = None
     timezone: FieldValue[str] | None = None
     metric_units: FieldValue[bool] | None = None
     language: FieldValue[str] | None = None
@@ -81,6 +83,7 @@ class AthleteProfile:
     max_hr: FieldValue[int] | None = None
     zone_method: FieldValue[ZoneMethod] | None = None
     zone_models: tuple[HeartRateZoneModel, ...] = ()
+    exercise_aliases: tuple[ExerciseAlias, ...] = ()  # the athlete's own names (P10)
     timezone: FieldValue[str] | None = None
     metric_units: FieldValue[bool] | None = None
     language: FieldValue[str] | None = None
@@ -105,6 +108,9 @@ class AthleteProfile:
             raise DomainValidationError("resting heart rate must be below maximum heart rate")
         if _known(self.birth_date) is None and any(m.estimated for m in self.zone_models):
             raise DomainValidationError("an age-predicted zone model needs the birth date")
+        keys = [alias.key for alias in self.exercise_aliases]
+        if len(keys) != len(set(keys)):
+            raise DomainValidationError("an exercise alias is defined twice")
         timezone = _known(self.timezone)
         if timezone is not None:
             parse_timezone(timezone)

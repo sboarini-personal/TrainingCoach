@@ -55,9 +55,11 @@ from coach.domain.athlete.resources import (
 from coach.domain.common.provenance import ValueSource
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import Weekday
+from coach.domain.strength.exercise import ExerciseAlias
 
-# 1.1.0 added age-predicted zone models (profile spec 1.1, ADR-028).
-PROFILE_SCHEMA_VERSION: Final = "1.1.0"
+# 1.1.0 added age-predicted zone models (profile spec 1.1, ADR-028); 1.2.0 the athlete's
+# exercise aliases (strength spec 3, P10).
+PROFILE_SCHEMA_VERSION: Final = "1.2.0"
 
 
 # ------------------------------------------------------------------ experience
@@ -393,6 +395,11 @@ def profile_to_contract(profile: AthleteProfile) -> Json:
     }
     put(contract, "resources", profile.resources, _resources)
     put(contract, "health", profile.health, _health)
+    if profile.exercise_aliases:
+        contract["exerciseAliases"] = [
+            {"text": alias.text, "exerciseId": alias.exercise_id}
+            for alias in profile.exercise_aliases
+        ]
     return contract
 
 
@@ -427,4 +434,8 @@ def profile_from_contract(document: Document) -> AthleteProfile:
         tennis_experience=take(experience, "tennis", _parse_tennis),
         resources=take(document, "resources", _parse_resources),
         health=take(document, "health", _parse_health),
+        exercise_aliases=tuple(
+            ExerciseAlias(item["text"], item["exerciseId"])
+            for item in document.get("exerciseAliases", ())
+        ),
     )

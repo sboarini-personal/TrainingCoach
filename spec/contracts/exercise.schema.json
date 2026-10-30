@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:exercise:1",
+  "title": "Exercise",
+  "description": "An exercise of the versioned catalogue shipped with the application (FR-STR-002, FR-STR-003). Identity is exerciseId, never free text; aliases map text to it. Owner spec: spec/functional/strength.spec.md section 3.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "exerciseId",
+    "catalogueVersion",
+    "canonicalName",
+    "movementPattern",
+    "primaryMuscles",
+    "secondaryMuscles",
+    "equipment",
+    "unilateral",
+    "technicalDifficulty",
+    "contraindicationTags",
+    "substitutions",
+    "aliases"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion"
+    },
+    "exerciseId": {
+      "$ref": "urn:coach:schema:workout:1#/$defs/exerciseId"
+    },
+    "catalogueVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "canonicalName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "movementPattern": {
+      "$ref": "urn:coach:schema:workout:1#/$defs/movementPattern"
+    },
+    "primaryMuscles": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:coach:schema:workout:1#/$defs/muscleGroup"
+      }
+    },
+    "secondaryMuscles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:coach:schema:workout:1#/$defs/muscleGroup"
+      }
+    },
+    "equipment": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "BARBELL",
+          "DUMBBELLS",
+          "KETTLEBELLS",
+          "BANDS",
+          "MACHINES",
+          "PULL_UP_BAR",
+          "BENCH",
+          "BODYWEIGHT_ONLY",
+          "OTHER"
+        ]
+      }
+    },
+    "unilateral": {
+      "type": "boolean"
+    },
+    "technicalDifficulty": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "contraindicationTags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "AXIAL_LOAD",
+          "OVERHEAD",
+          "HIGH_IMPACT",
+          "DEEP_KNEE_FLEXION",
+          "SPINAL_FLEXION",
+          "GRIP_INTENSIVE"
+        ]
+      }
+    },
+    "substitutions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "urn:coach:schema:workout:1#/$defs/exerciseId"
+      }
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "language",
+          "text"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "language": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        }
+      }
+    }
+  }
+}

@@ -30,9 +30,11 @@ from coach.application.secrets import SecretValue
 from coach.cli import activities as activity_commands
 from coach.cli import analytics as analytics_commands
 from coach.cli import garmin as garmin_commands
+from coach.cli import strength as strength_commands
 from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.athlete.physiology import SensorType
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.strength.vocabulary import MovementPattern
 from coach.infrastructure.datadir import SyncedDataDirError, ensure_layout, resolve_data_dir
 from coach.infrastructure.logs import attach_file_log, detach_file_log
 from coach.integrations.garmin.transport import HttpTransport
@@ -152,6 +154,20 @@ def _parser() -> argparse.ArgumentParser:
     week.add_argument("--week", help="ISO week, for example 2026-W44; default this week")
     weeks = load.add_parser("weeks", help="the last weeks, one line each")
     weeks.add_argument("--count", type=int, default=8)
+    strength = commands.add_parser("strength", help="strength training").add_subparsers(
+        dest="action", required=True
+    )
+    catalogue = strength.add_parser(
+        "exercises", help="list or search the exercise catalogue; one match shows it in full"
+    )
+    catalogue.add_argument("text", nargs="?", help="an ID, a name, an alias or part of one")
+    catalogue.add_argument(
+        "--pattern", choices=sorted(pattern.value for pattern in MovementPattern)
+    )
+    naming = strength.add_parser("alias", help="show, add or remove your own exercise names")
+    naming.add_argument("text", nargs="?", help="your name for the exercise")
+    naming.add_argument("exercise_id", nargs="?", help="for example ex.bulgarian_split_squat")
+    naming.add_argument("--remove", action="store_true", help="forget this alias")
     analysis = commands.add_parser("analysis", help="sport analytics").add_subparsers(
         dest="action", required=True
     )
@@ -322,6 +338,10 @@ def main(
                 return analytics_commands.show_activity(runtime, _session(runtime), args, stream)
             case ("metrics", "recompute"):
                 return analytics_commands.recompute(runtime, _session(runtime), stream)
+            case ("strength", "exercises"):
+                return strength_commands.exercises(runtime, _session(runtime), args, stream)
+            case ("strength", "alias"):
+                return strength_commands.alias(runtime, _session(runtime), args, stream)
             case ("analysis", "trend"):
                 return analytics_commands.trend(runtime, _session(runtime), args, stream)
             case ("load", "week"):

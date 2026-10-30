@@ -25,6 +25,7 @@ from coach.domain.common.time import TrainingDayBasis, Weekday
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.goals.goal import GoalPriority, GoalStatus
 from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
+from coach.domain.strength.vocabulary import ContraindicationTag, MovementPattern, MuscleGroup
 from coach.metrics.derived import DerivedStatus, SubjectKind
 from samples import (
     ATHLETE,
@@ -63,6 +64,10 @@ ENUM_PAIRS: list[tuple[type[Enum], str, tuple[str, ...]]] = [
     (SubjectKind, "derived-metric-value", ("$defs", "subject", "properties", "kind")),
     (LifecycleState, "coaching-state", ("properties", "lifecycle")),
     (Condition, "coaching-state", ("properties", "conditions", "items")),
+    (MovementPattern, "workout", ("$defs", "movementPattern")),
+    (MuscleGroup, "workout", ("$defs", "muscleGroup")),
+    (Equipment, "exercise", ("properties", "equipment", "items")),
+    (ContraindicationTag, "exercise", ("properties", "contraindicationTags", "items")),
 ]
 
 
@@ -104,7 +109,7 @@ def test_age_predicted_zone_model_conforms_to_contract_1_1() -> None:
         ProfileUpdate(zone_models=(*profile.zone_models, age_predicted_zones()))
     )
     contract = profile_to_contract(profile)
-    assert contract["schemaVersion"] == "1.1.0"
+    assert contract["schemaVersion"] == "1.2.0"
     assert validation_errors("athlete-profile", contract) == []
     declared_model, estimate = contract["heartRate"]["zoneModels"]
     assert "boundariesPercentMaxHr" not in declared_model

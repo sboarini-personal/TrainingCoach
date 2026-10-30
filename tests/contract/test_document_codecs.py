@@ -48,6 +48,7 @@ from coach.domain.activity.streams import TimeSeries
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.coaching.state import CoachingState
 from coach.domain.consent.ledger import ConsentLedger
+from coach.domain.strength.exercise import ExerciseAlias
 from samples import (
     ACTIVITY,
     ATHLETE,
@@ -81,6 +82,17 @@ ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
     (
         PROFILE_CODEC,
         full_profile().apply(ProfileUpdate(zone_models=(age_predicted_zones(),))),
+    ),
+    (
+        PROFILE_CODEC,
+        full_profile().apply(
+            ProfileUpdate(
+                exercise_aliases=(
+                    ExerciseAlias("Búlgaras", "ex.bulgarian_split_squat"),
+                    ExerciseAlias("Gemelos en máquina", "ex.seated_calf_raise"),
+                )
+            )
+        ),
     ),
     (AVAILABILITY_CODEC, sample_availability()),
     (GOAL_CODEC, sample_goal()),

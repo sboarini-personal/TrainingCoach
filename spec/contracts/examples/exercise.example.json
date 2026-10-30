@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0.0",
+  "exerciseId": "ex.bulgarian_split_squat",
+  "catalogueVersion": "1.0.0",
+  "canonicalName": "Bulgarian split squat",
+  "movementPattern": "LUNGE",
+  "primaryMuscles": [
+    "QUADRICEPS",
+    "GLUTES"
+  ],
+  "secondaryMuscles": [
+    "ADDUCTORS",
+    "HAMSTRINGS",
+    "CORE"
+  ],
+  "equipment": [
+    "DUMBBELLS",
+    "BENCH"
+  ],
+  "unilateral": true,
+  "technicalDifficulty": 3,
+  "contraindicationTags": [
+    "DEEP_KNEE_FLEXION"
+  ],
+  "substitutions": [
+    "ex.split_squat",
+    "ex.reverse_lunge"
+  ],
+  "aliases": [
+    {
+      "language": "en",
+      "text": "Rear foot elevated split squat"
+    },
+    {
+      "language": "es",
+      "text": "Sentadilla búlgara"
+    }
+  ]
+}

@@ -27,6 +27,19 @@ ROTATOR_CUFF, BICEPS, TRICEPS, FOREARMS.
 
 The enumerations are defined in [../contracts/workout.schema.json](../contracts/workout.schema.json).
 
+Body regions (P10): what interference and regional load name. They are the muscle groups
+plus four joint and tendon regions that muscle groups do not cover: ACHILLES_REGION, KNEES,
+SHOULDERS and ELBOWS. The tennis regions of the tennis spec are body regions (calves,
+soleus, Achilles region, knees, adductors, shoulders, elbows).
+
+Contraindication tags (P10): AXIAL_LOAD (load through the spine), OVERHEAD, HIGH_IMPACT
+(jumps, landings), DEEP_KNEE_FLEXION, SPINAL_FLEXION, GRIP_INTENSIVE. They let a health
+constraint (P11, P12) exclude exercises by tag, never by name.
+
+Equipment is the vocabulary of the athlete's resources (BARBELL, DUMBBELLS, KETTLEBELLS,
+BANDS, MACHINES, PULL_UP_BAR, BENCH, BODYWEIGHT_ONLY, OTHER); an exercise lists the equipment
+it needs, and an exercise needing none lists BODYWEIGHT_ONLY.
+
 ## 3. Exercise catalogue (FR-STR-003)
 
 `Exercise`: `exerciseId` (pattern `ex.<snake_case>`, stable), `canonicalName`,
@@ -38,6 +51,20 @@ HIGH_IMPACT, DEEP_KNEE_FLEXION), `substitutions[]` (exercise IDs), `aliases[]`
 - Identity is the `exerciseId`, never free text. Aliases (any language, user-defined) map to
   an ID and never change it.
 - The catalogue is versioned reference data shipped with the application (seed list in P10).
+
+Catalogue 1.0.0 (P10, contract [../contracts/exercise.schema.json](../contracts/exercise.schema.json)):
+
+- About 50 exercises covering every movement pattern, with English and Spanish aliases, the
+  muscles, equipment, difficulty, contraindication tags and substitutions of each. Each
+  substitution names an exercise of the catalogue with the same movement pattern.
+- Alias matching is on the text normalised: lower case, accents removed, spaces collapsed,
+  so "Sentadilla búlgara" and "sentadilla bulgara" are the same alias. An alias names one
+  exercise only: two exercises sharing an alias is a catalogue error.
+- The athlete's own aliases (`coach strength alias`) are stored per athlete and map a text
+  to a catalogue ID. One that equals a catalogue alias of another exercise is refused; it
+  can never rename an exercise. Unknown text resolves to nothing: it is never guessed.
+- A new catalogue version may add exercises and aliases; it never reuses or removes an ID,
+  since recorded sets refer to it.
 
 ## 4. Strength workout prescription (FR-STR-004)
 
