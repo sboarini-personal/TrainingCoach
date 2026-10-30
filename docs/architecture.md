@@ -65,6 +65,17 @@ Domain packages (P2): `common` (errors, time, units, quality, provenance, sport,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
 `onboarding`; `raw` (P3); `activity` (P5); `ingestion` (P6).
 
+P9 additions:
+
+| Package | Content |
+|---|---|
+| `coach.domain` | `activity.segments` (laps and pool lengths), `performance.powerSensor`, observation revisions (`supersedes`, `same_session`), `athlete.settings` (`AnalysisSettings`: zones, reliable power sensors, FTP, usual pool) |
+| `coach.metrics` | `analyses` (stream analyses), `running`, `cycling`, `swimming`, `tennis`, `trends` (comparable groups, least-squares trend); catalogue entries per sport; dimensions ZONE and STROKE; qualifying-only period totals |
+| `coach.application` | engine: streams read once per recomputation, analyses with reuse, measured power in the EFFECTIVE view, power zones, swimming and tennis; `AnalyticsService.trend`; `ActivityService.renormalise`; `IngestionService.reprocess`; codecs for laps and lengths |
+| `coach.integrations.files` | parsers 1.1.0 (FIT lap, length and device types; TCX laps), parser output 1.1.0, normalisation rules 1.1.0, multisport windows |
+| `coach.infrastructure` | migration 5 (`source_observation_revisions`) |
+| `coach.cli` | `activity reprocess`, `activity correct`, `profile sensor`, `profile ftp`, `analysis trend` |
+
 P6 additions:
 
 | Package | Content |
@@ -144,6 +155,7 @@ Storage (P3, ADR-022): one SQLite file `<data_dir>/coach.sqlite3`.
 | `activity_sources` (P5) | sources of live activities | primary key `(athlete_id, raw_source_id, part)`: a source belongs to at most one live activity |
 | `source_observations` (P5) | normalised content of each raw source part | trigger rejects every update; foreign key to `raw_sources` |
 | `data_overrides` (P5) | athlete corrections | trigger rejects every update; unique supersession link and one first override per entity and field keep one chain per field |
+| `source_observation_revisions` (P9) | later revisions of a source's observation (re-normalisation, ADR-029) | trigger rejects every update; foreign key to `source_observations`; reads use the latest revision |
 
 Data quality issues are aggregates in `aggregates` (kind `data_quality_issue`).
 
@@ -157,8 +169,8 @@ Integration statuses (P7) are aggregates in `aggregates` (kind `integration_stat
 capability snapshot, sync state with reason codes, freshness, `notBefore` and the cursor. The
 coaching state with its conditions is kind `coaching_state`.
 
-Time series are content-addressed JSON blobs in the athlete's blob store, referenced from
-observations. Uploads wait in `<data_dir>/quarantine/` under random names only while they are
+Time series, laps and pool lengths (P9) are content-addressed JSON blobs in the athlete's
+blob store, referenced from observations. Uploads wait in `<data_dir>/quarantine/` under random names only while they are
 processed.
 
 RAW bytes live in `<data_dir>/raw/<athlete_id>/<sha256[0:2]>/<sha256>`, written atomically,
@@ -188,6 +200,14 @@ training day as a labelled estimate, ADR-028); reading a day or a week materiali
 totals (per sport, and across sports for time and session RPE load only); the week report
 shows external and internal load separately. Values carry their input snapshot down to
 activities, derived values and RAW sources.
+
+**Sport analytics (P9, ADR-029, ADR-030):** the same recomputation reads each stream once
+and runs the sport analyses (running drift, pace variability, intervals and efficiency;
+cycling work, power zones, fade and interval consistency on MEASURED power only; pool
+swimming per stroke and per set; tennis regional load); `coach analysis trend` groups a
+metric's sessions into comparable groups and fits a trend per group, never across groups.
+`coach activity reprocess` re-reads stored RAW with newer normalisation rules and adds
+observation revisions.
 
 **Adaptive loop:** activity ingested -> workout execution matching -> metrics -> recovery
 assessment -> insights -> decision (code thresholds plus AI interpretation) -> policy engine
@@ -232,7 +252,7 @@ engine for proposals -> AgentDecision audit.
 | A-15 | Women's health and nutrition data not ingested | Proposed |
 | A-16 | Deduplication tolerances and weights as in the deduplication spec (rules 1.0.0), versioned | Proposed |
 | A-17 | V1 is for adults (18 or older) | Proposed |
-| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability, the metric input ranges and the 20 s sample gap of time in zones from P8) are initial, versioned values to be reviewed with real data | Proposed |
+| A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability, the metric input ranges and the 20 s sample gap of time in zones from P8, and the P9 sport analytics parameters: warm-up, steadiness, splits, repetition tolerances, power zone fractions and FTP window, set sizes, tennis load levels, terrain bands and trend thresholds) are initial, versioned values to be reviewed with real data | Proposed |
 | A-19 | At most one ACTIVE priority-A goal | Proposed |
 | A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
 
@@ -252,8 +272,8 @@ Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md
 | P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP): detection, archives, sandboxed parsers (ADR-025), normalisation rules 1.0.0, time series, ingestion records and failure issues, CSV export, CLI import | Done |
 | P7 | FitnessProvider port and fake provider, capability model and POL-CAPABILITY, IntegrationStatus, LocalWorkoutPublisher, Garmin Personal adapter (token broker, thin transport, request budget, `garmin_activity` normaliser 1.0.0), SyncService with windows, cursor, retries and degradation (ADR-026), provider payloads through the ingestion pipeline, CLI `garmin sync` and `garmin status` | Done |
 | P8 | Deterministic metrics engine: subject dimensions, aggregations, speed and pace, time in heart-rate zones, period totals materialised on read, week report with external and internal load, recomputation, SQLite units of work (ADR-027), age-predicted zones as a labelled estimate (ADR-028), CLI `load`, `metrics`, `activity show`, `profile hr-zones`, `profile birth-date` | Done |
-| P9 | Running, cycling, swimming analytics; tennis load | Next |
-| P10 | Exercise catalogue, strength prescription and execution, interference | |
+| P9 | Laps, pool lengths and power sensors from files with re-normalisation (ADR-029); running, cycling, swimming analytics and tennis load as stream analyses (ADR-030); measured power attribution; per-stroke dimension; qualifying-only work total; comparable groups and trends; CLI `activity reprocess`, `activity correct`, `profile sensor`, `profile ftp`, `analysis trend` | Done |
+| P10 | Exercise catalogue, strength prescription and execution, interference | Next |
 | P11 | Check-in, recovery, patterns, insights, report data | |
 | P12 | Policy engine (full), planning, versioning, execution, adaptive loop | |
 | P13 | AI coach: tools, prompts, LLM adapter, agent evaluations, UI | |

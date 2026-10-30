@@ -103,8 +103,8 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P8 are done. Next: P9 (running, cycling and swimming analytics, tennis load). See
-`docs/architecture.md` section 8.
+P0 to P9 are done. Next: P10 (exercise catalogue, strength prescription and execution,
+interference). See `docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 `AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
@@ -147,5 +147,18 @@ one connection and one transaction, a savepoint per write. Zones reach the engin
 `HeartRateZones` (models plus birth date); `on(day)` gives the `AppliedZones` of a
 training day, so age-predicted models (ADR-028, estimates, never `reliable_anchor`)
 follow the athlete's age. Tests: `World` in `tests/activity_world.py` has
-`zone_models`, `birth_date` and `series` for the engine. Shell heredocs
+`zone_models`, `birth_date`, `reliable_power`, `ftp`, `pool_length`, `series` and `segments`
+for the engine. Shell heredocs
 break on apostrophes in this environment: put edit scripts in `reports/` as files.
+
+Sport analytics (P9): laps and pool lengths are LAPS and LENGTHS stream blobs
+(`coach.domain.activity.segments`); a newer normaliser adds an observation revision
+(`ObservationRepository.add_revision`, `coach activity reprocess`, ADR-029). A metric read
+from a stream is a `StreamAnalysis` in `coach.metrics.catalog` (`analyse` returns an
+`Analysis`, or `None` when the session does not qualify; `requires` for view conditions
+such as `cycling.measured_power`); power zones, swimming and tennis have their own engine
+paths. The engine reads profile data as `AnalysisSettings` (zones, reliable power sensors,
+FTP, usual pool). Power is MEASURED only in the EFFECTIVE view, never in a normaliser.
+Trends are `AnalyticsService.trend` over `coach.metrics.trends` groups. Synthetic FIT laps,
+lengths and devices come from `file_samples.fit_lap`, `fit_length` and `fit_device`.
+

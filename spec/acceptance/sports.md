@@ -4,6 +4,11 @@
 - Requirements: FR-CYC-002, FR-CYC-003, FR-CYC-004, FR-PLN-005
 - Level: unit and contract. First executable: P9 (analytics), P12 (planning).
 
+Implementation status (P9): the analytics part is executed by
+`tests/unit/test_cycling_analyses.py` and `tests/integration/test_cli_metrics.py` (power of
+unknown origin or from an undeclared device stays UNKNOWN, no power analysis or zones); the
+workout part arrives with planning (P12).
+
 **Given** an athlete with no reliable cycling power meter declared
 **When** a ride containing power values of unknown origin is analysed and a cycling workout is planned
 **Then** power is labelled UNKNOWN or ESTIMATED, never MEASURED

@@ -48,6 +48,7 @@ uv run coach import run.fit ride.tcx export.zip     # FIT, TCX, GPX, CSV templat
 uv run coach activity list                          # most recent activities
 uv run coach activity export activities.csv         # CSV activity template
 uv run coach activity reprocess                     # re-read imported files with newer rules
+uv run coach activity correct <activity-id> subjective.rpe 7 --reason "felt hard"
 uv run coach issue list                             # data problems and failed imports
 uv run coach garmin sync                            # pull new activities (Personal API)
 uv run coach garmin sync --since 2026-09-01         # re-scan from a date
@@ -60,6 +61,10 @@ uv run coach profile hr-zones 100 130 150 165 180 --valid-from 2020-01-01
 uv run coach profile birth-date 1980-01-31          # synthetic example date
 uv run coach profile hr-zones 51 59 71 81 90 100 --age-predicted --valid-from 2020-01-01
 uv run coach metrics recompute                      # after upgrading, or a zone change
+uv run coach profile sensor CYCLING_POWER_METER --reliable   # power becomes MEASURED
+uv run coach profile ftp 250 --on 2026-10-01 --measured
+uv run coach analysis trend run.efficiency_hr --weeks 12
+uv run coach analysis trend swim.swolf_avg --stroke FREESTYLE
 ```
 
 Files imported before an upgrade of the normalisation rules (P9 added laps, pool lengths
@@ -78,6 +83,15 @@ a metric existed get it with `coach metrics recompute`. With `--age-predicted` t
 are percentages of 220 minus your age on each activity's day (from `coach profile
 birth-date`): an estimate, shown as such, and never used to prescribe intensity
 (ADR-028).
+
+Sport analytics (P9) come from each session's time series, laps and pool lengths: running
+heart-rate drift, pace variability, interval degradation and distance per heartbeat;
+cycling work, power zones, fade and interval consistency, only when the ride's power is
+measured by a device you declared reliable; pool swimming SWOLF, distance per stroke and
+pace variability per stroke, and pace and stroke fatigue within sets; tennis regional load
+from duration, RPE and match. A session's RPE is recorded with `coach activity correct`.
+`coach analysis trend` compares only sessions of the same kind (surface and terrain, indoor
+or outdoor, pool length and stroke) and never mixes groups.
 
 `coach garmin sync` uses the Garmin Personal API key stored with `coach secret set
 garmin-api-key` (create it in Garmin Connect, under Personal API key). It pulls the last 8

@@ -7,7 +7,7 @@ context.
 
 | Category | Examples | Source | Purpose | Consent | Location | Sent to LLM |
 |---|---|---|---|---|---|---|
-| Profile | name, birth date, height, weight, HR settings, devices | athlete | planning, metrics | onboarding | local database | minimised, with AI_PROCESSING |
+| Profile | name, birth date, height, weight, HR settings, devices, sensors and their reliability, FTP, usual pool length | athlete | planning, metrics | onboarding | local database | minimised, with AI_PROCESSING |
 | Health constraints, pain, red flags | declared constraints, pain reports | athlete | safety, planning | onboarding | local database | only what the current advice needs |
 | Activities | summaries, time series, laps and pool lengths (no positions, no device identifiers), per-source observations and their revisions, corrections with the athlete's reason, data quality issues, ingestion records (hashes, codes, sanitised filenames) | files, Garmin, athlete | analytics, load, adaptation | ACTIVITIES | local database and blob store; uploads wait in quarantine only while processed | derived summaries only; no GPS traces; correction reasons never |
 | Derived metrics (P8) | speed, pace, time in heart-rate zones, session RPE load, daily and weekly totals, each with its input snapshot | computed from activities and the zone model | analytics, load | ACTIVITIES | local database | derived summaries only, with AI_PROCESSING (P13) |

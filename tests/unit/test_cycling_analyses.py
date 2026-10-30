@@ -134,7 +134,7 @@ def test_no_power_analysis_without_a_reliable_declared_meter(
     assert current(world, "cyc.power_zone_time", activity_id, zone=1) is None  # no zones
 
 
-@pytest.mark.req("FR-CYC-002", "FR-CYC-004", "FR-MET-004")
+@pytest.mark.req("FR-CYC-001", "FR-CYC-002", "FR-CYC-004", "FR-MET-004")
 def test_measured_power_gets_work_fade_and_consistency() -> None:
     world = World()
     world.reliable_power = {PowerSensor.POWER_METER}
