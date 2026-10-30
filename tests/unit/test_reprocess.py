@@ -6,6 +6,7 @@ power sensor), then re-normalised with the current rules.
 
 from __future__ import annotations
 
+import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime, timedelta
@@ -23,10 +24,19 @@ from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import PowerSensor, StreamKind
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.ingestion.limits import IngestionLimits
-from coach.domain.ingestion.record import RejectionReason
+from coach.domain.ingestion.record import ActivityOutcome, RejectionReason
 from coach.domain.raw.source import DetectedType
 from coach.integrations.files.formats import LocalFileFormats
-from file_samples import START, fit_device, fit_file, fit_lap, fit_length, fit_session
+from file_samples import (
+    START,
+    fit_device,
+    fit_file,
+    fit_lap,
+    fit_length,
+    fit_session,
+    tcx_file,
+    zip_file,
+)
 from ingestion_world import IngestionWorld, InProcessRunner
 from samples import USER
 
@@ -230,3 +240,72 @@ def test_re_normalisation_needs_the_activities_consent(
     world.consents.revoke(SCOPE, ConsentType.ACTIVITIES)
     with pytest.raises(ConsentRequiredError):
         world.ingestion.reprocess(SCOPE)
+
+
+# --------------------------------------------------------------------------- review (P9.1)
+
+
+@pytest.mark.req("FR-ACT-002", "FR-ACT-007", "NFR-REL-001")
+def test_the_same_file_imported_again_after_an_upgrade_is_still_a_duplicate(
+    setup: tuple[IngestionWorld, Formats],
+) -> None:
+    world, formats = setup
+    ride = ride_with_laps()
+    first = world.upload(zip_file({"ride.fit": ride}), filename="export-1.zip")
+    (item,) = first.record.activities
+    formats.upgrade()
+    again = world.upload(zip_file({"again/ride.fit": ride}), filename="export-2.zip")
+    assert again.record.succeeded, again.record
+    (repeat,) = again.record.activities
+    assert (repeat.activity_id, repeat.outcome) == (item.activity_id, ActivityOutcome.DUPLICATE)
+    activity = world.activities.get(SCOPE, item.activity_id)
+    assert StreamKind.LAPS in kinds(activity)  # re-normalised on the way, as by reprocess
+    assert len(world.observations.revisions(SCOPE, activity.sources[0].key)) == 2
+
+
+@pytest.mark.req("FR-ACT-002")
+def test_a_missing_raw_file_is_skipped_not_fatal(setup: tuple[IngestionWorld, Formats]) -> None:
+    world, formats = setup
+    gone = imported(world, ride_with_laps(), "ride.fit")
+    kept = imported(world, pool_swim(), "swim.fit")
+    source = world.activities.get(SCOPE, gone).sources[0]
+    raw = world.raw.get(SCOPE, source.key.raw_source_id)
+    (blob,) = [path for path in world.stored_blobs() if path.name == raw.sha256]
+    blob.chmod(stat.S_IWRITE)  # blobs are stored read-only
+    blob.unlink()
+    formats.upgrade()
+    report = world.ingestion.reprocess(SCOPE)
+    assert (report.reprocessed, report.skipped) == (1, {"RAW_UNAVAILABLE": 1})
+    assert StreamKind.LENGTHS in kinds(world.activities.get(SCOPE, kept))
+
+
+@pytest.mark.req("FR-ACT-002")
+def test_an_activity_with_two_outdated_sources_counts_once(
+    setup: tuple[IngestionWorld, Formats],
+) -> None:
+    world, formats = setup
+    ride = imported(world, ride_with_laps(), "ride.fit")
+    laps = [
+        {
+            "start": "2026-10-20T21:00:00Z",
+            "seconds": 300,
+            "distance": 2400,
+            "avg": 150,
+            "max": 155,
+            "speed": 8.0,
+        },
+        {
+            "start": "2026-10-20T21:05:00Z",
+            "seconds": 300,
+            "distance": 2400,
+            "avg": 152,
+            "max": 156,
+            "speed": 8.0,
+        },
+    ]
+    result = world.upload(tcx_file(sport="Biking", laps=laps), filename="ride.tcx")
+    (linked,) = result.record.activities
+    assert linked.activity_id == ride  # the TCX of the same ride enriches it
+    formats.upgrade()
+    report = world.ingestion.reprocess(SCOPE)
+    assert (report.reprocessed, report.activities) == (2, 1)

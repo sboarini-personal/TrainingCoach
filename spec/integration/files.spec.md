@@ -173,6 +173,7 @@ One observation per `session` message (part = session index).
 | swimming: `num_active_lengths` (else `num_lengths`), `pool_length` (pool only), `swim_stroke` | `swimming.lengthCount`, `environment.poolLengthMeters`, `swimming.strokeType` (`im` and `im_by_round` as MIXED) |
 | `sport`, `sub_sport` | classification (table below); `classification.providerType` = `fit:<sport>/<sub_sport>` |
 | `record` messages inside the session's time window | time series (section 8.5) |
+| (P9) a session's window runs from its start to its end, and stops before the next session's start, so a boundary message of a multisport file belongs to one session only | records, laps and lengths |
 
 Laps, lengths and `device_info` follow section 8.6. Not mapped: `avg_temperature` (the
 device's own sensor, not ambient temperature), calories, the heart-rate sensor type (a

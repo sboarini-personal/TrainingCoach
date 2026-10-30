@@ -290,3 +290,25 @@ def test_every_session_names_its_sport_and_streams(tmp_path: Path) -> None:
     (session,) = _decode(tmp_path, DetectedType.FIT, fit_file([_pool_swim()]))
     assert session.values["classification.sport"] is Sport.SWIMMING
     assert session.laps is None  # this swim has lengths but no lap messages
+
+
+@pytest.mark.req("INT-FIL-001")
+def test_a_multisport_file_keeps_each_session_its_own_laps_and_samples(tmp_path: Path) -> None:
+    bike_start = START + timedelta(seconds=600)  # the bike starts where the run ends
+    run_records, run = fit_session()
+    bike_records, bike = fit_session(start=bike_start, sport="cycling", distance_per_second=8.0)
+    data = fit_file(
+        [
+            ([*run_records[:-1], fit_lap(START, 600, 1800)], run),  # one record a second
+            ([*bike_records, fit_lap(bike_start, 600, 4800)], bike),
+        ]
+    )
+    first, second = _decode(tmp_path, DetectedType.FIT, data)  # no DISTANCE_ORDER any more
+    assert first.laps is not None
+    assert second.laps is not None
+    assert [lap.distance_meters for lap in first.laps.laps] == [1800.0]
+    assert [lap.distance_meters for lap in second.laps.laps] == [4800.0]
+    assert first.time_series is not None
+    assert second.time_series is not None
+    assert first.time_series.offset_seconds[-1] == 599.0  # the boundary record is the bike's
+    assert second.time_series.offset_seconds[0] == 0.0

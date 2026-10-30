@@ -26,7 +26,7 @@ from uuid import UUID, uuid4
 from coach.application.activities import ActivityService, RenormalisationRefusedError
 from coach.application.consent import ConsentGate
 from coach.application.contracts import LAPS_CODEC, LENGTHS_CODEC, TIME_SERIES_CODEC
-from coach.application.errors import ApplicationError
+from coach.application.errors import ApplicationError, NotFoundError
 from coach.application.events import EventName
 from coach.application.files import (
     DecodedSession,
@@ -330,7 +330,8 @@ class IngestionService:
         by_source: dict[UUID, list[Observation]] = {}
         for observation in self._activities.observations(scope):
             by_source.setdefault(observation.raw_source_id, []).append(observation)
-        reprocessed = rebuilt = 0
+        reprocessed = 0
+        rebuilt: set[UUID] = set()
         skipped: Counter[str] = Counter()
         outdated = [
             raw_source_id
@@ -340,7 +341,8 @@ class IngestionService:
         for done, raw_source_id in enumerate(outdated, start=1):
             stored = sorted(by_source[raw_source_id], key=lambda item: item.part)
             try:
-                rebuilt += len(self._reprocess_source(scope, raw_source_id, stored))
+                activities = self._reprocess_source(scope, raw_source_id, stored)
+                rebuilt.update(activity.activity_id for activity in activities)
                 reprocessed += 1
             except _Skip as skip:
                 skipped[skip.reason] += 1
@@ -351,13 +353,17 @@ class IngestionService:
             EventName.ACTIVITY_REPROCESSED,
             {"reprocessed": str(reprocessed), "skipped": str(sum(skipped.values()))},
         )
-        return ReprocessReport(reprocessed, up_to_date, rebuilt, dict(skipped))
+        return ReprocessReport(reprocessed, up_to_date, len(rebuilt), dict(skipped))
 
     def _reprocess_source(
         self, scope: OwnerScope, raw_source_id: UUID, stored: Sequence[Observation]
     ) -> list[Activity]:
-        source = self._raw_sources.get(scope, raw_source_id)
-        path = self._quarantine.put(self._raw.read(scope, raw_source_id))
+        try:
+            source = self._raw_sources.get(scope, raw_source_id)
+            data = self._raw.read(scope, raw_source_id)
+        except (NotFoundError, RuntimeError):  # missing, or no longer matching its hash
+            raise _Skip("RAW_UNAVAILABLE") from None
+        path = self._quarantine.put(data)
         try:
             sessions = self._formats.decode(
                 path, source.detected_type, self.limits, received_at=source.received_at

@@ -8,6 +8,7 @@ mapping to canonical fields happens in the parent (spec/integration/files.spec.m
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, cast
@@ -144,12 +145,30 @@ def _session(index: int, message: dict[str, Any], manufacturer: str | None) -> S
     return data
 
 
-def _samples(data: SessionData, records: list[dict[str, Any]], end: datetime | None) -> None:
+@dataclass(frozen=True, slots=True)
+class _Window:
+    """A session's time window: its start, its end (closed) and the next session's start
+    (open), so a boundary message of a multisport file belongs to one session only."""
+
+    start: datetime
+    end: datetime | None
+    following: datetime | None
+
+    def contains(self, moment: Any) -> datetime | None:
+        """The moment when it falls inside the window, else ``None``."""
+        if not isinstance(moment, datetime) or moment < self.start:
+            return None
+        if self.end is not None and moment > self.end:
+            return None
+        if self.following is not None and moment >= self.following:
+            return None
+        return moment
+
+
+def _samples(data: SessionData, records: list[dict[str, Any]], window: _Window) -> None:
     for record in records:
-        timestamp = record.get("timestamp")
-        if not isinstance(timestamp, datetime) or timestamp < data.start:
-            continue
-        if end is not None and timestamp > end:
+        timestamp = window.contains(record.get("timestamp"))
+        if timestamp is None:
             continue
         data.sample(
             (timestamp - data.start).total_seconds(),
@@ -162,19 +181,15 @@ def _samples(data: SessionData, records: list[dict[str, Any]], end: datetime | N
         )
 
 
-def _inside(message: dict[str, Any], data: SessionData, end: datetime | None) -> float | None:
+def _inside(message: dict[str, Any], window: _Window) -> float | None:
     """Offset of a lap or length that starts inside the session window, else ``None``."""
-    start = message.get("start_time")
-    if not isinstance(start, datetime) or start < data.start:
-        return None
-    if end is not None and start > end:
-        return None
-    return (start - data.start).total_seconds()
+    start = window.contains(message.get("start_time"))
+    return None if start is None else (start - window.start).total_seconds()
 
 
-def _laps(data: SessionData, laps: list[dict[str, Any]], end: datetime | None) -> None:
+def _laps(data: SessionData, laps: list[dict[str, Any]], window: _Window) -> None:
     for message in sorted(laps, key=_start_key):
-        offset = _inside(message, data, end)
+        offset = _inside(message, window)
         if offset is None:
             continue
         data.laps.append(
@@ -193,9 +208,9 @@ def _laps(data: SessionData, laps: list[dict[str, Any]], end: datetime | None) -
         )
 
 
-def _lengths(data: SessionData, lengths: list[dict[str, Any]], end: datetime | None) -> None:
+def _lengths(data: SessionData, lengths: list[dict[str, Any]], window: _Window) -> None:
     for message in sorted(lengths, key=_start_key):
-        offset = _inside(message, data, end)
+        offset = _inside(message, window)
         if offset is None:
             continue
         data.lengths.append(
@@ -254,14 +269,21 @@ def parse_fit(path: Path, limits: ParserLimits) -> dict[str, Any]:
     offset = _utc_offset_minutes(decoded.get("activity_mesgs", []))
     records = decoded.get("record_mesgs", [])
     sensors = _sensors(decoded.get("device_info_mesgs", []))
+    messages_of_sessions = decoded.get("session_mesgs", [])
+    starts = sorted(
+        start
+        for start in (message.get("start_time") for message in messages_of_sessions)
+        if isinstance(start, datetime)
+    )
     sessions = []
-    for index, message in enumerate(decoded.get("session_mesgs", [])):
+    for index, message in enumerate(messages_of_sessions):
         data = _session(index, message, manufacturer)
         data.utc_offset_minutes = offset
-        end = _window_end(message, data.start)
-        _samples(data, records, end)
-        _laps(data, decoded.get("lap_mesgs", []), end)
-        _lengths(data, decoded.get("length_mesgs", []), end)
+        following = next((start for start in starts if start > data.start), None)
+        window = _Window(data.start, _window_end(message, data.start), following)
+        _samples(data, records, window)
+        _laps(data, decoded.get("lap_mesgs", []), window)
+        _lengths(data, decoded.get("length_mesgs", []), window)
         data.sensors = list(sensors)
         sessions.append(data)
     return output(

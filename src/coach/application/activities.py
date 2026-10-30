@@ -230,10 +230,15 @@ class ActivityService:
         self._consents.require(scope, ConsentType.ACTIVITIES)
         raw = self._stores.raw_sources.get(scope, observation.raw_source_id)
         _check_observation_source(observation, raw)
-        self._stores.observations.add(scope, observation)
+        revised = self._store_observation(scope, observation)
         existing = self._stores.activities.find_by_source(scope, observation.key)
         if existing is not None:
             self._events.emit(EventName.INGESTION_DUPLICATE, {"tier": "1"})
+            if revised:
+                rebuilt = self._rebuild(scope, existing, existing.sources)
+                (existing,) = self._stores.activities.save(
+                    scope, [ActivityChange(rebuilt, existing.version)]
+                )
             self._ensure_review_issue(scope, existing)
             self._after_change(scope, existing)
             current = self._stores.activities.get(scope, existing.activity_id)
@@ -263,6 +268,30 @@ class ActivityService:
         created = self._create(scope, observation, ActivityStatus.ACTIVE, now)
         self._events.emit(EventName.ACTIVITY_CREATED, {"sport": created.sport.value})
         return IngestResult(created, IngestOutcome.CREATED)
+
+    def _store_observation(self, scope: OwnerScope, observation: Observation) -> bool:
+        """Store a source's observation; ``True`` when it became a new revision.
+
+        The same bytes imported again after a normaliser upgrade (deduplication tier 1) are
+        re-normalised as by ``coach activity reprocess`` (activities spec 1.1): a newer
+        version of the same session is added as a revision; one that no longer describes
+        the same session, or an older version, leaves the stored observation as it is.
+        """
+        try:
+            stored = self._stores.observations.get(scope, observation.key)
+        except NotFoundError:
+            self._stores.observations.add(scope, observation)
+            return False
+        if stored == observation:
+            return False
+        if stored.normaliser == observation.normaliser:
+            if supersedes(observation, stored) and same_session(observation, stored):
+                self._stores.observations.add_revision(scope, observation)
+                return True
+            if stored.normaliser_version != observation.normaliser_version:
+                return False
+        self._stores.observations.add(scope, observation)  # a real conflict: raises
+        return False
 
     @_atomic
     def renormalise(self, scope: OwnerScope, observations: Sequence[Observation]) -> list[Activity]:

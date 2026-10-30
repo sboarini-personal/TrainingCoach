@@ -53,15 +53,20 @@ runs `coach activity reprocess`:
   unchanged; corrections keep applying; per-activity metrics are recomputed and quality
   issues synchronised, as after any change.
 - Deduplication is not run again. A RAW source is skipped, with nothing changed and a reason
-  code, when its parse or normalisation now fails (`REJECTED`), when it now yields another
+  code, when its stored bytes are missing or no longer match their hash (`RAW_UNAVAILABLE`),
+  when its parse or normalisation now fails (`REJECTED`), when it now yields another
   number of sessions than it has observations (`SESSIONS_CHANGED`), or when a session's
   sport or start time differs from its observation (`IDENTITY_CHANGED`): the new observation
   would describe another activity.
 - One RAW source is one unit of work (ADR-027): its observations and activities change
   together or not at all. Observations already at the current version are untouched, so a
   second run changes nothing (idempotent).
-- It needs the ACTIVITIES consent, reports counts (reprocessed, up to date, skipped by
-  reason) and emits an event with those counts only. Stream blobs of replaced observations
+- The same bytes imported again after an upgrade (deduplication tier 1, for example a file
+  that comes back in another export) are re-normalised the same way on the way in: a newer
+  version of the same session becomes a revision, the activity is rebuilt, and the import
+  stays a DUPLICATE.
+- It needs the ACTIVITIES consent, reports counts (sources reprocessed, distinct activities
+  rebuilt, up to date, skipped by reason) and emits an event with those counts only. Stream blobs of replaced observations
   stay in the blob store (content-addressed) until privacy deletion.
 
 ## 2. Time model (FR-ACT-003, FR-ACT-004)
