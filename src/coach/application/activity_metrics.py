@@ -309,8 +309,10 @@ class ActivityMetricsEngine:
     def _compute_volume_load(
         self, scope: OwnerScope, view: Activity, streams: _Streams
     ) -> DerivedMetricValue | None:
-        """Volume load of a strength session's executed sets (strength spec 8): UNKNOWN when
-        no set has known repetitions and load; the sets left out are recorded."""
+        """Volume load of a strength session's executed sets (strength spec 8). A session
+        without a set of known repetitions and load has none (``None``: retired, it does not
+        qualify); one whose watch sets cannot be read is UNKNOWN; sets left out are recorded,
+        and a sum beyond the metric's range is UNKNOWN with SENSOR_QUALITY, never an error."""
         if view.sport is not Sport.STRENGTH:
             return None
         content = streams.content(StreamKind.SETS)
@@ -320,25 +322,42 @@ class ActivityMetricsEngine:
             if self._strength_sessions is None
             else self._strength_sessions(scope, view.activity_id)
         )
-        reasons: set[UncertaintyReason] = set()
-        if streams.ref(StreamKind.SETS) is not None and watch is None:
-            reasons.add(UncertaintyReason.MISSING_DATA)  # the watch's sets could not be read
+        used = session is None or session.use_watch_sets
+        unread = used and streams.ref(StreamKind.SETS) is not None and watch is None
         volume = strength.volume_load(reconcile(watch, session))
-        if volume.left_out:
+        if not volume.counted and not unread:
+            return None
+        reasons: set[UncertaintyReason] = set()
+        if unread or volume.left_out:
             reasons.add(UncertaintyReason.MISSING_DATA)
-        evidence = EvidenceRef(
-            EvidenceKind.STRENGTH_SET_RESULT, view.activity_id, field="strength.sets"
+        sets_ref = EvidenceRef(
+            EvidenceKind.STRENGTH_SET_RESULT,
+            view.activity_id,
+            field="strength.sets",
+            note=None if session is None else f"session {session.session_id} v{session.version}",
         )
+        watch_ref = streams.evidence(StreamKind.SETS) if used else sets_ref
+        values = {
+            "volume_load_kg": volume.kilograms if volume.counted else None,
+            "sets_counted": float(volume.counted) if volume.counted else None,
+            "sets_left_out": float(volume.left_out),
+        }
+        specs = {spec.name: spec for spec in STR_VOLUME_LOAD.required_inputs}
+        for name, value in values.items():
+            if value is None:
+                continue
+            try:
+                specs[name].check(value)
+            except DomainValidationError:  # an implausible file: unknown, never an error
+                values[name] = None
+                reasons.add(UncertaintyReason.SENSOR_QUALITY)
         confidence = view.quality.confidence
-        known = volume.counted > 0
         inputs = {
             "volume_load_kg": MetricInput(
-                volume.kilograms if known else None, evidence, confidence, frozenset(reasons)
+                values["volume_load_kg"], watch_ref, confidence, frozenset(reasons)
             ),
-            "sets_counted": MetricInput(
-                float(volume.counted) if known else None, evidence, confidence
-            ),
-            "sets_left_out": MetricInput(float(volume.left_out), evidence, confidence),
+            "sets_counted": MetricInput(values["sets_counted"], sets_ref, confidence),
+            "sets_left_out": MetricInput(values["sets_left_out"], sets_ref, confidence),
         }
         return self._metrics.compute(
             scope, STR_VOLUME_LOAD.metric_id, MetricSubject.activity(view.activity_id), inputs

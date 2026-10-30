@@ -58,6 +58,19 @@ TENNIS_REGIONS: Final = (
     BodyRegion.SHOULDERS,
     BodyRegion.ELBOWS,
 )
+# The regions a heavy session usually loads, when its exercises are unknown.
+DEFAULT_LOWER_REGIONS: Final = frozenset(
+    {BodyRegion.QUADRICEPS, BodyRegion.HAMSTRINGS, BodyRegion.GLUTES, BodyRegion.KNEES}
+)
+DEFAULT_UPPER_REGIONS: Final = frozenset(
+    {
+        BodyRegion.PECTORALS,
+        BodyRegion.LATS,
+        BodyRegion.DELTOIDS,
+        BodyRegion.SHOULDERS,
+        BodyRegion.ELBOWS,
+    }
+)
 LOWER_REGIONS: Final = frozenset(
     {
         BodyRegion.QUADRICEPS,
@@ -147,21 +160,29 @@ class InterferenceAssessment:
 
 
 def strength_demands(
-    sets: Iterable[StrengthSetResult], catalogue: ExerciseCatalogue
+    sets: Iterable[StrengthSetResult],
+    catalogue: ExerciseCatalogue,
+    *,
+    incomplete: bool = False,
 ) -> tuple[frozenset[Demand], frozenset[Demand], frozenset[BodyRegion]]:
     """Demands, possible demands and loaded regions of a strength session's executed sets.
 
     Heavy: at least 3 hard sets (strength spec 8) of lower-body (or upper-body) patterns;
-    possible when hard and unknown-effort sets together reach 3. Plyometric: a HIGH_IMPACT
-    exercise. Calf and Achilles intensive: at least 3 sets of an exercise whose primary
-    muscles include the calves or soleus.
+    possible when hard, unknown-effort and unnamed sets together could reach 3. Plyometric: a
+    HIGH_IMPACT exercise. Calf and Achilles intensive: at least 3 sets of exercises whose
+    primary muscles include the calves or soleus. A set whose exercise the watch did not name
+    could be any of them; an ``incomplete`` session (its sets cannot be read, or none were
+    recorded) possibly demands all of them. Never dismissed for lack of data (spec 7).
     """
     hard = {"lower": 0, "upper": 0}
     unknown = {"lower": 0, "upper": 0}
-    plyometric, calf_sets = False, 0
+    plyometric, calf_sets, unnamed, unnamed_effortful = False, 0, 0, 0
     regions: set[BodyRegion] = set()
     for item in sets:
+        effort = is_hard(item)
         if item.exercise_id is None or item.exercise_id not in catalogue:
+            unnamed += 1
+            unnamed_effortful += effort is not False
             continue
         exercise = catalogue.get(item.exercise_id)
         regions |= regions_loaded(exercise)
@@ -177,21 +198,30 @@ def strength_demands(
         )
         if half is None:
             continue
-        effort = is_hard(item)
         if effort:
             hard[half] += 1
         elif effort is None:
             unknown[half] += 1
     demands, possible = set(), set()
-    for half, demand in (("lower", Demand.HEAVY_LOWER_BODY), ("upper", Demand.HEAVY_UPPER_BODY)):
+    halves = (
+        ("lower", Demand.HEAVY_LOWER_BODY, DEFAULT_LOWER_REGIONS),
+        ("upper", Demand.HEAVY_UPPER_BODY, DEFAULT_UPPER_REGIONS),
+    )
+    for half, demand, default_regions in halves:
         if hard[half] >= HEAVY_HARD_SETS:
             demands.add(demand)
-        elif hard[half] + unknown[half] >= HEAVY_HARD_SETS:
+        elif incomplete or hard[half] + unknown[half] + unnamed_effortful >= HEAVY_HARD_SETS:
             possible.add(demand)
+            if hard[half] + unknown[half] == 0:  # nothing known of that half: its usual regions
+                regions |= default_regions
     if plyometric:
         demands.add(Demand.PLYOMETRIC)
+    elif incomplete or unnamed:
+        possible.add(Demand.PLYOMETRIC)
     if calf_sets >= INTENSIVE_CALF_SETS:
         demands.add(Demand.CALF_ACHILLES_INTENSIVE)
+    elif incomplete or calf_sets + unnamed >= INTENSIVE_CALF_SETS:
+        possible.add(Demand.CALF_ACHILLES_INTENSIVE)
     return frozenset(demands), frozenset(possible), frozenset(regions)
 
 
@@ -227,13 +257,17 @@ def _by_rpe(demand: Demand, rpe: float | None) -> tuple[set[Demand], set[Demand]
 
 
 def run_demands(
-    *, rpe: float | None, elapsed_seconds: float | None, structured_intervals: bool
+    *, rpe: float | None, elapsed_seconds: float | None, structured_intervals: bool | None
 ) -> tuple[frozenset[Demand], frozenset[Demand]]:
-    """Hard intervals: a structured interval session (running spec 4.3) at RPE 7 or more
-    (possible with RPE unknown); long run: 90 minutes or more."""
+    """Hard intervals: a structured interval session (running spec 4.3) at RPE 7 or more,
+    possible with RPE unknown or laps that cannot be read (``None``); long run: 90 minutes or
+    more."""
     demands, possible = (
-        _by_rpe(Demand.HARD_INTERVALS, rpe) if structured_intervals else (set(), set())
+        _by_rpe(Demand.HARD_INTERVALS, rpe) if structured_intervals is not False else (set(), set())
     )
+    if structured_intervals is None:
+        possible |= demands
+        demands = set()
     if elapsed_seconds is not None and elapsed_seconds >= LONG_RUN_SECONDS:
         demands.add(Demand.LONG_RUN)
     return frozenset(demands), frozenset(possible)

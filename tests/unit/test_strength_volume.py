@@ -145,7 +145,9 @@ def test_the_volume_load_of_a_session_follows_its_executed_sets() -> None:
     activity_id = gym(world, watch())
     first = volume(world, activity_id)
     assert (first.status, first.value) == (DerivedStatus.COMPUTED, 3 * 8 * 60.0)
-    assert first.inputs[0].evidence.kind is EvidenceKind.STRENGTH_SET_RESULT
+    assert first.inputs[0].evidence.kind is EvidenceKind.RAW_SOURCE  # the SETS stream
+    assert first.inputs[0].evidence.note == f"sha256 {SETS_SHA}"
+    assert first.inputs[1].evidence.kind is EvidenceKind.STRENGTH_SET_RESULT
     world.strength.record(SCOPE, activity_id, entry(number=3, completed_reps=5, actual_rpe=9.5))
     corrected = volume(world, activity_id)
     assert corrected.value == (8 + 8 + 5) * 60.0  # the athlete's correction is recomputed
@@ -163,13 +165,12 @@ def test_the_volume_load_of_a_session_follows_its_executed_sets() -> None:
 
 
 @pytest.mark.req("FR-STR-008", "FR-PRF-002")
-def test_without_known_sets_the_volume_load_is_unknown_never_estimated() -> None:
+def test_without_known_sets_there_is_no_volume_load_and_unread_sets_are_unknown() -> None:
     world = World()
     no_load = gym(world, watch(loads=(None, None, None)))
-    unknown = volume(world, no_load)
-    assert (unknown.status, unknown.value) == (DerivedStatus.MISSING_INPUT, None)
+    assert volume(world, no_load) is None  # it does not qualify: never estimated
     no_sets = gym(world, None, day=1)
-    assert volume(world, no_sets).status is DerivedStatus.MISSING_INPUT
+    assert volume(world, no_sets) is None
     unreadable = gym(world, watch(), day=2, sha="7" * 64)
     del world.segments["7" * 64]
     world.service.refresh(SCOPE, unreadable)
@@ -178,6 +179,12 @@ def test_without_known_sets_the_volume_load_is_unknown_never_estimated() -> None
     assert UncertaintyReason.MISSING_DATA in damaged.uncertainty_reasons
     run = world.ingest(sample_observation()).activity.activity_id
     assert volume(world, run) is None  # not a strength activity
+    huge = gym(world, watch(loads=(600.0, 600.0)), day=3, sha="a" * 64)
+    world.strength.record(SCOPE, huge, entry(number=1, completed_reps=1000))
+    world.strength.record(SCOPE, huge, entry(number=2, completed_reps=1000))
+    implausible = volume(world, huge)  # 1,200,000 kg: beyond the range, never an error
+    assert (implausible.status, implausible.value) == (DerivedStatus.MISSING_INPUT, None)
+    assert UncertaintyReason.SENSOR_QUALITY in implausible.uncertainty_reasons
 
 
 # --------------------------------------------------------------------------- week
@@ -244,11 +251,40 @@ def test_unknown_effort_and_unknown_exercises_are_reported_not_assumed() -> None
     report = analytics(world).strength_week(SCOPE, WEEK)
     assert (report.sets, report.unattributed) == (4, 1)
     quads = next(item.hard_sets for item in report.muscles if item.muscle is MuscleGroup.QUADRICEPS)
-    assert quads.value.status is DerivedStatus.MISSING_INPUT  # two sets of unknown effort
-    assert (quads.known_total, quads.unknown) == (1.0, 2)
+    # two sets of unknown effort, and the unnamed squat that may have worked them
+    assert quads.value.status is DerivedStatus.MISSING_INPUT
+    assert (quads.known_total, quads.unknown) == (1.0, 3)
     world.strength.use_watch_sets(SCOPE, activity_id, False)
     world.strength.remove(SCOPE, activity_id, "ex.back_squat", 1)
     empty = analytics(world).strength_week(SCOPE, WEEK)
     assert (empty.sets, empty.muscles) == (0, ())
     subject = MetricSubject(MetricSubject.week(START.date()).kind, WEEK, "QUADRICEPS")
     assert world.metrics.current(SCOPE, "str.weekly_sets_by_muscle", subject) is None  # retired
+
+
+@pytest.mark.req("FR-STR-008", "FR-MET-005", "FR-PRF-002")
+def test_the_weeks_volume_leaves_out_sessions_without_loads_and_flags_unread_sets() -> None:
+    world = World()
+    loaded = gym(world, watch())
+    unloaded = gym(world, watch(loads=(None, None, None)), day=1, sha="b" * 64)
+    report = analytics(world).strength_week(SCOPE, WEEK)
+    assert report.volume_load is not None
+    assert (report.volume_load.value.value, report.volume_load.left_out) == (3 * 8 * 60.0, 1)
+    for number in (1, 2, 3):
+        world.strength.record(SCOPE, loaded, entry(number=number, actual_rpe=8.0))
+        world.strength.record(SCOPE, unloaded, entry(number=number, actual_rpe=8.0))
+    unread = gym(world, watch(), day=2, sha="c" * 64)
+    del world.segments["c" * 64]
+    world.service.refresh(SCOPE, unread)
+    report = analytics(world).strength_week(SCOPE, WEEK)
+    assert report.unread == 1
+    quads = next(item.hard_sets for item in report.muscles if item.muscle is MuscleGroup.QUADRICEPS)
+    assert (quads.value.status, quads.known_total, quads.unknown) == (
+        DerivedStatus.MISSING_INPUT,
+        6.0,
+        1,
+    )
+    assert report.volume_load is not None
+    assert report.volume_load.value.status is DerivedStatus.MISSING_INPUT  # unread: unknown
+    empty = analytics(world).strength_week(SCOPE, "2026-W45")
+    assert (empty.activities, empty.volume_load) == (0, None)

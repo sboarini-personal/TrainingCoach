@@ -50,6 +50,7 @@ from coach.domain.activity.fields import StreamKind
 from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.athlete.settings import AnalysisSettings
+from coach.domain.coaching.state import Condition
 from coach.domain.common.time import parse_timezone
 from coach.domain.integration.status import IntegrationStatus
 from coach.infrastructure.blobs import BlobIntegrityError, FileBlobStore
@@ -265,6 +266,12 @@ def build_runtime(
         clock=clock,
         batch=database.batch,
     )
+    conditions = CoachingConditions(
+        SqliteAggregateRepository(database, COACHING_STATE_CODEC),
+        audit=audit,
+        events=events,
+        clock=clock,
+    )
     analytics = AnalyticsService(
         activities=activities,
         store=activity_store,
@@ -273,6 +280,7 @@ def build_runtime(
         consents=gate,
         strength=strength,
         streams=read_stream,
+        safety_hold=lambda scope: Condition.SAFETY_HOLD in conditions.current(scope).conditions,
         batch=database.batch,
     )
     ingestion_records = SqliteIngestionRecordRepository(database)
@@ -293,12 +301,6 @@ def build_runtime(
         provider_records={"garmin": GarminActivityRecords()},
     )
     integrations = SqliteAggregateRepository(database, INTEGRATION_STATUS_CODEC)
-    conditions = CoachingConditions(
-        SqliteAggregateRepository(database, COACHING_STATE_CODEC),
-        audit=audit,
-        events=events,
-        clock=clock,
-    )
     sync = SyncService(
         providers=garmin_providers(credentials, transport or UrllibTransport(), clock),
         statuses=integrations,

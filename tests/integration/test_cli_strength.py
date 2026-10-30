@@ -158,9 +158,17 @@ def test_the_strength_week_reports_hard_sets_and_volume_load(cli: Cli, tmp_path:
     lines = output.splitlines()
     assert lines[0] == "week 2026-W43 (2026-10-19 to 2026-10-25): 1 strength sessions, 3 sets"
     assert lines[1] == "volume load 1220 kg"  # 8 x 60 + 8 x 62.5 + 12 x 20
-    assert "  QUADRICEPS       1 sets" in lines
-    assert "  HAMSTRINGS       0.5 sets" in lines
+    # the unnamed squat may have been a hard set for any muscle group: totals are partial
+    assert "  QUADRICEPS       >= 1 sets (1 of unknown effort)" in lines
     assert lines[-1] == "1 sets of an exercise the watch did not name (coach strength relabel)"
+    assert cli.run("strength", "relabel", activity, "fit:squat", "ex.goblet_squat")[0] == 0
+    code, output = cli.run(
+        "strength", "log", activity, "ex.goblet_squat", "--set", "1", "--rpe", "5"
+    )
+    assert code == 0, output
+    lines = cli.run("strength", "week", "--week", "2026-W43")[1].splitlines()
+    assert "  QUADRICEPS       1 sets" in lines  # one hard back squat set; the goblet set was easy
+    assert "  HAMSTRINGS       0.5 sets" in lines
     code, output = cli.run("load", "week", "--week", "2026-W43")
     assert code == 0, output
     assert "volume load 1220 kg" in output

@@ -113,6 +113,5 @@ UPPER_BODY_PATTERNS: Final = frozenset(
         MovementPattern.VERTICAL_PUSH,
         MovementPattern.HORIZONTAL_PULL,
         MovementPattern.VERTICAL_PULL,
-        MovementPattern.SCAPULAR_STABILITY,
     }
-)
+)  # strength spec 2: SCAPULAR_STABILITY and LOADED_CARRY are "additional", not upper body

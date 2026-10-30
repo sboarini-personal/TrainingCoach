@@ -97,7 +97,8 @@ contract 1.1.0):
   from the catalogue exercise and checked against it); its alternatives are catalogue
   exercises of the same movement pattern, never itself.
 - Sets 1 to 20, a repetition range within 1 to 100, rest 0 to 900 s, tempo as four digits or
-  X; a workout lasts 1 minute to 3 hours and has at least one exercise.
+  X; a workout lasts 1 minute to 3 hours and has at least one exercise. Counts and durations
+  are whole numbers (a JSON 3.0 reads as 3; 3.5 or a boolean is refused).
 - Load: ABSOLUTE_KG (above 0, at most 1000), PERCENT_1RM (above 0, at most 100), RPE_BASED
   (the load that gives the target RPE or RIR, so it needs one) or BODYWEIGHT; the last two
   state no value.
@@ -165,19 +166,23 @@ Rules 1.0.0 (P10, precision of this section):
 - An exposure is an ACTIVE strength activity in which the exercise has executed sets
   (section 5). The decision reads the last two exposures within the weeks it covers (12 by
   default) and each one's sets against their own targets (the athlete's targets until planned
-  workouts exist, P12): repetitions met when every set with a target reached it; the RPE gap
-  is the actual RPE minus the target. An actual RIR without an RPE reads as RPE 10 - RIR
+  workouts exist, P12): targets met when every set with a target repetition count or load
+  reached it (a load below the target load misses it); the RPE gap is the actual RPE minus
+  the target. An actual RIR without an RPE reads as RPE 10 - RIR
   (section 8). An exposure is MET (repetitions met at or below the target RPE), MET_ABOVE_RPE
   (met, at most 1.5 above), MISSED (repetitions missed or more than 1.5 above, whatever else
   is unknown), REPS_MET (no target RPE), NO_TARGETS or UNKNOWN (a value its targets need is
   unknown).
-- Decision, in this order: REGRESS when pain was reported for a region the exercise loads
-  since the first of the two exposures (any ACTIVE activity's pain; regions of section 2);
-  INSUFFICIENT_DATA with fewer than two exposures; REGRESS when both were MISSED;
-  INSUFFICIENT_DATA when one has no targets or an unknown value; HOLD when one was MISSED;
-  INSUFFICIENT_DATA without a target RPE; PROGRESS when both were MET, except HOLD when pain
-  was reported whose location names no region; otherwise HOLD (targets met above the target
-  RPE, or not two exposures in a row met).
+- Decision, in this order: INSUFFICIENT_DATA without any exposure (pain then concerns no
+  exposure); REGRESS when pain was reported for a region the exercise loads since the first of
+  the last two exposures (the pain of any live activity, including one awaiting a duplicate
+  review; regions of section 2); INSUFFICIENT_DATA with fewer than two exposures, or when a
+  strength session whose watch sets cannot be read falls on or after the first of them (it
+  may be an exposure); REGRESS when both were MISSED; INSUFFICIENT_DATA when one has no
+  targets or an unknown value; HOLD when one was MISSED; INSUFFICIENT_DATA without a target
+  RPE; PROGRESS when both were MET, except HOLD during a SAFETY_HOLD, after pain of intensity
+  7 or more anywhere, or after pain whose location names no region; otherwise HOLD (targets
+  met above the target RPE, or not two exposures in a row met).
 - A pain location is the athlete's free text: it names a region only when, normalised like an
   alias, it is exactly one of the region names (English and Spanish, for example "rodilla"
   for KNEES); anything else names no region and is never interpreted. Such pain can block a
@@ -222,9 +227,14 @@ Rules 1.0.0 (P10, precision of this section; `coach.planning.interference`):
   more. Hard swim: session RPE 7 or more. Tennis: every tennis session; demanding when its
   regional load level is HIGH (tennis spec 4).
 - A demand that would hold only if an unknown value were high (effort without RIR or RPE, a
-  run or swim without RPE, a tennis level not computed) is *possible*. An assessment resting
-  on one keeps its level and carries MISSING_DATA: interference is never dismissed for lack
-  of data.
+  run or swim without RPE, a run's laps that cannot be read, a tennis level not computed) is
+  *possible*. So are the strength demands an unnamed set could complete (it may be any
+  exercise, at any effort unless its effort is known easy), and every strength demand of a
+  session whose sets cannot be read or that has none recorded; such a session is taken to
+  load the usual regions of a heavy session (lower body: quadriceps, hamstrings, glutes,
+  knees). An assessment resting on a possible demand keeps its level and carries
+  MISSING_DATA: interference is never dismissed for lack of data. Upper body means the four
+  push and pull patterns of section 2; SCAPULAR_STABILITY and LOADED_CARRY are not.
 - "Before" is start to start: within 24 hours (0 to 24 h) and 24 to 48 hours. The first
   three rules need the strength session first; the tennis, intervals and heavy legs rule
   needs the three within 48 hours in any order; the calf and Achilles rule applies in either
@@ -235,7 +245,9 @@ Rules 1.0.0 (P10, precision of this section; `coach.planning.interference`):
   with stated evidence; the assessment keeps its base level, the modifiers and their
   evidence. Recovery-state modifiers arrive with P11; the planner (P12) states them.
 - `coach strength interference [--days]` assesses the completed sessions of the last days
-  (with the 48 hours before them). Assessments are read models, not stored.
+  (with the 48 hours before them); the days are training days. A combination needs two or
+  three sessions: a single session's own mix (for example plyometrics and calf work in one
+  workout) is the prescription's to plan (P12). Assessments are read models, not stored.
 
 ## 8. Volume by muscle group (FR-STR-008)
 
@@ -248,9 +260,13 @@ Rules (P10, version 1.0.0 of both metrics):
 - Volume load (`str.volume_load`, per activity, STANDARD_CALCULATION: McBride et al. 2009,
   J Strength Cond Res 23(1):106-110) is the sum of repetitions x external load (kg) over the
   sets whose repetitions and load are both known. A bodyweight set adds 0 kg. Sets with an
-  unknown value are left out, counted in the value's inputs and flagged MISSING_DATA; with no
-  such set, the value is UNKNOWN (MISSING_INPUT). It is recomputed whenever the session or the
-  activity changes. Volume load does not compare protocols of different intensities (the
+  unknown value are left out, counted in the value's inputs and flagged MISSING_DATA. A
+  session without a set of known repetitions and load has no volume load: it does not qualify
+  (like a ride without measured power), and the week's total leaves it out and counts it. When
+  the watch's sets cannot be read the value is UNKNOWN (MISSING_INPUT, MISSING_DATA), and so is
+  the week's total; a sum beyond the metric's range is UNKNOWN with SENSOR_QUALITY, never an
+  error. Its evidence names the SETS stream's RAW source and the session's version. It is
+  recomputed whenever the session or the activity changes. Volume load does not compare protocols of different intensities (the
   reference's own caution). The week's volume load of STRENGTH is `str.volume_load_total`,
   shown with the other period totals (`coach load week`).
 - A hard set is a set taken close to failure: at most 4 repetitions in reserve when the RIR
@@ -262,7 +278,9 @@ Rules (P10, version 1.0.0 of both metrics):
   1, secondary 0.5) when the set was hard, 0 when it was not, UNKNOWN when its effort is. Like
   every total (metrics spec 4), one UNKNOWN contribution makes the value UNKNOWN; the report
   still shows the known part and the number of sets of unknown effort. Sets of an exercise the
-  watch did not name have no muscle group: they are counted apart. A muscle group no set worked
-  in the week has no value (a former one is retired).
+  watch did not name have no muscle group: they are counted apart, and each one that may have
+  been hard (its effort is not known easy) adds an UNKNOWN contribution to every muscle group's
+  value, as does every session whose watch sets cannot be read (also counted apart). A muscle
+  group no set worked in the week has no value (a former one is retired).
 - `coach strength week [--week]` shows the week's sessions, sets, volume load, hard sets per
-  muscle group and the unattributed sets.
+  muscle group, the unattributed sets and the sessions whose watch sets could not be read.

@@ -183,11 +183,10 @@ def strength_prescription_to_contract(prescription: StrengthPrescription) -> Jso
     }
 
 
-def _whole(value: Any) -> int:
+def _whole(value: Any) -> Any:
+    """JSON numbers like 3.0 are whole numbers; anything else is left to the domain checks."""
     if isinstance(value, float) and value.is_integer():
         return int(value)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError("a whole number is expected")
     return value
 
 
@@ -198,14 +197,14 @@ def _prescribed_from_contract(document: Document) -> PrescribedExercise:
         movement_pattern=MovementPattern(document["movementPattern"]),
         primary_muscles=tuple(MuscleGroup(item) for item in document["primaryMuscles"]),
         secondary_muscles=tuple(MuscleGroup(item) for item in document["secondaryMuscles"]),
-        sets=document["sets"],
+        sets=_whole(document["sets"]),
         reps_min=_whole(document["reps"]["min"]),
         reps_max=_whole(document["reps"]["max"]),
         load=Load(LoadKind(document["load"]["kind"]), _float(document["load"]["value"])),
         target_rpe=_float(document["targetRpe"]),
         target_rir=document["targetRir"],
         effort_cue=None if cue is None else EffortCue(cue),
-        rest_seconds=document["restSeconds"],
+        rest_seconds=_whole(document["restSeconds"]),
         tempo=document["tempo"],
         alternatives=tuple(document["alternatives"]),
     )
@@ -215,7 +214,7 @@ def strength_prescription_from_contract(document: Document) -> StrengthPrescript
     interference = document["expectedInterference"]
     return StrengthPrescription(
         purpose=document["purpose"],
-        estimated_duration_seconds=document["estimatedDurationSeconds"],
+        estimated_duration_seconds=_whole(document["estimatedDurationSeconds"]),
         warmup=tuple(document["warmup"]),
         exercises=tuple(_prescribed_from_contract(item) for item in document["exercises"]),
         progression_rule=document["progressionRule"],

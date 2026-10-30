@@ -1,15 +1,18 @@
 """Progression rules 1.0.0 (strength spec section 6; FR-STR-006).
 
 A decision about one exercise reads its execution history: the last two exposures (the
-sessions in which it was done), their sets against their targets, and pain reported in the
-period they cover. It never reads planned workouts alone and never assumes a value it does
-not have: without targets or with unknown values the decision is INSUFFICIENT_DATA.
+sessions in which it was done), their sets against their targets, and pain reported since
+the first of them. It never reads planned workouts alone and never assumes a value it does
+not have: without targets, with unknown values, or when a session whose sets cannot be read
+may be one of the two, the decision is INSUFFICIENT_DATA.
 
-- PROGRESS: both exposures met their target repetitions at or below their target RPE.
-- HOLD: targets met with RPE above target, or not two exposures in a row met.
-- REGRESS: repetitions missed or RPE above target by more than 1.5 in both exposures, or pain
+- PROGRESS: both exposures met their targets (repetitions and load) at or below their target
+  RPE, with no SAFETY_HOLD, no severe pain and no pain of an unnamed location.
+- HOLD: targets met with RPE above target, not two exposures in a row met, or a progression
+  blocked by safety or pain.
+- REGRESS: targets missed or RPE above target by more than 1.5 in both exposures, or pain
   reported for a region the exercise loads. Pain whose location names no region blocks a
-  progression (HOLD) but cannot regress an exercise it may not concern.
+  progression but cannot regress an exercise it may not concern.
 
 RPE is the RIR-based scale: an actual RIR without an RPE reads as RPE 10 - RIR.
 """
@@ -33,6 +36,7 @@ PROGRESSION_RULES_VERSION: Final = "1.0.0"
 RPE_OVERSHOOT: Final = 1.5
 MAX_RPE: Final = 10.0
 EXPOSURES: Final = 2
+SEVERE_PAIN: Final = 7  # intensity from which pain anywhere blocks a progression
 
 
 class Decision(StrEnum):
@@ -45,10 +49,10 @@ class Decision(StrEnum):
 class Outcome(StrEnum):
     """One exposure against its targets."""
 
-    MET = "MET"  # target repetitions met at or below the target RPE
+    MET = "MET"  # target repetitions and load met at or below the target RPE
     MET_ABOVE_RPE = "MET_ABOVE_RPE"  # met, RPE above target by at most 1.5
-    REPS_MET = "REPS_MET"  # repetitions met; no RPE target to judge the effort by
-    MISSED = "MISSED"  # repetitions missed, or RPE above target by more than 1.5
+    REPS_MET = "REPS_MET"  # targets met; no RPE target to judge the effort by
+    MISSED = "MISSED"  # repetitions or load missed, or RPE above target by more than 1.5
     NO_TARGETS = "NO_TARGETS"
     UNKNOWN = "UNKNOWN"  # a value the targets need is unknown
 
@@ -61,6 +65,8 @@ class Reason(StrEnum):
     TWO_EXPOSURES_MISSED = "TWO_EXPOSURES_MISSED"
     PAIN_IN_REGION = "PAIN_IN_REGION"
     PAIN_REGION_UNKNOWN = "PAIN_REGION_UNKNOWN"
+    PAIN_SEVERE = "PAIN_SEVERE"
+    SAFETY_HOLD = "SAFETY_HOLD"
     FEWER_THAN_TWO_EXPOSURES = "FEWER_THAN_TWO_EXPOSURES"
     NO_TARGETS = "NO_TARGETS"
     NO_TARGET_RPE = "NO_TARGET_RPE"
@@ -99,16 +105,23 @@ def actual_rpe(item: StrengthSetResult) -> float | None:
     return None if item.actual_rir is None else MAX_RPE - item.actual_rir
 
 
+def _below(actual: float | None, target: float | None) -> bool:
+    return actual is not None and target is not None and actual < target
+
+
 def outcome(sets: Iterable[StrengthSetResult]) -> Outcome:
     targeted = [
-        item for item in sets if item.target_reps is not None or item.target_rpe is not None
+        item
+        for item in sets
+        if item.target_reps is not None
+        or item.target_rpe is not None
+        or item.target_load_kg is not None
     ]
     if not targeted:
         return Outcome.NO_TARGETS
     missed = any(
-        item.target_reps is not None
-        and item.completed_reps is not None
-        and item.completed_reps < item.target_reps
+        _below(item.completed_reps, item.target_reps)
+        or _below(item.actual_load_kg, item.target_load_kg)
         for item in targeted
     )
     overshoots = [
@@ -120,6 +133,7 @@ def outcome(sets: Iterable[StrengthSetResult]) -> Outcome:
         return Outcome.MISSED  # a known failure, whatever else is unknown
     unknown = any(
         (item.target_reps is not None and item.completed_reps is None)
+        or (item.target_load_kg is not None and item.actual_load_kg is None)
         or (item.target_rpe is not None and actual_rpe(item) is None)
         for item in targeted
     )
@@ -135,20 +149,22 @@ def _pain_evidence(report: PainReport) -> EvidenceRef:
 
 
 def decide(
-    exercise: Exercise, exposures: Sequence[Exposure], pains: Sequence[PainReport]
+    exercise: Exercise,
+    exposures: Sequence[Exposure],
+    pains: Sequence[PainReport],
+    *,
+    unread: Sequence[date] = (),
+    safety_hold: bool = False,
 ) -> ProgressionDecision:
-    """The decision for one exercise; ``exposures`` in time order, ``pains`` reported in the
-    period from the first of the last two exposures on (the caller selects it)."""
+    """The decision for one exercise. ``pains`` are every pain report of the period (only
+    those since the first of the last two exposures count); ``unread`` are the training days
+    of strength sessions whose sets could not be read (any may be an exposure)."""
     recent = tuple(sorted(exposures, key=lambda item: item.training_day)[-EXPOSURES:])
     judged = tuple((item, outcome(item.sets)) for item in recent)
     evidence = [
         EvidenceRef(EvidenceKind.STRENGTH_SET_RESULT, item.activity_id, note=exercise.exercise_id)
         for item in recent
     ]
-    loaded = regions_loaded(exercise)
-    flagged = [report for report in pains if report.pain.flag]
-    in_region = [report for report in flagged if region_named(report.pain.location) in loaded]
-    unnamed = [report for report in flagged if region_named(report.pain.location) is None]
 
     def result(
         decision: Decision, *reasons: Reason, pain: Sequence[PainReport] = ()
@@ -156,10 +172,20 @@ def decide(
         refs = (*evidence, *(_pain_evidence(report) for report in pain))
         return ProgressionDecision(exercise.exercise_id, decision, reasons, judged, refs)
 
+    if not recent:
+        return result(Decision.INSUFFICIENT_DATA, Reason.FEWER_THAN_TWO_EXPOSURES)
+    since = recent[0].training_day
+    loaded = regions_loaded(exercise)
+    flagged = [item for item in pains if item.pain.flag and item.training_day >= since]
+    in_region = [item for item in flagged if region_named(item.pain.location) in loaded]
+    unnamed = [item for item in flagged if region_named(item.pain.location) is None]
+    severe = [item for item in flagged if (item.pain.intensity or 0) >= SEVERE_PAIN]
     if in_region:
         return result(Decision.REGRESS, Reason.PAIN_IN_REGION, pain=in_region)
     if len(judged) < EXPOSURES:
         return result(Decision.INSUFFICIENT_DATA, Reason.FEWER_THAN_TWO_EXPOSURES)
+    if any(day >= since for day in unread):
+        return result(Decision.INSUFFICIENT_DATA, Reason.MISSING_VALUES)
     outcomes = [found for _, found in judged]
     if all(found is Outcome.MISSED for found in outcomes):
         return result(Decision.REGRESS, Reason.TWO_EXPOSURES_MISSED)
@@ -172,6 +198,10 @@ def decide(
     if Outcome.REPS_MET in outcomes:
         return result(Decision.INSUFFICIENT_DATA, Reason.NO_TARGET_RPE)
     if all(found is Outcome.MET for found in outcomes):
+        if safety_hold:
+            return result(Decision.HOLD, Reason.SAFETY_HOLD)
+        if severe:
+            return result(Decision.HOLD, Reason.PAIN_SEVERE, pain=severe)
         if unnamed:
             return result(Decision.HOLD, Reason.PAIN_REGION_UNKNOWN, pain=unnamed)
         return result(Decision.PROGRESS, Reason.TWO_EXPOSURES_MET)

@@ -106,7 +106,8 @@ watch names without an exact catalogue equivalent stays unknown until you name i
 `coach strength relabel`. Your entries (`coach strength log`) correct the watch set of the
 same exercise and set number, or add a set; RPE and RIR come only from you, and you can
 ignore the watch's sets for a session (`coach strength watch-sets <id> ignore`). Volume
-load counts sets with known repetitions and load; a hard set is RIR 4 or less, else RPE 6
+load counts sets with known repetitions and load (a session without any is left out of the
+week's total and counted); a hard set is RIR 4 or less, else RPE 6
 or more, so sets without either show as unknown effort in `coach strength week`.
 `coach strength progress` needs targets (`--target-reps`, `--target-rpe`) to decide;
 `coach strength interference` flags combinations such as heavy legs the day before hard

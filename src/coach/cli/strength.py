@@ -178,6 +178,8 @@ def _target(item: StrengthSetResult) -> str:
 def _show(found: SessionSets, out: TextIO) -> None:
     view = found.activity
     watch = "none" if found.watch is None else "used"
+    if found.watch_unreadable:
+        watch = "could not be read (sets missing)"
     if found.session is not None and not found.session.use_watch_sets:
         watch = "ignored"
     print(f"activity {view.activity_id}  {view.training_day}  watch sets: {watch}", file=out)
@@ -297,6 +299,11 @@ def week(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
             "(coach strength relabel)",
             file=out,
         )
+    if report.unread:
+        print(
+            f"{report.unread} sessions whose watch sets could not be read: totals incomplete",
+            file=out,
+        )
     return 0
 
 
@@ -308,6 +315,8 @@ _REASONS = {
     Reason.TWO_EXPOSURES_MISSED: "reps missed or RPE over target + 1.5 in the last two sessions",
     Reason.PAIN_IN_REGION: "pain reported for a region this exercise loads",
     Reason.PAIN_REGION_UNKNOWN: "pain reported without a region it names: no progression",
+    Reason.PAIN_SEVERE: "pain of 7 or more reported: no progression",
+    Reason.SAFETY_HOLD: "a safety hold is active: no progression",
     Reason.FEWER_THAN_TWO_EXPOSURES: "fewer than two sessions with this exercise",
     Reason.NO_TARGETS: "a session has no targets (coach strength log --target-reps --target-rpe)",
     Reason.NO_TARGET_RPE: "no target RPE to judge the effort by",

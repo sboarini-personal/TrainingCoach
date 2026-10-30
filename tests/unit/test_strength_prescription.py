@@ -144,3 +144,21 @@ def test_loads_and_workouts_state_what_they_need() -> None:
     broken = copy.deepcopy(example())
     broken["strength"]["exercises"][0]["effortCue"] = "VERY_HARD"
     assert validation_errors("workout", broken) != []
+
+
+@pytest.mark.req("FR-STR-004", "NFR-REL-004")
+def test_counts_are_whole_numbers_and_json_whole_floats_are_read_as_such() -> None:
+    for changes in ({"sets": 3.5}, {"sets": True}, {"rest_seconds": 90.5}, {"reps_min": 8.0}):
+        with pytest.raises(DomainValidationError, match="whole number"):
+            goblet(**changes)
+    fractional: Any = 1800.5  # as an untyped document could hold
+    with pytest.raises(DomainValidationError, match="whole number"):
+        replace(workout(), estimated_duration_seconds=fractional)
+    block = example()["strength"]
+    block["exercises"][0]["sets"] = 3.0  # valid JSON for an integer
+    block["estimatedDurationSeconds"] = 2700.0
+    decoded = strength_prescription_from_contract(block)
+    assert (decoded.exercises[0].sets, decoded.estimated_duration_seconds) == (3, 2700)
+    block["exercises"][0]["sets"] = 3.5
+    with pytest.raises(DomainValidationError):
+        strength_prescription_from_contract(block)

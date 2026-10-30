@@ -3,6 +3,7 @@ Synthetic data only."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
@@ -12,6 +13,7 @@ import pytest
 from activity_world import SCOPE, World
 from coach.application.analytics import AnalyticsService
 from coach.application.consent import ConsentRequiredError
+from coach.domain.activity.activity import ActivityStatus
 from coach.domain.activity.fields import Pain
 from coach.domain.activity.observation import SourceKind
 from coach.domain.common.errors import DomainValidationError
@@ -121,8 +123,10 @@ def test_the_last_two_exposures_decide(
     assert all(ref.kind is EvidenceKind.STRENGTH_SET_RESULT for ref in found.evidence)
 
 
-def pain(location: str | None, *, flag: bool = True) -> PainReport:
-    return PainReport(UUID(int=99), DAY + timedelta(days=4), Pain(flag, 3, location))
+def pain(
+    location: str | None, *, flag: bool = True, intensity: int = 3, days: int = 4
+) -> PainReport:
+    return PainReport(UUID(int=99), DAY + timedelta(days=days), Pain(flag, intensity, location))
 
 
 @pytest.mark.req("FR-STR-006")
@@ -137,7 +141,8 @@ def test_pain_for_a_region_the_exercise_loads_regresses_it() -> None:
     assert decide(SQUAT, exposures(MET, MET), [pain("rodilla", flag=False)]).decision is (
         Decision.PROGRESS
     )
-    assert decide(SQUAT, [], [pain("knees")]).decision is Decision.REGRESS
+    # never done in the window: nothing to regress, whatever pain was reported
+    assert decide(SQUAT, [], [pain("knees")]).reasons == (Reason.FEWER_THAN_TWO_EXPOSURES,)
 
 
 @pytest.mark.req("FR-STR-006", "FR-STR-007", "FR-PRF-002")
@@ -222,3 +227,61 @@ def test_decisions_read_the_executed_sets_and_the_pain_of_any_activity() -> None
     world.consents.revoke(SCOPE, ConsentType.ACTIVITIES)
     with pytest.raises(ConsentRequiredError):
         analytics(world).progression(SCOPE, until=until)
+
+
+@pytest.mark.req("FR-STR-006")
+def test_safety_severe_pain_and_unread_sessions_never_let_an_exercise_progress() -> None:
+    both_met = exposures(MET, MET)
+    held = decide(SQUAT, both_met, [], safety_hold=True)
+    assert (held.decision, held.reasons) == (Decision.HOLD, (Reason.SAFETY_HOLD,))
+    severe = decide(SQUAT, both_met, [pain("codo", intensity=8)])
+    assert (severe.decision, severe.reasons) == (Decision.HOLD, (Reason.PAIN_SEVERE,))
+    old = decide(SQUAT, both_met, [pain("codo", intensity=8, days=-10)])
+    assert old.decision is Decision.PROGRESS  # before the first of the two exposures
+    unread = decide(SQUAT, both_met, [], unread=[DAY + timedelta(days=5)])
+    assert (unread.decision, unread.reasons) == (
+        Decision.INSUFFICIENT_DATA,
+        (Reason.MISSING_VALUES,),
+    )
+    assert decide(SQUAT, both_met, [], unread=[DAY - timedelta(days=1)]).decision is (
+        Decision.PROGRESS
+    )
+
+
+@pytest.mark.req("FR-STR-006")
+def test_a_load_below_its_target_misses_the_target() -> None:
+    light = StrengthSetResult(
+        exercise_id="ex.back_squat",
+        set_number=1,
+        recorded_at=NOW,
+        source=SetSource.ATHLETE,
+        completed_reps=8,
+        target_reps=8,
+        actual_load_kg=80.0,
+        target_load_kg=100.0,
+        actual_rpe=7.0,
+        target_rpe=7.5,
+    )
+    assert outcome([light]) is Outcome.MISSED
+    assert outcome([replace(light, actual_load_kg=None)]) is Outcome.UNKNOWN
+    assert outcome([replace(light, actual_load_kg=100.0)]) is Outcome.MET
+
+
+@pytest.mark.req("FR-STR-006")
+def test_pain_on_an_activity_awaiting_review_still_counts() -> None:
+    world = World()
+    for day in (0, 3):
+        activity_id = gym(world, day)
+        world.strength.record(SCOPE, activity_id, entry("ex.back_squat", 1, **TARGETED))
+    world.ingest(sample_observation(updates={"timing.startTimeUtc": START + timedelta(days=4)}))
+    pending = sample_observation(
+        SourceKind.ATHLETE_ENTRY,
+        updates={
+            "timing.startTimeUtc": START + timedelta(days=4, minutes=5),
+            "subjective.pain": Pain(True, 4, "rodilla"),
+        },
+    )
+    assert world.ingest(pending).activity.status is ActivityStatus.PENDING_REVIEW
+    until = DAY + timedelta(days=6)
+    (found,) = analytics(world).progression(SCOPE, until=until, exercise_id="ex.back_squat")
+    assert (found.decision, found.reasons) == (Decision.REGRESS, (Reason.PAIN_IN_REGION,))

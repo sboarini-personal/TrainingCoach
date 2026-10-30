@@ -46,7 +46,6 @@ from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange, TrainingDayBasis
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.strength.progression import (
-    EXPOSURES,
     Exposure,
     PainReport,
     ProgressionDecision,
@@ -191,6 +190,7 @@ class StrengthWeek:
     unattributed: int  # sets of an exercise the watch did not name: no muscle group
     muscles: tuple[MuscleSets, ...]  # only the muscle groups the week's sets worked
     volume_load: TotalReport | None
+    unread: int = 0  # sessions whose watch sets could not be read
 
 
 class AnalyticsService:
@@ -205,9 +205,11 @@ class AnalyticsService:
         totals: Sequence[PeriodTotal] = PERIOD_TOTALS,
         strength: StrengthService | None = None,
         streams: StreamReader | None = None,
+        safety_hold: Callable[[OwnerScope], bool] | None = None,
         batch: Batch = nullcontext,
     ) -> None:
         self._strength = strength
+        self._safety_hold = safety_hold
         self._streams = streams
         self._activities = activities
         self._store = store
@@ -276,8 +278,11 @@ class AnalyticsService:
                 if (metric_id, dimension) not in produced:
                     self._metrics.retire(scope, metric_id, subject.with_dimension(dimension))
 
-    def _members(self, scope: OwnerScope, period: DateRange) -> list[Activity]:
-        """ACTIVE activities (EFFECTIVE view) whose training day falls in the period."""
+    def _members(
+        self, scope: OwnerScope, period: DateRange, *, pending: bool = False
+    ) -> list[Activity]:
+        """ACTIVE activities (EFFECTIVE view) whose training day falls in the period; with
+        ``pending``, also those awaiting a duplicate review (their pain still counts)."""
         first = datetime.combine(period.start, time(), UTC) - _START_MARGIN
         last = datetime.combine(period.end, time(), UTC) + _START_MARGIN
         candidates = {
@@ -293,7 +298,7 @@ class AnalyticsService:
                     continue
         members = []
         for stored in candidates.values():
-            if not stored.counts_toward_totals:
+            if not (stored.is_live if pending else stored.counts_toward_totals):
                 continue
             view = self._activities.effective(scope, stored.activity_id).activity
             if period.start <= view.training_day <= period.end:
@@ -395,16 +400,30 @@ class AnalyticsService:
                 if view.sport is Sport.STRENGTH
             ]
             by_muscle: dict[MuscleGroup, list[MetricInput]] = {}
-            sets = unattributed = 0
+            # sets that may have been hard for any muscle group: an unnamed exercise, or a
+            # session whose watch sets cannot be read
+            uncertain: list[tuple[EvidenceRef, Activity]] = []
+            sets = unattributed = unread = 0
             for view in members:
                 reasons: set[UncertaintyReason] = set()
                 if view.values.get(_BASIS_FIELD) is TrainingDayBasis.ATHLETE_TIMEZONE_ESTIMATED:
                     reasons.add(UncertaintyReason.ESTIMATED_VALUE)
-                for item in self._strength.of_view(scope, view).sets:
+                executed = self._strength.of_view(scope, view)
+                if executed.watch_unreadable:
+                    unread += 1
+                    ref = EvidenceRef(EvidenceKind.ACTIVITY, view.activity_id, field="streams.sets")
+                    uncertain.append((ref, view))
+                for item in executed.sets:
                     sets += 1
                     shares = muscle_shares(item, self._strength.catalogue)
                     if not shares:
                         unattributed += 1
+                        if is_hard(item) is not False:
+                            note = f"{item.watch_exercise or 'unnamed'}#{item.set_number}"
+                            ref = EvidenceRef(
+                                EvidenceKind.STRENGTH_SET_RESULT, view.activity_id, note=note
+                            )
+                            uncertain.append((ref, view))
                         continue
                     hard = is_hard(item)
                     evidence = EvidenceRef(
@@ -419,6 +438,12 @@ class AnalyticsService:
                                 value, evidence, view.quality.confidence, frozenset(reasons)
                             )
                         )
+            missing = frozenset({UncertaintyReason.MISSING_DATA})
+            for found in by_muscle.values():
+                found.extend(
+                    MetricInput(None, ref, source.quality.confidence, missing)
+                    for ref, source in uncertain
+                )
             muscles = []
             metric_id = STR_WEEKLY_SETS_BY_MUSCLE.metric_id
             for muscle in MuscleGroup:
@@ -435,7 +460,14 @@ class AnalyticsService:
                 muscles.append(MuscleSets(muscle, report))
             volume = self._strength_volume(scope, subject, members)
         return StrengthWeek(
-            subject, subject.period(), len(members), sets, unattributed, tuple(muscles), volume
+            subject,
+            subject.period(),
+            len(members),
+            sets,
+            unattributed,
+            tuple(muscles),
+            volume,
+            unread,
         )
 
     def progression(
@@ -460,29 +492,36 @@ class AnalyticsService:
         period = DateRange(until - timedelta(days=weeks * 7 - 1), until)
         by_exercise: dict[str, list[Exposure]] = {}
         pains: list[PainReport] = []
+        unread: list[date] = []
         with self._batch():
-            for view in self._members(scope, period):
+            for view in self._members(scope, period, pending=True):
                 pain = view.values.get(PAIN_FIELD)
                 if isinstance(pain, Pain) and pain.flag:
                     pains.append(PainReport(view.activity_id, view.training_day, pain))
-                if view.sport is not Sport.STRENGTH:
+                if view.sport is not Sport.STRENGTH or not view.counts_toward_totals:
                     continue
+                executed = self._strength.of_view(scope, view)
+                if executed.watch_unreadable:
+                    unread.append(view.training_day)
                 grouped: dict[str, list[StrengthSetResult]] = {}
-                for item in self._strength.of_view(scope, view).sets:
+                for item in executed.sets:
                     if item.exercise_id is not None:
                         grouped.setdefault(item.exercise_id, []).append(item)
                 for found, sets in grouped.items():
                     by_exercise.setdefault(found, []).append(
                         Exposure(view.activity_id, view.training_day, tuple(sets))
                     )
-        decisions = []
-        for found in [exercise_id] if exercise_id is not None else sorted(by_exercise):
-            exposures = by_exercise.get(found, [])
-            recent = exposures[-EXPOSURES:]  # members come in time order
-            since = recent[0].training_day if recent else period.start
-            covered = [report for report in pains if report.training_day >= since]
-            decisions.append(decide(catalogue.get(found), exposures, covered))
-        return decisions
+        hold = self._safety_hold is not None and self._safety_hold(scope)
+        return [
+            decide(
+                catalogue.get(found),
+                by_exercise.get(found, []),
+                pains,
+                unread=unread,
+                safety_hold=hold,
+            )
+            for found in ([exercise_id] if exercise_id is not None else sorted(by_exercise))
+        ]
 
     def interference(
         self,
@@ -502,19 +541,15 @@ class AnalyticsService:
         period = DateRange(until - timedelta(days=days - 1), until)
         reach = DateRange(period.start - INTERFERENCE_MARGIN, until)
         with self._batch():
+            members = self._members(scope, reach)
             sessions = tuple(
-                load
-                for view in self._members(scope, reach)
-                if (load := self._session_load(scope, view)) is not None
+                load for view in members if (load := self._session_load(scope, view)) is not None
             )
-        found = assess(sessions, modifiers)
-        inside = [
+        days_of = {view.activity_id: view.training_day for view in members}
+        inside = [  # a combination with a session on a training day of the period
             item
-            for item in found
-            if any(
-                load.session_id in item.sessions and load.start.date() >= period.start
-                for load in sessions
-            )
+            for item in assess(sessions, modifiers)
+            if any(days_of[session] >= period.start for session in item.sessions)
         ]
         return InterferenceReport(period, sessions, tuple(inside))
 
@@ -526,8 +561,12 @@ class AnalyticsService:
         regions: frozenset[BodyRegion] = frozenset()
         match view.sport:
             case Sport.STRENGTH:
-                sets = self._strength.of_view(scope, view).sets
-                demands, possible, regions = strength_demands(sets, self._strength.catalogue)
+                executed = self._strength.of_view(scope, view)
+                demands, possible, regions = strength_demands(
+                    executed.sets,
+                    self._strength.catalogue,
+                    incomplete=executed.watch_unreadable or not executed.sets,
+                )
             case Sport.RUNNING:
                 demands, possible = run_demands(
                     rpe=rpe,
@@ -559,16 +598,16 @@ class AnalyticsService:
             evidence=evidence,
         )
 
-    def _structured_intervals(self, scope: OwnerScope, view: Activity) -> bool:
+    def _structured_intervals(self, scope: OwnerScope, view: Activity) -> bool | None:
         """Whether the run's LAPS stream shows a structured interval session; a run without
-        readable laps is not one (running spec 4.3)."""
+        laps is not one (running spec 4.3); ``None`` when its laps cannot be read."""
         stream = next((item for item in view.streams if item.kind is StreamKind.LAPS), None)
-        if stream is None or self._streams is None:
+        if stream is None or view.provenance.get(STREAM_KEYS[StreamKind.LAPS]) is None:
             return False
-        if view.provenance.get(STREAM_KEYS[StreamKind.LAPS]) is None:
-            return False
+        if self._streams is None:
+            return None
         laps = self._streams(scope, StreamKind.LAPS, stream.blob_sha256)
-        return isinstance(laps, Laps) and structured_intervals(laps)
+        return structured_intervals(laps) if isinstance(laps, Laps) else None
 
     def _strength_volume(
         self, scope: OwnerScope, subject: MetricSubject, members: Sequence[Activity]
@@ -577,7 +616,10 @@ class AnalyticsService:
             (total for total in self._totals if total.definition is STR_VOLUME_LOAD_TOTAL), None
         )
         sport_subject = subject.with_dimension(Sport.STRENGTH.value)
-        if item is None or not members:
+        if item is None:
+            return None
+        if not members:
+            self._metrics.retire(scope, item.definition.metric_id, sport_subject)
             return None
         report = self._total(scope, item, sport_subject, members)
         if report is None:

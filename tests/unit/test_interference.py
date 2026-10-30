@@ -5,8 +5,9 @@ Synthetic sessions only."""
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -327,3 +328,90 @@ def test_completed_sessions_are_assessed_from_their_own_data() -> None:
     )
     assert found.sessions == (gym, run)
     assert service.interference(SCOPE, until=until + timedelta(days=5), days=1).assessments == ()
+
+
+# --------------------------------------------------------------------------- review of P10
+
+
+@pytest.mark.req("FR-STR-007", "FR-PRF-002")
+def test_unknown_exercises_and_unread_sessions_are_possible_never_dismissed() -> None:
+    unnamed = [
+        StrengthSetResult(exercise_id=None, set_number=n, recorded_at=MONDAY, source=SetSource.FIT)
+        for n in range(1, 6)
+    ]
+    demands, possible, regions = strength_demands(unnamed, CATALOGUE)
+    assert demands == frozenset()
+    assert {Demand.HEAVY_LOWER_BODY, Demand.CALF_ACHILLES_INTENSIVE, Demand.PLYOMETRIC} <= possible
+    assert BodyRegion.KNEES in regions  # the usual regions of a heavy lower-body session
+    gym = session(1, 0, Sport.STRENGTH, demands, possible, regions)
+    (found,) = assess([gym, intervals()])
+    assert (found.level, found.reasons) == (
+        InterferenceLevel.HIGH,
+        frozenset({UncertaintyReason.MISSING_DATA}),
+    )
+    _, incomplete, _ = strength_demands([], CATALOGUE, incomplete=True)
+    assert Demand.HEAVY_LOWER_BODY in incomplete
+    easy_unnamed = [replace(item, actual_rpe=4.0) for item in unnamed[:2]]
+    _, few, _ = strength_demands(easy_unnamed, CATALOGUE)
+    assert Demand.HEAVY_LOWER_BODY not in few  # known easy sets cannot make a session heavy
+    _, unread_laps = run_demands(rpe=8.0, elapsed_seconds=3000.0, structured_intervals=None)
+    assert unread_laps == frozenset({Demand.HARD_INTERVALS})
+
+
+@pytest.mark.req("FR-STR-007", "FR-STR-002")
+def test_scapular_stability_is_not_heavy_upper_body() -> None:
+    demands, possible, _ = strength_demands(done("ex.band_pull_apart", rpe=6.0), CATALOGUE)
+    assert Demand.HEAVY_UPPER_BODY not in demands | possible
+
+
+@pytest.mark.req("FR-STR-007", "FR-ACT-004")
+def test_the_period_is_read_in_training_days_not_utc_dates() -> None:
+    world = World(timezone=ZoneInfo("Asia/Tokyo"))
+    gym_start = datetime(2026, 10, 20, 10, 0, tzinfo=UTC)  # 19:00 in Tokyo, 10-20
+    gym = world.ingest(
+        sample_observation(
+            values={
+                "classification.sport": Sport.STRENGTH,
+                "classification.subtype": "GYM",
+                "timing.startTimeUtc": gym_start,
+                "timing.elapsedSeconds": 3600.0,
+            },
+            raw_source_id=UUID(int=0x901),
+            sha256="9" * 64,
+        )
+    ).activity.activity_id
+    for number in (1, 2, 3):
+        world.strength.record(
+            SCOPE,
+            gym,
+            SetEntry(
+                exercise_id="ex.back_squat",
+                set_number=number,
+                recorded_at=NOW,
+                completed_reps=5,
+                actual_rpe=8.0,
+            ),
+        )
+    run_start = datetime(2026, 10, 20, 16, 0, tzinfo=UTC)  # 01:00 in Tokyo, 10-21
+    world.segments[LAPS_SHA] = interval_laps(run_start)
+    run = world.ingest(
+        sample_observation(
+            updates={"timing.startTimeUtc": run_start},
+            without=("timing.utcOffset",),  # its day comes from the athlete's timezone
+            streams=(StreamRef(StreamKind.LAPS, LAPS_SHA),),
+        )
+    ).activity.activity_id
+    service = AnalyticsService(
+        activities=world.service,
+        store=world.activities,
+        overrides=world.overrides,
+        metrics=world.metrics,
+        consents=world.consents_gate,
+        strength=world.strength,
+        streams=world.read_stream,
+    )
+    (found,) = service.interference(SCOPE, until=date(2026, 10, 21), days=1).assessments
+    assert found.sessions == (gym, run)
+    del world.segments[LAPS_SHA]  # laps that cannot be read: intervals are possible
+    (found,) = service.interference(SCOPE, until=date(2026, 10, 21), days=1).assessments
+    assert UncertaintyReason.MISSING_DATA in found.reasons

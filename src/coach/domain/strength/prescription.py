@@ -38,6 +38,13 @@ MAX_WARMUP_ITEM: Final = 300
 _TEMPO: Final = re.compile(r"[0-9X]-[0-9X]-[0-9X]-[0-9X]")
 
 
+def _whole(value: object, name: str) -> int:
+    """Counts and durations are whole numbers, never booleans or fractions."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise DomainValidationError(f"{name} is a whole number")
+    return value
+
+
 class LoadKind(StrEnum):
     ABSOLUTE_KG = "ABSOLUTE_KG"
     PERCENT_1RM = "PERCENT_1RM"
@@ -89,6 +96,8 @@ class PrescribedExercise:
 
     def __post_init__(self) -> None:
         check_exercise_id(self.exercise_id)
+        for name in ("sets", "reps_min", "reps_max", "rest_seconds"):
+            _whole(getattr(self, name), name)
         if not 1 <= self.sets <= MAX_SETS:
             raise DomainValidationError(f"sets are 1 to {MAX_SETS}")
         if not 1 <= self.reps_min <= self.reps_max <= MAX_REPS:
@@ -167,7 +176,7 @@ class StrengthPrescription:
                 for item in self.warmup
             ),
         )
-        duration = self.estimated_duration_seconds
+        duration = _whole(self.estimated_duration_seconds, "estimated duration")
         if not MIN_DURATION_SECONDS <= duration <= MAX_DURATION_SECONDS:
             raise DomainValidationError("a strength workout lasts 1 minute to 3 hours")
         if not self.exercises:
