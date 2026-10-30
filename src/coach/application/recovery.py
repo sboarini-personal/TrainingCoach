@@ -1,9 +1,12 @@
-"""Recovery: daily check-ins (recovery spec section 1; FR-REC-001).
+"""Recovery: daily check-ins and daily recovery data (recovery spec sections 1 and 5;
+FR-REC-001, FR-REC-005).
 
 A check-in is the athlete's own declaration: it needs no category consent (the consent types
 cover provider data), its free text is screened for disclosed secrets before it is stored
 (SEC-SEC-005), and its red flags activate SAFETY_HOLD at once (SAFE-MED-002). Check-ins are
-immutable; a new one for the same training day supersedes the earlier one.
+immutable; a new one for the same training day supersedes the earlier one. Daily recovery
+data is read only for the metrics whose consent is granted now: a revocation takes effect on
+reads at once (privacy spec 1).
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 from coach.application.coaching import CoachingConditions
+from coach.application.consent import ConsentGate
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, EventSink, IdFactory, OwnedRepository
@@ -27,6 +31,7 @@ from coach.domain.recovery.checkin import (
     RedFlag,
     latest_per_day,
 )
+from coach.domain.recovery.daily import RecoveryMetric, RecoveryObservation, in_force
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -66,7 +71,11 @@ class RecoveryService:
         events: EventSink,
         clock: Clock,
         ids: IdFactory,
+        observations: OwnedRepository[RecoveryObservation] | None = None,
+        consents: ConsentGate | None = None,
     ) -> None:
+        self._observations = observations
+        self._consents = consents
         self._checkins = checkins
         self._conditions = conditions
         self._screen = screen
@@ -118,6 +127,19 @@ class RecoveryService:
             safety = hold_notice(flags)
         self._events.emit(EventName.CHECKIN_RECORDED, {"red_flags": str(len(flags))})
         return CheckInResult(stored, flags, safety, notice)
+
+    def daily(
+        self, scope: OwnerScope, *, until: date, days: int
+    ) -> dict[date, dict[RecoveryMetric, RecoveryObservation]]:
+        """Per day of the period, the recovery metrics in force whose consent is granted."""
+        if self._observations is None or self._consents is None:
+            return {}
+        start = until - timedelta(days=days - 1)
+        found = in_force(
+            (item for item in self._observations.list_all(scope) if start <= item.day <= until),
+            allowed=self._consents.granted(scope),
+        )
+        return dict(sorted(found.items()))
 
     def checkins(self, scope: OwnerScope, *, until: date, days: int) -> Sequence[DailyCheckIn]:
         """The check-in in force of each training day of the period, oldest first."""

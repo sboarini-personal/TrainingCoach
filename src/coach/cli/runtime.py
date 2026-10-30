@@ -30,6 +30,7 @@ from coach.application.contracts import (
     LAPS_CODEC,
     LENGTHS_CODEC,
     PROFILE_CODEC,
+    RECOVERY_OBSERVATION_CODEC,
     SETS_CODEC,
     STRENGTH_SESSION_CODEC,
     TIME_SERIES_CODEC,
@@ -44,6 +45,7 @@ from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.providers import FitnessProvider
 from coach.application.recovery import RecoveryService
+from coach.application.recovery_sync import RecoverySyncService
 from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
 from coach.application.strength import StrengthService, session_reader
@@ -79,6 +81,7 @@ from coach.integrations.garmin.provider import (
     GarminPersonalProvider,
     credential_key,
 )
+from coach.integrations.garmin.recovery import GarminDailyRecords
 from coach.integrations.garmin.throttle import RequestBudget
 from coach.integrations.garmin.token import TokenBroker
 from coach.integrations.garmin.transport import HttpTransport, UrllibTransport
@@ -138,6 +141,7 @@ class Runtime:
     analytics: AnalyticsService
     strength: StrengthService
     recovery: RecoveryService
+    recovery_sync: RecoverySyncService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
@@ -275,8 +279,11 @@ def build_runtime(
         events=events,
         clock=clock,
     )
+    recovery_observations = SqliteAggregateRepository(database, RECOVERY_OBSERVATION_CODEC)
     recovery = RecoveryService(
         SqliteAggregateRepository(database, CHECKIN_CODEC),
+        observations=recovery_observations,
+        consents=gate,
         conditions=conditions,
         screen=screen,
         timezone_of=lambda scope: athlete_timezone(profiles, scope),
@@ -328,6 +335,20 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+    recovery_sync = RecoverySyncService(
+        providers=garmin_providers(credentials, transport or UrllibTransport(), clock),
+        records={"garmin": GarminDailyRecords()},
+        observations=recovery_observations,
+        blobs=blobs,
+        raw_sources=raw_sources,
+        consents=gate,
+        conditions=conditions,
+        retrier=Retrier(RetryPolicy(), events=events, sleep=sleep),
+        timezone_of=lambda scope: athlete_timezone(profiles, scope),
+        events=events,
+        clock=clock,
+        ids=new_id,
+    )
     return Runtime(
         layout=layout,
         database=database,
@@ -347,6 +368,7 @@ def build_runtime(
         analytics=analytics,
         strength=strength,
         recovery=recovery,
+        recovery_sync=recovery_sync,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

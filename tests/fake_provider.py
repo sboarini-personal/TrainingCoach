@@ -7,7 +7,7 @@ window, details and original files by ID. Failures are scripted per method.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -21,10 +21,23 @@ from coach.application.providers import (
 )
 from coach.domain.common.time import DateRange
 from coach.domain.integration.capabilities import ProviderCapabilities
+from coach.domain.recovery.daily import RecoveryMetric
 from coach.integrations.garmin.capabilities import personal_capabilities
-from garmin_samples import activity_on
+from coach.integrations.garmin.recovery import CATEGORIES, WINDOW_DAYS
+from garmin_samples import (
+    activity_on,
+    body_battery_payload,
+    hrv_payload,
+    resting_hr_payload,
+    sleep_payload,
+)
 
 LIST, DETAILS, FILE = "list", "details", "file"
+_DAILY_BODIES: dict[RecoveryMetric, Callable[[Mapping[date, int | None]], bytes]] = {
+    RecoveryMetric.HRV_NIGHTLY: hrv_payload,
+    RecoveryMetric.SLEEP_DURATION: sleep_payload,
+    RecoveryMetric.BODY_BATTERY_CHARGED: body_battery_payload,
+}
 
 
 @dataclass
@@ -41,6 +54,8 @@ class FakeProvider:
     failures: dict[str, list[ProviderError | Exception]] = field(default_factory=dict)
     calls: list[tuple[str, str]] = field(default_factory=list)
     before_call: Callable[[str], None] | None = None
+    # daily recovery values by metric and calendar day (P11)
+    daily: dict[RecoveryMetric, dict[date, int | None]] = field(default_factory=dict)
 
     @property
     def provider(self) -> str:
@@ -103,6 +118,25 @@ class FakeProvider:
             item.details,
             provider_object_id=ref.provider_activity_id,
         )
+
+    def daily_window_days(self, metric: RecoveryMetric) -> int:
+        return WINDOW_DAYS[metric]
+
+    def get_daily(self, metric: RecoveryMetric, window: DateRange) -> RawPayload | None:
+        self._call(f"daily:{metric.value}", f"{window.start}:{window.end}")
+        assert window.days <= WINDOW_DAYS[metric]
+        values = {
+            day: value
+            for day, value in self.daily.get(metric, {}).items()
+            if window.start <= day <= window.end
+        }
+        if metric is RecoveryMetric.RESTING_HR:
+            if window.start not in values:
+                return None
+            body = resting_hr_payload(window.start, values[window.start])
+        else:
+            body = _DAILY_BODIES[metric](values)
+        return RawPayload("garmin", CATEGORIES[metric], JSON_MEDIA_TYPE, body, window=window)
 
     def get_activity_file(self, ref: ActivityRef) -> RawPayload | None:
         self._call(FILE, ref.provider_activity_id)

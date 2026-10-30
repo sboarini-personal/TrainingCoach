@@ -14,6 +14,7 @@ from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.coaching.state import Actor, Condition
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.recovery.checkin import CheckInItem, DailyCheckIn, PainOnset, RedFlag
+from coach.domain.recovery.daily import RecoveryMetric, RecoveryObservation
 
 TIMEZONE_HINT: Final = "set your timezone first: coach profile timezone <IANA name>"
 SCALE_HELP: Final = {
@@ -53,6 +54,11 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     adding.add_argument("--notes", help="free text (never send secrets)")
     listing = checkin.add_parser("list", help="recent check-ins")
     listing.add_argument("--days", type=int, default=7)
+    recovery = commands.add_parser("recovery", help="daily recovery data").add_subparsers(
+        dest="action", required=True
+    )
+    data = recovery.add_parser("data", help="daily metrics from your devices, by consent")
+    data.add_argument("--days", type=int, default=14)
     safety = commands.add_parser("safety", help="safety hold").add_subparsers(
         dest="action", required=True
     )
@@ -153,4 +159,38 @@ def release(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: 
     except InvalidTransitionError as error:  # pragma: no cover - the athlete may release
         raise CommandError(str(error)) from None
     print("safety hold released; training resumes conservatively (safety spec 4)", file=out)
+    return 0
+
+
+def _value(observation: RecoveryObservation | None) -> str:
+    if observation is None:
+        return "-"
+    if observation.metric is RecoveryMetric.SLEEP_DURATION:
+        minutes = round(observation.value / 60)
+        return f"{minutes // 60}:{minutes % 60:02d}"
+    return f"{observation.value:g}"
+
+
+def data(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    if not 1 <= args.days <= 366:
+        raise CommandError("days must be 1 to 366")
+    try:
+        until = runtime.recovery.today(scope)
+    except TimezoneRequiredError:
+        raise CommandError(TIMEZONE_HINT) from None
+    found = runtime.recovery.daily(scope, until=until, days=args.days)
+    print(
+        f"{'day':<10}  {'resting HR':>10}  {'HRV ms':>6}  {'sleep':>5}  {'Body Battery +':>14}",
+        file=out,
+    )
+    for day, metrics in found.items():
+        print(
+            f"{day}  {_value(metrics.get(RecoveryMetric.RESTING_HR)):>10}  "
+            f"{_value(metrics.get(RecoveryMetric.HRV_NIGHTLY)):>6}  "
+            f"{_value(metrics.get(RecoveryMetric.SLEEP_DURATION)):>5}  "
+            f"{_value(metrics.get(RecoveryMetric.BODY_BATTERY_CHARGED)):>14}",
+            file=out,
+        )
+    if not found:
+        print("no recovery data in these days (coach garmin sync, with the consents)", file=out)
     return 0

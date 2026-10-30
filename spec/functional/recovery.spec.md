@@ -85,3 +85,19 @@ the RECOVERY_BLOCK condition until `reevaluateAfter`.
 
 Without the consent the input is neither ingested nor used. The assessment continues with
 the remaining signals and lists `MISSING_DATA` (AT-CON-001).
+
+Provider recovery data (P11; contract
+[../contracts/recovery-observation.schema.json](../contracts/recovery-observation.schema.json)):
+
+- Metrics: RESTING_HR (bpm, RECOVERY), HRV_NIGHTLY (average overnight HRV in ms, HRV),
+  SLEEP_DURATION (measured sleep in seconds, naps excluded, SLEEP) and BODY_BATTERY_CHARGED
+  (a proprietary 0 to 100 recovery signal, PROVIDER_DERIVED, PROVIDER_RECOVERY_METRICS).
+- `coach garmin sync` synchronises them after the activities, each metric only with its
+  consent (a metric without it is neither requested nor stored), through the provider's
+  documented endpoint (garmin spec section 12; capability `healthRead`). The first sync
+  reaches back 28 days (the baseline window); later ones start at the last day known, less
+  two days whose values may still settle. Every payload is stored as RAW; the values become
+  immutable observations, one per day, metric and RAW source, so a repeated sync stores
+  nothing new, and the latest received is in force.
+- Reads (`coach recovery data`, the assessment) use the metrics whose consent is granted
+  now: a revocation hides stored values at once; deleting them is offered (privacy spec 1).

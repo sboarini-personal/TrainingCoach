@@ -55,7 +55,12 @@ from coach.application.contracts.integration import (
 )
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
-from coach.application.contracts.recovery import checkin_from_contract, checkin_to_contract
+from coach.application.contracts.recovery import (
+    checkin_from_contract,
+    checkin_to_contract,
+    recovery_observation_from_contract,
+    recovery_observation_to_contract,
+)
 from coach.application.contracts.segments import (
     laps_from_contract,
     laps_to_contract,
@@ -84,6 +89,7 @@ from coach.domain.ingestion.record import IngestionRecord
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.raw.source import RawSource
 from coach.domain.recovery.checkin import DailyCheckIn
+from coach.domain.recovery.daily import RecoveryObservation
 from coach.domain.strength.session import StrengthSession
 from coach.domain.strength.sets import WatchSets
 from coach.metrics.derived import DerivedMetricValue
@@ -182,6 +188,12 @@ STRENGTH_SESSION_CODEC: Final[DocumentCodec[StrengthSession]] = DocumentCodec(
 CHECKIN_CODEC: Final[DocumentCodec[DailyCheckIn]] = DocumentCodec(
     "daily_checkin", "daily-checkin", checkin_to_contract, checkin_from_contract
 )
+RECOVERY_OBSERVATION_CODEC: Final[DocumentCodec[RecoveryObservation]] = DocumentCodec(
+    "recovery_observation",
+    "recovery-observation",
+    recovery_observation_to_contract,
+    recovery_observation_from_contract,
+)
 INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
     "integration_status",
     "integration-status",
@@ -209,5 +221,6 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     SETS_CODEC,
     STRENGTH_SESSION_CODEC,
     CHECKIN_CODEC,
+    RECOVERY_OBSERVATION_CODEC,
     INTEGRATION_STATUS_CODEC,
 )

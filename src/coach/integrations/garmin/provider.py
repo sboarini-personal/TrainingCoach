@@ -1,7 +1,8 @@
 """Garmin Personal tier adapter: implements ``FitnessProvider`` (INT-GAR-005; ADR-012, 026).
 
 Read-only and pull-only. It calls exactly the documented activity search, details and
-download endpoints (garmin spec section 1) through the thin transport, spending the request
+download endpoints (garmin spec section 1) and, from P11, one documented daily endpoint per
+recovery metric (garmin spec section 12), through the thin transport, spending the request
 budget and renewing the token once after a 401. It returns RAW payloads and nothing else:
 no storage, no normalisation, no retries (the application owns those).
 """
@@ -32,8 +33,17 @@ from coach.domain.common.time import DateRange
 from coach.domain.ingestion.limits import IngestionLimits
 from coach.domain.integration.capabilities import ProviderCapabilities
 from coach.domain.integration.status import IntegrationReason
+from coach.domain.recovery.daily import RecoveryMetric
 from coach.integrations.garmin.capabilities import PROVIDER, personal_capabilities
 from coach.integrations.garmin.http import provider_error
+from coach.integrations.garmin.recovery import (
+    BODY_BATTERY_PATH,
+    CATEGORIES,
+    HRV_PATH,
+    RESTING_HR_PATH,
+    SLEEP_PATH,
+    WINDOW_DAYS,
+)
 from coach.integrations.garmin.throttle import RequestBudget
 from coach.integrations.garmin.token import TokenBroker
 from coach.integrations.garmin.transport import (
@@ -166,6 +176,28 @@ class GarminPersonalProvider:
             JSON_MEDIA_TYPE,
             response.body,
             provider_object_id=ref.provider_activity_id,
+        )
+
+    def daily_window_days(self, metric: RecoveryMetric) -> int:
+        return WINDOW_DAYS[metric]
+
+    def get_daily(self, metric: RecoveryMetric, window: DateRange) -> RawPayload | None:
+        if window.days > WINDOW_DAYS[metric]:
+            raise ValueError(f"{metric.value} covers at most {WINDOW_DAYS[metric]} days a request")
+        start, end = window.start.isoformat(), window.end.isoformat()
+        if metric is RecoveryMetric.RESTING_HR:
+            path, params = RESTING_HR_PATH, {"date": start}
+        elif metric is RecoveryMetric.HRV_NIGHTLY:
+            path, params = HRV_PATH.format(start=start, end=end), {}
+        elif metric is RecoveryMetric.SLEEP_DURATION:
+            path, params = SLEEP_PATH, {"startDate": start, "endDate": end}
+        else:
+            path, params = BODY_BATTERY_PATH, {"startDate": start, "endDate": end}
+        response = self._get(path, params, accept=JSON_MEDIA_TYPE, limit=JSON_LIMIT_BYTES)
+        if response is None:
+            return None
+        return RawPayload(
+            PROVIDER, CATEGORIES[metric], JSON_MEDIA_TYPE, response.body, window=window
         )
 
     def get_activity_file(self, ref: ActivityRef) -> RawPayload | None:

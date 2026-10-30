@@ -11,7 +11,7 @@ import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Final, Protocol
 
 from coach.application.errors import ApplicationError
@@ -20,6 +20,7 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.time import DateRange
 from coach.domain.integration.capabilities import ProviderCapabilities
 from coach.domain.integration.status import IntegrationReason
+from coach.domain.recovery.daily import RecoveryMetric
 
 _CODE: Final = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
 _CATEGORY: Final = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -125,6 +126,15 @@ class FitnessProvider(Protocol):
         """The original file; ``None`` when the activity has none."""
         ...
 
+    def daily_window_days(self, metric: RecoveryMetric) -> int:
+        """How many calendar days one request of a daily recovery metric may cover (P11)."""
+        ...
+
+    def get_daily(self, metric: RecoveryMetric, window: DateRange) -> RawPayload | None:
+        """The provider's daily recovery payload of ``metric`` over ``window`` (calendar dates);
+        ``None`` when it has none (recovery spec 5: only called with the metric's consent)."""
+        ...
+
 
 class ProviderRecords(Protocol):
     """A provider's record normaliser (garmin spec section 10), run by the ingestion pipeline.
@@ -135,3 +145,25 @@ class ProviderRecords(Protocol):
     def decode(
         self, data: bytes, *, provider_object_id: str, received_at: datetime
     ) -> Sequence[DecodedSession]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class DailyValue:
+    """One value a daily recovery payload states for a calendar day (the athlete's day as the
+    provider dates it), with where it is in the payload."""
+
+    day: date
+    metric: RecoveryMetric
+    value: float
+    source_path: str
+
+
+class DailyRecords(Protocol):
+    """A provider's daily recovery normaliser (P11), in the integration package.
+
+    Raises ``ProviderError`` (PROVIDER_PROTOCOL_ERROR, ``DAILY_FORMAT``) for a payload it
+    cannot read; leaves out a value that is absent or outside the metric's range; never
+    guesses one.
+    """
+
+    def decode(self, metric: RecoveryMetric, payload: RawPayload) -> Sequence[DailyValue]: ...

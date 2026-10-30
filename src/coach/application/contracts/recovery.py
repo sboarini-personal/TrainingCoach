@@ -1,4 +1,5 @@
-"""Recovery documents (recovery spec): DailyCheckIn <-> daily-checkin contract."""
+"""Recovery documents (recovery spec): DailyCheckIn <-> daily-checkin contract and
+RecoveryObservation <-> recovery-observation contract."""
 
 from __future__ import annotations
 
@@ -14,6 +15,7 @@ from coach.application.contracts._json import (
     parse_optional_uuid,
 )
 from coach.domain.recovery.checkin import CheckInPain, DailyCheckIn, PainOnset, RedFlag
+from coach.domain.recovery.daily import METRICS, RecoveryMetric, RecoveryObservation
 
 
 def checkin_to_contract(checkin: DailyCheckIn) -> Json:
@@ -68,4 +70,36 @@ def checkin_from_contract(document: Document) -> DailyCheckIn:
         red_flags=tuple(RedFlag(flag) for flag in document["redFlags"]),
         notes=document["notes"],
         supersedes=parse_optional_uuid(document["supersedes"]),
+    )
+
+
+def recovery_observation_to_contract(observation: RecoveryObservation) -> Json:
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "observationId": str(observation.observation_id),
+        "athleteId": str(observation.athlete_id),
+        "version": observation.version,
+        "day": observation.day.isoformat(),
+        "metric": observation.metric.value,
+        "value": observation.value,
+        "unit": METRICS[observation.metric].unit,
+        "provider": observation.provider,
+        "rawSourceId": str(observation.raw_source_id),
+        "sourcePath": observation.source_path,
+        "receivedAt": instant(observation.received_at),
+    }
+
+
+def recovery_observation_from_contract(document: Document) -> RecoveryObservation:
+    return RecoveryObservation(
+        observation_id=UUID(document["observationId"]),
+        athlete_id=UUID(document["athleteId"]),
+        version=document["version"],
+        day=date.fromisoformat(document["day"]),
+        metric=RecoveryMetric(document["metric"]),
+        value=float(document["value"]),
+        provider=document["provider"],
+        raw_source_id=UUID(document["rawSourceId"]),
+        source_path=document["sourcePath"],
+        received_at=parse_instant(document["receivedAt"]),
     )

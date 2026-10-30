@@ -46,6 +46,7 @@ class EventName(StrEnum):
     INTEGRATION_SYNC_STARTED = "integration.sync.started"
     INTEGRATION_SYNC_SUCCEEDED = "integration.sync.succeeded"
     INTEGRATION_SYNC_FAILED = "integration.sync.failed"
+    RECOVERY_SYNC_SUCCEEDED = "integration.recovery.synced"
     INTEGRATION_CAPABILITY_OBSERVED = "integration.capability.observed"
     EXTERNAL_WRITE_PROPOSED = "external_write.proposed"
     EXTERNAL_WRITE_REFUSED = "external_write.refused"

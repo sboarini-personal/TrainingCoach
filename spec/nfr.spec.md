@@ -64,7 +64,7 @@ Structured (JSON) events are emitted for at least:
 
 | Area | Events |
 |---|---|
-| Integration | `integration.sync.started`, `.succeeded`, `.failed`, `integration.capability.observed` |
+| Integration | `integration.sync.started`, `.succeeded`, `.failed`, `integration.capability.observed`, `integration.recovery.synced` (counts only, P11) |
 | Ingestion | `ingestion.file.received`, `.rejected`, `.parsed`, `.failed`, `ingestion.duplicate` |
 | Activities | `activity.created`, `activity.corrected` (field path only), `activity.reprocessed` (counts only, P9) |
 | Recovery | `recovery.checkin.recorded` (the number of red flags only; P11) |

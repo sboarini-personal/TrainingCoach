@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
-from cli_harness import Cli
+from cli_harness import NOW, Cli
+from garmin_samples import hrv_payload
+from garmin_world import FakeTime, ScriptedTransport, response
+from samples import BUENOS_AIRES
 
 
 @pytest.fixture
@@ -50,3 +54,34 @@ def test_a_red_flag_pauses_intensive_training_until_the_athlete_releases_it(cli:
     assert cli.run("safety", "status") == (0, "safety hold: none\n")
     code, output = cli.run("safety", "release", "--cleared-by-professional")
     assert (code, "no safety hold" in output) == (2, True)
+
+
+@pytest.mark.req("FR-REC-005", "INT-GAR-007")
+@pytest.mark.acceptance("AT-CON-001")
+def test_garmin_sync_brings_consented_recovery_metrics(tmp_path: Path) -> None:
+    command = Cli(tmp_path / "data")
+    scripted = ScriptedTransport(FakeTime(NOW))
+    command.transport = scripted
+    assert command.run("init")[0] == 0
+    assert command.run("consent", "grant", "activities")[0] == 0
+    assert command.run("consent", "grant", "hrv")[0] == 0
+    assert command.run("profile", "timezone", "America/Argentina/Buenos_Aires")[0] == 0
+    expiry = str(NOW.date() + timedelta(days=180))
+    assert command.run("secret", "set", "garmin-api-key", "--expires-on", expiry)[0] == 0
+    today = NOW.astimezone(BUENOS_AIRES).date()
+    nights = {today - timedelta(days=n): 50 + n for n in range(3)}
+    scripted.script(
+        f"/hrv-service/hrv/daily/{today - timedelta(days=27)}/{today}",
+        response(200, hrv_payload(nights)),
+    )
+    code, output = command.run("garmin", "sync")
+    assert code == 0, output
+    line = next(item for item in output.splitlines() if item.startswith("recovery:"))
+    assert "HRV_NIGHTLY 3 new" in line
+    assert "RESTING_HR needs consent (recovery)" in line
+    assert not [item for item in scripted.sent if "dailyHeartRate" in item.path]  # no consent
+    code, output = command.run("recovery", "data", "--days", "3")
+    rows = output.splitlines()[1:]
+    assert [row.split()[2] for row in rows] == ["52", "51", "50"]
+    assert command.run("consent", "revoke", "hrv")[0] == 0
+    assert "no recovery data" in command.run("recovery", "data")[1]  # hidden at once

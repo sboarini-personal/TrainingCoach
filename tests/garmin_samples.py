@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 
@@ -127,3 +128,60 @@ def activity_on(day: date, activity_id: int, *, hour: int = 7) -> tuple[bytes, b
     )
     fit = fit_file([fit_session(start=start)])
     return details, zip_file({f"{activity_id}_ACTIVITY.fit": fit})
+
+
+# --------------------------------------------------------------------------- daily recovery (P11)
+# Shapes from the Swagger schemas DailyHeartRateDTO, HrvDailySummaryDTO, DailySleepDTO and
+# BodyBatteryDailyReportDTO (garmin spec 12); synthetic values only.
+
+
+def resting_hr_payload(day: date, resting: int | None) -> bytes:
+    document: dict[str, Any] = {
+        "calendarDate": {"date": f"{day.isoformat()}T00:00:00.0", "localDate": day.isoformat()},
+        "restingHeartRate": resting,
+        "lastSevenDaysAvgRestingHeartRate": resting,
+        "maxHeartRate": 150,
+        "minHeartRate": 45,
+        "heartRateValueDescriptors": [
+            {"index": 0, "key": "timestamp"},
+            {"index": 1, "key": "heartrate"},
+        ],
+        "heartRateValues": [[1, 60], [2, 62]],
+    }
+    return json.dumps(document).encode()
+
+
+def hrv_payload(values: Mapping[date, int | None]) -> bytes:
+    summaries = [
+        {
+            "calendarDate": day.isoformat(),
+            "lastNightAvg": value,
+            "lastNight5MinHigh": None if value is None else value + 20,
+            "weeklyAvg": value,
+            "status": "BALANCED",
+            "feedbackPhrase": "HRV_BALANCED_1",
+        }
+        for day, value in sorted(values.items())
+    ]
+    return json.dumps({"hrvSummaries": summaries, "userProfilePk": 1}).encode()
+
+
+def sleep_payload(values: Mapping[date, int | None]) -> bytes:
+    items = [
+        {
+            "calendarDate": day.isoformat(),
+            "sleepTimeSeconds": value,
+            "deepSleepSeconds": None if value is None else value // 5,
+            "userNote": "free text that is never read",
+        }
+        for day, value in sorted(values.items())
+    ]
+    return json.dumps(items).encode()
+
+
+def body_battery_payload(values: Mapping[date, int | None]) -> bytes:
+    items: list[dict[str, Any]] = [
+        {"date": day.isoformat(), "charged": value, "drained": 40, "bodyBatteryValuesArray": []}
+        for day, value in sorted(values.items())
+    ]
+    return json.dumps(items).encode()

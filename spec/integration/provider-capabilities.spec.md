@@ -45,7 +45,10 @@ interface FitnessProvider:
 - Pagination is an offset with a limit (the only pagination Garmin documents); the cursor is
   the application's.
 - `get_recovery_metrics` and `get_user_profile` are added with their first consumers
-  (recovery in P11, profile import with onboarding). P7 collects no data that nothing reads
+  (recovery in P11, profile import with onboarding). P11: recovery metrics are
+  `get_daily(metric, window)` (a RAW payload of one metric's calendar days, `None` when there
+  is none) and `daily_window_days(metric)` (the days one request may cover); a provider's
+  `DailyRecords` normaliser decodes them (garmin spec section 12). P7 collects no data that nothing reads
   (data minimisation, PRIV-CON-004).
 - `RawPayload`: provider, endpoint category, media type, bytes, provider object ID, request
   window. The normaliser of provider records is a separate component of the integration

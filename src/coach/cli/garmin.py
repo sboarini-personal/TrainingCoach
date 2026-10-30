@@ -13,11 +13,13 @@ from typing import Final, TextIO
 from coach.application.consent import ConsentRequiredError
 from coach.application.credentials import CredentialKind, CredentialStatus, ExpiryState
 from coach.application.ownership import OwnerScope
+from coach.application.recovery_sync import MetricOutcome
 from coach.application.sync import CapabilityUnavailableError, SyncOutcome, SyncReport
-from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
+from coach.cli.activities import CONSENT_HINT, CONSENT_TYPES, TIMEZONE_HINT, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError, athlete_timezone
 from coach.domain.coaching.state import Condition
 from coach.domain.integration.status import IntegrationStatus
+from coach.domain.recovery.daily import METRICS
 
 PROVIDER: Final = "garmin"
 KEY_HINT: Final = (
@@ -122,5 +124,32 @@ def sync(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
         print("local history and file import keep working", file=out)
     if report.counts.rejected:
         print("some payloads were rejected; see: coach issue list", file=out)
+    recovered = True
+    if report.outcome is SyncOutcome.SYNCED:
+        recovered = _recovery(runtime, scope, out)
     _reminder(key, out)
-    return 0 if report.outcome is SyncOutcome.SYNCED else 1
+    return 0 if report.outcome is SyncOutcome.SYNCED and recovered else 1
+
+
+_CONSENT_NAMES: Final = {value: name for name, value in CONSENT_TYPES.items()}
+
+
+def _recovery(runtime: Runtime, scope: OwnerScope, out: TextIO) -> bool:
+    """Daily recovery metrics after the activities, each only with its consent (P11)."""
+    try:
+        report = runtime.recovery_sync.sync(scope)
+    except CapabilityUnavailableError as error:
+        print(f"recovery: {error}", file=out)
+        return True
+    parts = []
+    for item in report.metrics:
+        if item.outcome is MetricOutcome.NO_CONSENT:
+            name = _CONSENT_NAMES[METRICS[item.metric].consent]
+            parts.append(f"{item.metric.value} needs consent ({name})")
+        else:
+            rejected = f", {item.rejected} unreadable" if item.rejected else ""
+            parts.append(f"{item.metric.value} {item.stored} new{rejected}")
+    if report.outcome is SyncOutcome.PENDING:
+        parts.append(f"pending ({report.error})")
+    print("recovery: " + "; ".join(parts), file=out)
+    return report.outcome is SyncOutcome.SYNCED

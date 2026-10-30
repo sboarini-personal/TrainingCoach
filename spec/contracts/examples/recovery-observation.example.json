@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0.0",
+  "observationId": "d0773be5-75a5-5497-b417-bf53985af05a",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 1,
+  "day": "2026-10-21",
+  "metric": "HRV_NIGHTLY",
+  "value": 54.0,
+  "unit": "ms",
+  "provider": "garmin",
+  "rawSourceId": "0193b2a0-0000-7000-8000-000000000701",
+  "sourcePath": "hrvSummaries[0].lastNightAvg",
+  "receivedAt": "2026-10-21T09:00:00Z"
+}

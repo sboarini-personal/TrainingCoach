@@ -62,7 +62,8 @@ Configured capabilities:
 
 The adapter performs reads only. No endpoint is called unless documented in the official
 client or the Garmin Swagger documentation (assumption A-06). P7 calls exactly three: the
-activity search, the activity details and the activity download (plus the token endpoint).
+activity search, the activity details and the activity download (plus the token endpoint);
+P11 adds one daily endpoint per recovery metric (section 12).
 
 ## 3. Credentials and tokens (INT-GAR-006)
 
@@ -194,7 +195,7 @@ records `notBefore`, before which no request is made.
 | G-4 | Content of the activity download ZIP (FIT assumed) | Partly: "original format" as `application/x-zip-compressed`; members are handled as uploads (FIT, TCX, GPX), anything else is rejected with an issue |
 | G-5 | Whether the Personal API terms allow processing data with a third-party AI provider; the athlete reviews them before Garmin-sourced data reaches the LLM | Open; gate in P13 (no Garmin data reaches the LLM before the athlete confirms) |
 | G-6 | Garmin activity types mapped to canonical sports and subtypes (from observed values) | Partly: only the documented type keys are mapped (section 10); others are OTHER with `providerType` kept, and the file's sport wins |
-| G-7 | Semantics of proprietary health metrics (treated as PROVIDER_DERIVED) | Open (P11); P7 maps only the training effect and training load of an activity |
+| G-7 | Semantics of proprietary health metrics (treated as PROVIDER_DERIVED) | Partly (P11): Body Battery's daily `charged` is read as a proprietary recovery signal (PROVIDER_DERIVED, never a decision on its own, recovery spec 3); Garmin stress, HRV status and sleep scores are not mapped |
 | G-8 | Garmin's per-activity RPE and feel fields (`directWorkoutRpe`, `directWorkoutFeel`) are athlete entries made in Garmin Connect, but only athlete entries in this application may carry subjective fields | Open: not mapped in P7; proposed for the athlete's review |
 
 Business tiers (OAuth 2.0 reported by third parties, PKCE unconfirmed, push delivery) are out
@@ -250,6 +251,30 @@ or not UTF-8 (`SCHEMA_INVALID`, `JSON`); a mapped field with the wrong JSON type
 `START_OUT_OF_RANGE`); a value outside the canonical range (`NORMALIZATION_FAILED`,
 `FIELD_VALUE`). A JSON payload is at most 4 MiB and is parsed in process (the standard JSON
 parser executes nothing; depth errors are rejections).
+
+## 12. Daily recovery payloads (`garmin_daily` 1.0.0, P11)
+
+Re-verified against the Swagger document on 2026-10-30 (`tools/garmin_openapi.py`). One
+documented endpoint per recovery metric, each requested only with that metric's consent
+(recovery spec section 5), so a payload is never stored without it:
+
+| Metric (consent) | Endpoint | Days per request | RAW category | Value read |
+|---|---|---|---|---|
+| RESTING_HR (RECOVERY) | `GET /wellness-service/wellness/dailyHeartRate?date=` (DailyHeartRateDTO) | 1 | `GARMIN_DAILY_HEART_RATE` | `restingHeartRate`; `calendarDate.localDate`, when present, must be the requested date |
+| HRV_NIGHTLY (HRV) | `GET /hrv-service/hrv/daily/{fromDate}/{toDate}` (HrvDailySummaryDTO) | 28 (none documented: conservative) | `GARMIN_HRV` | `hrvSummaries[].lastNightAvg` by `calendarDate` |
+| SLEEP_DURATION (SLEEP) | `GET /sleep-service/sleep/dailySleepSummariesByDate?startDate&endDate` (DailySleepDTO[]) | 31 (documented) | `GARMIN_SLEEP` | `sleepTimeSeconds` (naps excluded) by `calendarDate` |
+| BODY_BATTERY_CHARGED (PROVIDER_RECOVERY_METRICS) | `GET /wellness-service/wellness/bodyBattery/reports/daily?startDate&endDate` (BodyBatteryDailyReportDTO[]) | 31 (documented) | `GARMIN_BODY_BATTERY` | `charged` by `date` |
+
+- Dates are the athlete's calendar days as Garmin dates them. A 404 means no data.
+- The normaliser reads nothing else. A payload that is not valid JSON or not shaped as the
+  document describes is `PROVIDER_PROTOCOL_ERROR` `DAILY_FORMAT`: its RAW stays, it is counted
+  as unreadable and the sync goes on. A value that is absent, not a number or outside the
+  metric's range (resting HR 25 to 150 bpm, HRV 1 to 300 ms, sleep 0 to 86,400 s, Body
+  Battery 0 to 100) is left out; a day stated twice with different values is left out.
+- The payloads hold more than the value read, always within their category: the day's heart
+  rate samples (heart rate), SpO2 and respiration during sleep and a free-text note (sleep),
+  Body Battery events (Body Battery). They are kept byte-exact as RAW under that consent
+  (INT-GAR-009) and never read; the note is untrusted text.
 
 ## 11. HTTP transport and error mapping (P7 precision)
 
