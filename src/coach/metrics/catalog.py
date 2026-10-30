@@ -18,7 +18,7 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import MetricOrigin
 from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
-from coach.metrics import cycling, running
+from coach.metrics import cycling, running, tennis
 from coach.metrics.analyses import StreamAnalysis
 from coach.metrics.registry import (
     Aggregation,
@@ -509,6 +509,28 @@ SWIM_TECHNICAL_FATIGUE: Final = _swim(
     per_stroke=False,
 )
 SWIM_PER_STROKE: Final = (SWIM_SWOLF_AVG, SWIM_DISTANCE_PER_STROKE, SWIM_PACE_VARIABILITY)
+
+# ------------------------------------------------------------------ tennis (P9)
+
+TEN_NEUROMUSCULAR_LOAD: Final = MetricDefinition(
+    metric_id="ten.neuromuscular_load",
+    name="Regional neuromuscular load",
+    sport=Sport.TENNIS,
+    unit="level",
+    method=(
+        "Level from duration (under 45 min LOW, to 90 min MODERATE, above HIGH), one up for "
+        "RPE 7 or more or a match, one down for RPE 3 or less (tennis spec 4)"
+    ),
+    required_inputs=(
+        InputSpec("session_duration_seconds", "s", 0, MAX_SESSION_SECONDS, minimum_exclusive=True),
+        InputSpec("rpe", "CR-10", 0, 10),
+        InputSpec("match", "flag", 0, 1, description="1 for a match, 0 for practice"),
+    ),
+    minimum_data_quality=Confidence.MEDIUM,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    calculate=tennis.neuromuscular_load,
+)
 SWIM_PER_SESSION: Final = (SWIM_PACE_DEGRADATION, SWIM_TECHNICAL_FATIGUE)
 STREAM_ANALYSES: Final = (
     StreamAnalysis(
@@ -667,6 +689,7 @@ CATALOG: Final = MetricRegistry(
         CYC_WORK_TOTAL,
         *SWIM_PER_STROKE,
         *SWIM_PER_SESSION,
+        TEN_NEUROMUSCULAR_LOAD,
     )
 )
 

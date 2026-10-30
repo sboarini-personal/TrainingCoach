@@ -22,7 +22,7 @@ from coach.application.authentication import AuthenticationError
 from coach.application.authorization import AuthorizationError
 from coach.application.credentials import CredentialKind, credential_handle, expiry_state
 from coach.application.errors import RateLimitedError
-from coach.application.identity import Identity
+from coach.application.identity import Identity, Principal
 from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
@@ -126,6 +126,13 @@ def _parser() -> argparse.ArgumentParser:
     activity.add_parser(
         "reprocess", help="re-read imported files with the current rules (laps, lengths, sensors)"
     )
+    correction = activity.add_parser(
+        "correct", help="correct one field, for example subjective.rpe 7 (unknown: UNKNOWN)"
+    )
+    correction.add_argument("activity_id", type=UUID)
+    correction.add_argument("field", help="a field path, for example subjective.rpe")
+    correction.add_argument("value", help="the corrected value, or unknown")
+    correction.add_argument("--reason", required=True, help="why (kept with the correction)")
     exporting = activity.add_parser("export", help="write activities as CSV (activity template)")
     exporting.add_argument("output", type=Path)
     issue = commands.add_parser("issue", help="data quality issues").add_subparsers(
@@ -156,15 +163,18 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _session(runtime: Runtime) -> OwnerScope:
+def _principal(runtime: Runtime) -> Principal:
     owner = runtime.identities.owner()
     if owner is None:
         raise CliError(_NOT_INITIALISED)
     token = runtime.provider.get(
         credential_handle(CredentialKind.LOCAL_API_TOKEN, owner.athlete_id)
     )
-    principal = runtime.authentication.authenticate("cli", token)
-    return runtime.authorization.scope_for(principal)
+    return runtime.authentication.authenticate("cli", token)
+
+
+def _session(runtime: Runtime) -> OwnerScope:
+    return runtime.authorization.scope_for(_principal(runtime))
 
 
 def _init(runtime: Runtime, _args: argparse.Namespace, out: TextIO) -> int:
@@ -305,6 +315,10 @@ def main(
                 return analytics_commands.load_week(runtime, _session(runtime), args, stream)
             case ("load", "weeks"):
                 return analytics_commands.load_weeks(runtime, _session(runtime), args, stream)
+            case ("activity", "correct"):
+                principal = _principal(runtime)
+                scope = runtime.authorization.scope_for(principal)
+                return activity_commands.correct(runtime, principal, scope, args, stream)
             case ("activity", "reprocess"):
                 return activity_commands.reprocess(runtime, _session(runtime), stream)
             case ("activity", "list"):

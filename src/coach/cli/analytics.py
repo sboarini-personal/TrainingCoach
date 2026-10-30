@@ -36,6 +36,7 @@ from coach.domain.common.provenance import FieldValue
 from coach.domain.common.quality import UncertaintyReason
 from coach.metrics.derived import DerivedMetricValue, DerivedStatus, MetricSubject, SubjectKind
 from coach.metrics.subjects import week_key
+from coach.metrics.tennis import LoadLevel
 
 ZONE_METHODS: Final = {
     method.value.lower().replace("_", "-"): method
@@ -91,6 +92,8 @@ def amount(value: float, unit: str) -> str:
             return f"{value:.2f} m/stroke"
         case "score":
             return f"{value:.1f}"
+        case "level":
+            return LoadLevel(round(value)).name
         case _:
             return f"{value:g} {unit}"
 

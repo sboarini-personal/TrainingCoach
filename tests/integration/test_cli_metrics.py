@@ -234,3 +234,54 @@ def test_pool_swim_metrics_of_an_imported_file(cli: Cli, tmp_path: Path) -> None
     assert swolf.endswith("41.5")  # 25 s + 16.5 strokes per length
     per_stroke = next(line for line in shown.splitlines() if "swim.distance_per_stroke" in line)
     assert per_stroke.endswith(f"{150 / 99:.2f} m/stroke")
+
+
+@pytest.mark.req("FR-ACT-006", "FR-TEN-002", "FR-TEN-003")
+@pytest.mark.acceptance("AT-TEN-001")
+def test_rpe_of_an_imported_tennis_session_is_recorded_with_a_correction(
+    cli: Cli, tmp_path: Path
+) -> None:
+    records, summary = fit_session(seconds=7200, sport="tennis", sub_sport="match")
+    activity_id = imported(cli, tmp_path, fit_file([(records, summary)]), "tennis.fit")
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    load = next(line for line in shown.splitlines() if "ten.neuromuscular_load" in line)
+    assert "unknown (missing rpe)" in load
+    code, output = cli.run(
+        "activity", "correct", str(activity_id), "subjective.rpe", "8", "--reason", "Long match"
+    )
+    assert (code, output) == (0, "subjective.rpe corrected\n")
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    assert next(line for line in shown.splitlines() if "ten.neuromuscular_load" in line).endswith(
+        "HIGH"
+    )
+    assert next(line for line in shown.splitlines() if "any.srpe_load" in line).endswith("960 AU")
+    week = cli.run("load", "week", "--week", WEEK)[1]
+    assert "sRPE 960 AU" in next(line for line in week.splitlines() if "TENNIS" in line)
+
+
+@pytest.mark.req("FR-ACT-006")
+def test_corrections_are_validated(cli: Cli, tmp_path: Path) -> None:
+    activity_id = imported(cli, tmp_path, fit_file())
+    for field, value, expected in (
+        ("timing.startTimeUtc", "2026-10-20", "cannot be corrected"),
+        ("subjective.rpe", "hard", "needs a number value"),
+        ("subjective.rpe", "11", "error:"),
+    ):
+        code, output = cli.run(
+            "activity", "correct", str(activity_id), field, value, "--reason", "Test"
+        )
+        assert (code, expected in output) == (2, True), output
+    code, output = cli.run(
+        "activity",
+        "correct",
+        "0193b2a0-0000-7000-8000-000000000999",
+        "subjective.rpe",
+        "5",
+        "--reason",
+        "Test",
+    )
+    assert output == "error: activity not found\n"
+    code, _ = cli.run(
+        "activity", "correct", str(activity_id), "environment.surface", "unknown", "--reason", "x"
+    )
+    assert code == 0  # unknown marks a field UNKNOWN

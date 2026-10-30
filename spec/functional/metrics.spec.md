@@ -161,7 +161,8 @@ until a reference is recorded.
 | `swim.distance_per_stroke`, `swim.pace_variability`, `swim.pace_degradation`, `swim.technical_fatigue` | STANDARD_CALCULATION (distance per stroke), APPLICATION_DERIVED (others) | P9 | added in P9 (FR-SWM-002, FR-SWM-003); swimming spec 5 |
 | `str.volume_load` | STANDARD_CALCULATION | P10 | sets x reps x kg |
 | `str.weekly_sets_by_muscle` | APPLICATION_DERIVED | P10 | primary muscles count 1, secondary 0.5 (proposed) |
-| `ten.session_load` | STANDARD_CALCULATION | P9 | session RPE |
+| `ten.session_load` | STANDARD_CALCULATION | P9 | session RPE: the `any.srpe_load` of TENNIS activities, not a second metric (P9 decision, tennis spec 4) |
+| `ten.neuromuscular_load` | APPLICATION_DERIVED | P9 | added in P9: regional load level (FR-TEN-003); tennis spec 4 |
 | `garmin.training_effect_aerobic`, `garmin.training_effect_anaerobic` | PROVIDER_DERIVED | P7 | Garmin-specific |
 | `garmin.body_battery`, `garmin.hrv_status`, `garmin.stress` | PROVIDER_DERIVED | P7 | consent-gated |
 

@@ -23,6 +23,11 @@
 - Requirements: FR-TEN-001, FR-TEN-003, FR-MET-006
 - Level: unit. First executable: P9 (load), P10 (interference).
 
+Implementation status (P9): the load part is executed by `tests/unit/test_tennis.py`
+(session RPE load per sport and across sports, HIGH regional load for the listed regions
+during 48 hours); re-evaluating planned workouts arrives with interference (P10) and plans
+(P12).
+
 **Given** 120 minutes of demanding tennis (RPE 8)
 **When** the next 24 to 48 hours are planned
 **Then** the tennis adds session RPE load to the weekly total with sport context

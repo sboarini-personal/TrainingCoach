@@ -44,6 +44,7 @@ from coach.metrics.catalog import (
     STREAM_ANALYSES,
     SWIM_PER_SESSION,
     SWIM_PER_STROKE,
+    TEN_NEUROMUSCULAR_LOAD,
     ActivityBinding,
 )
 from coach.metrics.cycling import POWER_ZONES, measured_power, power_zone_times
@@ -173,6 +174,11 @@ class ActivityMetricsEngine:
         stored.extend(power_zones)
         self._retire_zones(scope, CYC_POWER_ZONE_TIME.metric_id, view, len(power_zones))
         stored.extend(self._compute_swimming(scope, view, settings, streams))
+        tennis = self._compute_tennis(scope, view)
+        if tennis is None:
+            self._metrics.retire(scope, TEN_NEUROMUSCULAR_LOAD.metric_id, subject)
+        else:
+            stored.append(tennis)
         for analysis in self._analyses:
             value = None
             if analysis.qualifies(view):
@@ -247,6 +253,42 @@ class ActivityMetricsEngine:
                 )
             )
         return stored
+
+    def _compute_tennis(self, scope: OwnerScope, view: Activity) -> DerivedMetricValue | None:
+        """Regional neuromuscular load of a tennis session (tennis spec 4)."""
+        if view.sport is not Sport.TENNIS:
+            return None
+        specs = {spec.name: spec for spec in TEN_NEUROMUSCULAR_LOAD.required_inputs}
+        confidence = view.quality.confidence
+        inputs = {}
+        for name, path in (
+            ("session_duration_seconds", "timing.elapsedSeconds"),
+            ("rpe", "subjective.rpe"),
+        ):
+            value, reasons = view.number(path), set()
+            if value is not None:
+                try:
+                    specs[name].check(value)
+                except DomainValidationError:
+                    value = None
+                    reasons.add(UncertaintyReason.SENSOR_QUALITY)
+            inputs[name] = MetricInput(
+                value, field_evidence(view, path), confidence, frozenset(reasons)
+            )
+        subtype = view.values.get("classification.subtype")
+        unknown_type = frozenset({UncertaintyReason.MISSING_DATA}) if subtype is None else None
+        inputs["match"] = MetricInput(
+            1.0 if subtype == "MATCH" else 0.0,
+            field_evidence(view, "classification.subtype"),
+            confidence,
+            unknown_type or frozenset(),
+        )
+        return self._metrics.compute(
+            scope,
+            TEN_NEUROMUSCULAR_LOAD.metric_id,
+            MetricSubject.activity(view.activity_id),
+            inputs,
+        )
 
     def _compute_swimming(
         self, scope: OwnerScope, view: Activity, settings: AnalysisSettings, streams: _Streams
@@ -584,6 +626,10 @@ class ActivityMetricsEngine:
                 current = self._metrics.current(scope, definition.metric_id, subject)
                 if current is not None:
                     found.append(current)
+        if activity.sport is Sport.TENNIS:
+            current = self._metrics.current(scope, TEN_NEUROMUSCULAR_LOAD.metric_id, subject)
+            if current is not None:
+                found.append(current)
         for analysis in self._analyses:
             if analysis.qualifies(activity):
                 current = self._metrics.current(scope, analysis.definition.metric_id, subject)

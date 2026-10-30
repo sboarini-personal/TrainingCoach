@@ -7,11 +7,13 @@ shows codes and the athlete's own values; file content is never echoed.
 from __future__ import annotations
 
 import argparse
+from datetime import date
 from typing import Final, TextIO
 
 from coach.application.consent import ConsentRequiredError
 from coach.application.csv_export import export_activities
 from coach.application.errors import InvalidOperationError, NotFoundError
+from coach.application.identity import Principal
 from coach.application.ingestion import ImportResult
 from coach.application.ownership import OwnerScope
 from coach.cli.runtime import (
@@ -21,6 +23,7 @@ from coach.cli.runtime import (
     athlete_timezone,
 )
 from coach.domain.activity.activity import Activity
+from coach.domain.activity.fields import CORRECTABLE_FIELDS, FieldKind, field_spec
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import FieldValue
@@ -137,6 +140,53 @@ def import_files(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, 
         if not result.record.succeeded:
             status = 1
     return status
+
+
+def _corrected_value(path: str, text: str) -> object:
+    """A typed value for a correction; ``unknown`` marks the field UNKNOWN."""
+    if text.strip().lower() == "unknown":
+        return None
+    kind = field_spec(path).kind
+    try:
+        if kind is FieldKind.NUMBER:
+            return float(text)
+        if kind is FieldKind.INTEGER:
+            return int(text)
+        if kind is FieldKind.DATE:
+            return date.fromisoformat(text)
+    except ValueError:
+        raise CommandError(f"{path} needs a {kind.value.lower()} value") from None
+    return text
+
+
+def correct(
+    runtime: Runtime,
+    principal: Principal,
+    scope: OwnerScope,
+    args: argparse.Namespace,
+    out: TextIO,
+) -> int:
+    """Correct one field of an activity (activities spec 4; FR-ACT-006)."""
+    if args.field not in CORRECTABLE_FIELDS:
+        raise CommandError(
+            f"{args.field} cannot be corrected; correctable: "
+            + ", ".join(sorted(CORRECTABLE_FIELDS))
+        )
+    value = _corrected_value(args.field, args.value)
+    try:
+        correction = runtime.activities.correct(
+            scope, principal, args.activity_id, args.field, value, args.reason
+        )
+    except NotFoundError:
+        raise CommandError("activity not found") from None
+    except ConsentRequiredError:
+        raise CommandError(CONSENT_HINT) from None
+    except (DomainValidationError, InvalidOperationError) as error:
+        raise CommandError(str(error)) from None
+    print(f"{args.field} corrected", file=out)
+    if correction.secret_notice is not None:
+        print(correction.secret_notice, file=out)
+    return 0
 
 
 PROGRESS_EVERY: Final = 100
