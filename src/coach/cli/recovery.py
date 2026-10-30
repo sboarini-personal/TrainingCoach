@@ -4,11 +4,12 @@ sections 2 to 4)."""
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Final, TextIO
 
 from coach.application.ownership import OwnerScope
-from coach.application.recovery import CheckInAnswers
+from coach.application.recovery import CheckInAnswers, CheckInRefusedError
 from coach.application.recovery_assessment import AssessmentResult
 from coach.cli.activities import CONSENT_TYPES, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError
@@ -74,31 +75,37 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     )
 
 
-def _today(runtime: Runtime, scope: OwnerScope) -> str:
+def add(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    answers = CheckInAnswers(
+        sleep_quality=args.sleep,
+        fatigue=args.fatigue,
+        soreness=args.soreness,
+        stress=args.stress,
+        motivation=args.motivation,
+        pain_flag=None if args.pain is None else args.pain > 0,
+        pain_intensity=args.pain if args.pain else None,
+        pain_location=args.pain_location,
+        pain_onset=None if args.pain_onset is None else PainOnset(args.pain_onset.upper()),
+        red_flags=tuple(RED_FLAGS[name] for name in args.red_flag),
+        notes=args.notes,
+    )
+    if args.day is not None:
+        try:
+            answers = replace(answers, training_day=date.fromisoformat(args.day))
+        except ValueError:
+            _flags, notice = runtime.recovery.safeguard(scope, answers)  # never lost (fail-safe)
+            if notice is not None:
+                print(notice, file=out)
+            raise CommandError("the day is a date, YYYY-MM-DD") from None
     try:
-        return runtime.recovery.today(scope).isoformat()
+        result = runtime.recovery.record_checkin(scope, answers)
+    except CheckInRefusedError as refused:
+        print(refused.safety_notice, file=out)
+        if isinstance(refused.__cause__, TimezoneRequiredError):
+            raise CommandError(TIMEZONE_HINT) from None
+        raise CommandError(str(refused)) from None
     except TimezoneRequiredError:
         raise CommandError(TIMEZONE_HINT) from None
-
-
-def add(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
-    try:
-        day = date.fromisoformat(args.day or _today(runtime, scope))
-        answers = CheckInAnswers(
-            training_day=day,
-            sleep_quality=args.sleep,
-            fatigue=args.fatigue,
-            soreness=args.soreness,
-            stress=args.stress,
-            motivation=args.motivation,
-            pain_flag=None if args.pain is None else args.pain > 0,
-            pain_intensity=args.pain if args.pain else None,
-            pain_location=args.pain_location,
-            pain_onset=None if args.pain_onset is None else PainOnset(args.pain_onset.upper()),
-            red_flags=tuple(RED_FLAGS[name] for name in args.red_flag),
-            notes=args.notes,
-        )
-        result = runtime.recovery.record_checkin(scope, answers)
     except (DomainValidationError, ValueError) as error:
         raise CommandError(str(error)) from None
     if result.not_recorded is None:

@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 from coach.application.coaching import CoachingConditions
 from coach.application.consent import ConsentGate
+from coach.application.errors import ApplicationError
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, EventSink, IdFactory, OwnedRepository
@@ -57,6 +58,25 @@ class CheckInAnswers:
 
 
 @dataclass(frozen=True, slots=True)
+class _Screened:
+    notes: str | None
+    location: str | None
+    notice: str | None
+    explicit: tuple[RedFlag, ...]
+    detected: tuple[RedFlag, ...]
+    raised: tuple[RedFlag, ...]
+
+
+class CheckInRefusedError(ApplicationError):
+    """The check-in could not be recorded; its red flags already activated SAFETY_HOLD."""
+
+    def __init__(self, reason: str, red_flags: tuple[RedFlag, ...], safety_notice: str) -> None:
+        super().__init__(reason)
+        self.red_flags = red_flags
+        self.safety_notice = safety_notice
+
+
+@dataclass(frozen=True, slots=True)
 class CheckInResult:
     checkin: DailyCheckIn
     red_flags: tuple[RedFlag, ...]
@@ -92,11 +112,15 @@ class RecoveryService:
     def today(self, scope: OwnerScope) -> date:
         return self._clock().astimezone(self._timezone_of(scope)).date()
 
-    def record_checkin(self, scope: OwnerScope, answers: CheckInAnswers) -> CheckInResult:
-        """Record the answers. Red flags activate SAFETY_HOLD before anything else can fail:
-        if the other answers are invalid, a check-in with the red flags only is recorded and
-        the result says why the rest was not (fail-safe, safety spec 2)."""
-        day = answers.training_day or self.today(scope)
+    def safeguard(
+        self, scope: OwnerScope, answers: CheckInAnswers
+    ) -> tuple[tuple[RedFlag, ...], str | None]:
+        """Activate SAFETY_HOLD for the red flags the answers raise, before anything else is
+        checked: their notice, or ``None`` without red flags (fail-safe, safety spec 2)."""
+        raised = self._screened(scope, answers).raised
+        return raised, hold_notice(raised) if raised else None
+
+    def _screened(self, scope: OwnerScope, answers: CheckInAnswers) -> _Screened:
         notice = None
         notes, location = answers.notes, answers.pain_location
         if notes is not None:
@@ -110,6 +134,22 @@ class RecoveryService:
         raised = tuple(dict.fromkeys((*explicit, *detected)))
         if raised:
             self._conditions.activate(scope, Condition.SAFETY_HOLD, reason=raised[0].value)
+        return _Screened(notes, location, notice, explicit, detected, raised)
+
+    def record_checkin(self, scope: OwnerScope, answers: CheckInAnswers) -> CheckInResult:
+        """Record the answers. Red flags activate SAFETY_HOLD before anything else can fail:
+        if the other answers are invalid, a check-in with the red flags only is recorded and
+        the result says why the rest was not; if the training day cannot be known (no
+        timezone), ``CheckInRefusedError`` carries the notice (fail-safe, safety spec 2)."""
+        screened = self._screened(scope, answers)
+        notes, location, notice = screened.notes, screened.location, screened.notice
+        explicit, detected, raised = screened.explicit, screened.detected, screened.raised
+        try:
+            day = answers.training_day or self.today(scope)
+        except ApplicationError as error:
+            if raised:
+                raise CheckInRefusedError(str(error), raised, hold_notice(raised)) from error
+            raise
         previous = latest_per_day(self._checkins.list_all(scope)).get(day)
         record = partial(
             DailyCheckIn,
@@ -179,11 +219,11 @@ def _detected(
     gradual, a pain located in the chest, warning phrases in the notes (safety spec 2)."""
     found: list[RedFlag] = []
     intensity = answers.pain_intensity
-    if _is_int(intensity) and intensity is not None and intensity > 0:
-        if intensity >= SEVERE_PAIN and answers.pain_onset is not PainOnset.GRADUAL:
-            found.append(RedFlag.RF_SEVERE_ACUTE_PAIN)
-        if names_chest(location):
-            found.append(RedFlag.RF_CHEST_PAIN)
+    severe = _is_int(intensity) and intensity is not None and intensity >= SEVERE_PAIN
+    if severe and answers.pain_onset is not PainOnset.GRADUAL:
+        found.append(RedFlag.RF_SEVERE_ACUTE_PAIN)
+    if names_chest(location):  # whatever the intensity says: fail-safe
+        found.append(RedFlag.RF_CHEST_PAIN)
     found.extend(detect(notes))
     return tuple(flag for flag in RedFlag if flag in found)
 

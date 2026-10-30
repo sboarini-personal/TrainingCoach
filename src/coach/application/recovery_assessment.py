@@ -107,12 +107,15 @@ class RecoveryAssessmentService:
                 EventName.RECOVERY_ASSESSED,
                 {"status": current.status.value, "confidence": current.confidence.value},
             )
+        assert current is not None  # noqa: S101 - stored or found above
+        prescriptions = list(self._prescriptions.list_all(scope))
+        if not any(item.assessment_id == current.assessment_id for item in prescriptions):
+            # new, or stored before its prescription could be (no unit of work here)
             prescription = prescribe(current, prescription_id=self._ids(), created_at=self._clock())
             if prescription is not None:
-                self._prescriptions.add(scope, prescription)
+                prescriptions.append(self._prescriptions.add(scope, prescription))
                 self._events.emit(EventName.RECOVERY_PRESCRIBED, {"type": prescription.type.value})
-        assert current is not None  # noqa: S101 - stored or found above
-        found = prescriptions_in_force(self._prescriptions.list_all(scope), in_force, day)
+        found = prescriptions_in_force(prescriptions, in_force, day)
         block = self._recovery_block(scope, found)
         return AssessmentResult(current, found, block, stored)
 

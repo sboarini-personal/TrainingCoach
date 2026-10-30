@@ -31,9 +31,10 @@ Detection sources, combined fail-safe (any one activates the hold):
 
 1. Structured inputs: check-in or activity pain intensity of 7 or more with acute onset; an
    explicit red-flag question in onboarding or check-in. (P11: the daily check-in records
-   both, recovery spec section 1; an unknown onset counts as acute, fail-safe; a pain whose
-   location names the chest is RF_CHEST_PAIN; the hold is activated before the check-in is
-   validated, so invalid answers never lose a red flag; the hold's reason code is the first
+   both, recovery spec section 1; an unknown onset counts as acute, fail-safe; a pain
+   location naming the chest is RF_CHEST_PAIN whatever intensity is answered; the hold is
+   activated before the check-in is validated and before its day is worked out, so
+   invalid answers, an invalid day or a missing timezone never lose a red flag; the hold's reason code is the first
    red flag, and `safety.hold.activated` is emitted.)
 2. Deterministic phrase detection in athlete messages and notes (Spanish and English lists,
    versioned), run before the LLM call. (P11: lists 1.0.0, `coach.domain.recovery.

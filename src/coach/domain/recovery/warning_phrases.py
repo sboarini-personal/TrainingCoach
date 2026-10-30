@@ -29,9 +29,13 @@ PHRASES: Final[Mapping[RedFlag, tuple[str, ...]]] = {
         "presion en el pecho",
         "opresion en el pecho",
         "puntada en el pecho",
+        "duele el pecho",
+        "aprieta el pecho",
         "chest pain",
         "chest pressure",
         "chest tightness",
+        "chest hurts",
+        "chest pains",
         "pain in my chest",
         "pressure in my chest",
         "tightness in my chest",
@@ -51,6 +55,8 @@ PHRASES: Final[Mapping[RedFlag, tuple[str, ...]]] = {
     ),
     RedFlag.RF_BREATHING: (
         "falta de aire",
+        "falta el aire",
+        "cuesta respirar",
         "no puedo respirar",
         "no podia respirar",
         "dificultad para respirar",
@@ -62,6 +68,7 @@ PHRASES: Final[Mapping[RedFlag, tuple[str, ...]]] = {
         "couldn t breathe",
         "difficulty breathing",
         "trouble breathing",
+        "hard to breathe",
     ),
     RedFlag.RF_NEURO: (
         "desorientado",
@@ -118,7 +125,7 @@ PHRASES: Final[Mapping[RedFlag, tuple[str, ...]]] = {
         "arrhythmia",
     ),
 }
-CHEST_WORDS: Final = ("pecho", "torax", "chest")
+CHEST_WORDS: Final = ("pecho", "torax", "toracico", "pectoral", "pectorales", "chest")
 
 
 def normalised(text: str) -> str:

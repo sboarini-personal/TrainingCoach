@@ -53,9 +53,13 @@ def test_each_payload_yields_its_metric_per_calendar_day() -> None:
     assert hrv[0].source_path == "hrvSummaries[0].lastNightAvg"
     sleep = RECORDS.decode(
         RecoveryMetric.SLEEP_DURATION,
-        payload(RecoveryMetric.SLEEP_DURATION, sleep_payload({DAY: 26_000}), week),
+        payload(
+            RecoveryMetric.SLEEP_DURATION,
+            sleep_payload({DAY: 26_000, DAY + timedelta(1): 0}),  # 0 s: the watch not worn
+            week,
+        ),
     )
-    assert sleep[0].value == 26_000.0
+    assert [(item.day, item.value) for item in sleep] == [(DAY, 26_000.0)]
     battery = RECORDS.decode(
         RecoveryMetric.BODY_BATTERY_CHARGED,
         payload(RecoveryMetric.BODY_BATTERY_CHARGED, body_battery_payload({DAY: 70}), week),
@@ -294,3 +298,25 @@ def test_an_unreadable_response_is_skipped_and_the_other_metrics_go_on(tmp_path:
     ) == (1, 0)
     assert by_metric[RecoveryMetric.SLEEP_DURATION].stored == 1
     assert Condition.INTEGRATION_ERROR not in world.conditions_now()
+
+
+@pytest.mark.req("INT-GAR-007", "FR-REC-005")
+def test_an_interrupted_backfill_resumes_where_it_stopped(tmp_path: Path) -> None:
+    world = SyncWorld(tmp_path)
+    grant(world, ConsentType.RECOVERY)  # resting heart rate: one day per request
+    calls = {"count": 0}
+
+    def tenth_fails(method: str) -> None:
+        if method == "daily:RESTING_HR":
+            calls["count"] += 1
+            if calls["count"] == 10:
+                raise ProviderError(IntegrationReason.PROVIDER_AUTH_FAILED, "HTTP_403")
+
+    world.fake.before_call = tenth_fails
+    report = world.recovery_sync.sync(SCOPE)
+    assert report.outcome is SyncOutcome.PENDING
+    status = world.sync.status(SCOPE, "garmin")
+    assert status is not None
+    first_day = date(2026, 10, 26) - timedelta(days=BACKFILL_DAYS - 1)
+    assert status.daily(RecoveryMetric.RESTING_HR.value) == first_day + timedelta(days=8)
+    assert status.reason is IntegrationReason.PROVIDER_AUTH_FAILED

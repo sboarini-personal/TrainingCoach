@@ -446,3 +446,37 @@ def test_the_service_stores_changes_only_and_follows_the_recovery_block() -> Non
     assert world.service.prescriptions(SCOPE, DAY) == tuple(world.prescriptions.list_all(SCOPE))
     history = world.service.history(SCOPE, until=DAY + timedelta(days=1), days=7)
     assert [item.day for item in history] == [DAY, DAY + timedelta(days=1)]
+
+
+class FailingOnce(InMemoryRepository[RecoveryPrescription]):
+    def __init__(self) -> None:
+        super().__init__()
+        self.fail = True
+
+    def add(self, scope: OwnerScope, entity: RecoveryPrescription) -> RecoveryPrescription:
+        if self.fail:
+            self.fail = False
+            raise RuntimeError("storage down")
+        return super().add(scope, entity)
+
+
+@pytest.mark.req("FR-REC-004")
+def test_a_prescription_lost_on_storage_is_created_on_the_next_assessment() -> None:
+    world = AssessmentWorld()
+    failing = FailingOnce()
+    world.service = RecoveryAssessmentService(
+        world.recovery,
+        world.assessments,
+        failing,
+        consents=ConsentGate(InMemoryRepository[ConsentLedger](), policy_version="1.0"),
+        conditions=world.conditions,
+        events=world.events,
+        clock=world.clock,
+        ids=world.ids,
+    )
+    world.checkins.add(SCOPE, checkin(fatigue=5, soreness=5))
+    with pytest.raises(RuntimeError):
+        world.service.assess(SCOPE)
+    again = world.service.assess(SCOPE)  # the same result: not stored again
+    assert again.stored is False
+    assert [item.type for item in again.prescriptions] == [PrescriptionType.EASY_SESSION]

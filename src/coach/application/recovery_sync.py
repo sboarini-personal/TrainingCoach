@@ -234,8 +234,9 @@ class RecoverySyncService:
                 if not skippable or error.detail not in SKIPPED_DETAILS:
                     raise
                 report.rejected += 1
-        updated = self._save(scope, status, status.with_daily(metric.value, today))
-        return report, updated
+            # saved after every window: an interrupted backfill resumes where it stopped
+            status = self._save(scope, status, status.with_daily(metric.value, window.end))
+        return report, status
 
     def _window(
         self,
@@ -305,8 +306,9 @@ class RecoverySyncService:
     ) -> RecoverySyncReport:
         now = self._clock()
         not_before = postponement(error, now=now, longest=self._retrier.policy.max_delay_seconds)
+        latest = self._statuses.get(scope, status.integration_id)  # cursors saved meanwhile
         self._save(
-            scope, status, status.failed(now, error.code, error.detail, not_before=not_before)
+            scope, latest, latest.failed(now, error.code, error.detail, not_before=not_before)
         )
         self._conditions.activate(scope, Condition.INTEGRATION_ERROR, reason=error.code.value)
         fields = {"provider": provider.provider, "reason": error.code.value, "kind": "recovery"}

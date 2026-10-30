@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Final
 from uuid import UUID
 
+from coach.application.consent import ConsentGate
 from coach.application.errors import NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.application.ports import (
@@ -24,7 +25,7 @@ from coach.application.ports import (
 )
 from coach.domain.activity.activity import Activity
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
-from coach.domain.insights import Insight
+from coach.domain.insights import Insight, readable
 from coach.domain.raw.source import RawSource
 from coach.domain.recovery.assessment import RecoveryAssessment
 from coach.domain.recovery.checkin import DailyCheckIn
@@ -65,7 +66,9 @@ class LineageService:
         assessments: OwnedRepository[RecoveryAssessment] | None = None,
         observations: OwnedRepository[RecoveryObservation] | None = None,
         checkins: OwnedRepository[DailyCheckIn] | None = None,
+        consents: ConsentGate | None = None,
     ) -> None:
+        self._consents = consents
         self._values = values
         self._sources = sources
         self._activities = activities
@@ -85,6 +88,8 @@ class LineageService:
         if self._insights is None:
             raise NotFoundError
         insight = self._insights.get(scope, insight_id)
+        if self._consents is not None and not readable(insight.kind, self._consents.granted(scope)):
+            raise NotFoundError  # its data's consent was revoked
         reference = EvidenceRef(EvidenceKind.INSIGHT, insight_id)
         return self._branch(
             scope, reference, insight, insight.evidence, depth=0, seen=frozenset({insight_id})
@@ -162,6 +167,10 @@ class LineageService:
                     )
                 case EvidenceKind.DAILY_RECOVERY if self._observations is not None:
                     observation = self._observations.get(scope, reference.ref_id)
+                    if self._consents is not None and (
+                        observation.consent not in self._consents.granted(scope)
+                    ):
+                        return LineageNode(reference, None)  # its consent was revoked
                     source_ref = EvidenceRef(EvidenceKind.RAW_SOURCE, observation.raw_source_id)
                     child = self._resolve(scope, source_ref, depth=depth + 1, seen=seen)
                     return LineageNode(reference, observation, (child,))

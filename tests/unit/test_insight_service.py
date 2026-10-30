@@ -11,6 +11,7 @@ import pytest
 from activity_world import SCOPE, World
 from coach.application.analytics import AnalyticsService
 from coach.application.coaching import CoachingConditions
+from coach.application.errors import NotFoundError
 from coach.application.events import EventName
 from coach.application.identity import Principal
 from coach.application.insights import InsightService
@@ -21,6 +22,7 @@ from coach.application.screening import SecretScreen
 from coach.domain.activity.observation import Observation, SourceKind
 from coach.domain.coaching.state import CoachingState
 from coach.domain.common.evidence import EvidenceKind
+from coach.domain.consent.ledger import ConsentType
 from coach.domain.insights import Insight, Pattern, Relationship
 from coach.domain.raw.source import RawSource
 from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription
@@ -167,3 +169,38 @@ def test_an_insight_traces_down_to_its_raw_sources_even_after_a_correction() -> 
     )
     again = lineage.trace_insight(SCOPE, monotony.insight_id)
     assert unresolved(again) == 0  # values keep their snapshot: the chain still resolves
+
+
+@pytest.mark.req("PRIV-CON-002", "FR-INS-002")
+@pytest.mark.acceptance("AT-CON-001")
+def test_a_revoked_consent_hides_the_insights_built_from_its_data() -> None:
+    world = trained()
+    stored = InMemoryRepository[Insight]()
+    insights = service(world, stored)
+    found = insights.detect(SCOPE)
+    monotony = next(item for item in found.insights if item.kind is Pattern.MONOTONY)
+    until = IMPORTED.date()
+    assert {item.kind for item in insights.recent(SCOPE, until=until, days=28)} == {
+        Pattern.MONOTONY,
+        Pattern.AGGRESSIVE_PROGRESSION,
+    }
+    world.consents.revoke(SCOPE, ConsentType.ACTIVITIES)
+    assert insights.recent(SCOPE, until=until, days=28) == []  # hidden at once
+    lineage = LineageService(
+        world.derived, world.raw, world.activities, insights=stored, consents=world.consents_gate
+    )
+    with pytest.raises(NotFoundError):
+        lineage.trace_insight(SCOPE, monotony.insight_id)
+    assert len(stored.list_all(SCOPE)) == 2  # kept, never shown: deletion is offered (P15)
+
+
+@pytest.mark.req("FR-INS-002")
+def test_a_new_athlete_has_no_load_spike_against_weeks_before_any_record() -> None:
+    world = World()
+    world.clock.now = IMPORTED
+    number = 600
+    world.ingest(session(-7, 5.0, number := number + 1))  # 2026-W42: the first record
+    for day in range(-1, 5):  # 2026-W43
+        world.ingest(session(day, 5.0, number := number + 1))
+    kinds = {item.kind for item in service(world).detect(SCOPE).insights}
+    assert Pattern.AGGRESSIVE_PROGRESSION not in kinds  # W39 to W41 are unknown, not rest

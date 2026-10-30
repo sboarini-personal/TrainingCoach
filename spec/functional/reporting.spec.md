@@ -54,6 +54,7 @@ read models: computed when asked, never stored.
 - **Confidence** is the lowest confidence of the report's numbers (LOW without any), with the
   union of their uncertainty reasons, plus MISSING_DATA when data is missing. **Missing
   data** lists the sections not available and the items whose value is unknown.
+- Insights appear only while the consents of their data are granted (insights spec 5).
 - **Post-activity:**
   - Summary: sport, training day, the recorded totals, average heart rate and RPE (field
     evidence), and the activity's current derived values;
@@ -73,7 +74,8 @@ read models: computed when asked, never stored.
     `run.hr_drift` and `cyc.power_fade` over the 5 weeks to the month's end;
   - Comparison with the previous period: activities and the sums of the daily session RPE
     load and elapsed time, this month and the month before (unknown when a day's total is);
-  - Consistency: sessions, training days, the longest gap between training days;
+  - Consistency: sessions, training days, the longest gap between training days (only
+    with two training days or more);
   - Training load: the session RPE load, monotony and strain of the weeks the month
     touches;
   - Recovery: days per assessment status;

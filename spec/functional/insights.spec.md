@@ -69,10 +69,10 @@ evidence) is not stored again; `coach insights list` shows the stored ones.
 | Pattern | Rule (window ending today, athlete's timezone) | Evidence | Confidence |
 |---|---|---|---|
 | MONOTONY | the last ended week's `any.training_monotony` above 2.0: a practical threshold traced to Foster's work, not stated in his 1998 abstract | monotony and strain values | the values' input confidence |
-| AGGRESSIVE_PROGRESSION | the last ended week's session RPE load at least 1.5 times the mean of the four weeks before it (a week without activity counts 0; an unknown week total: not evaluated). Acute:chronic workload ratio, Gabbett TJ, Br J Sports Med 2016;50(5):273-280; a contested index (Impellizzeri and others), so an observation only | the five week totals | at most MEDIUM |
+| AGGRESSIVE_PROGRESSION | the last ended week's session RPE load at least 1.5 times the mean of the four weeks before it (a week without activity counts 0, but only inside the athlete's history: the first training day recorded must fall in or before the earliest of the four weeks; an unknown week total: not evaluated). Acute:chronic workload ratio, Gabbett TJ, Br J Sports Med 2016;50(5):273-280; a contested index (Impellizzeri and others), so an observation only | the five week totals | at most MEDIUM |
 | INSUFFICIENT_RECOVERY | assessment REDUCE or REST on 3 or more of the last 7 days, a safety hold aside | the assessments | their lowest |
-| ACCUMULATED_FATIGUE | fatigue 4 or more on 3 or more of the last 5 check-ins of 7 days, the latest included | the check-ins | MEDIUM |
-| HR_DRIFT, PACE_DETERIORATION, POWER_DEGRADATION, TECHNICAL_EFFICIENCY | a comparable group's 8-week trend (metrics spec 11) worsening by 5 % or more with MEDIUM or HIGH confidence: `run.hr_drift` rising, `run.efficiency_hr` falling, `cyc.power_fade` rising, `swim.swolf_avg` rising (per stroke); groups are never combined | the group's values | the trend's |
+| ACCUMULATED_FATIGUE | fatigue 4 or more on 3 or more of the last 5 check-ins of 7 days that rated it, the latest of them included | the check-ins | MEDIUM |
+| HR_DRIFT, PACE_DETERIORATION, POWER_DEGRADATION, TECHNICAL_EFFICIENCY | a comparable group's 8-week trend (metrics spec 11) worsening by 5 % or more (by 1 percentage point for `run.hr_drift` and `cyc.power_fade`, already in percent) with MEDIUM or HIGH confidence: `run.hr_drift` rising, `run.efficiency_hr` falling, `cyc.power_fade` rising, `swim.swolf_avg` rising (per stroke); groups are never combined | the group's values | the trend's |
 | STRENGTH_ENDURANCE_INTERFERENCE, TENNIS_INTERFERENCE | interference rules 1.0.0 (strength spec 7) in 7 days: combinations of level HIGH or above, and TENNIS_INTERVALS_HEAVY_LEGS of MODERATE or above | the combinations' evidence | MEDIUM; LOW when one is uncertain |
 | EXCESSIVE_INTENSITY, INSUFFICIENT_EASY | heart-rate zone time of 14 days, five-zone models, at least 3 sessions and 2 h: zones 4 and 5 above 20 %, zones 1 and 2 below 70 % (informed by Seiler and Kjerland 2006) | the sessions' `cardiovascular.hrZones` | MEDIUM; LOW with an age-predicted model (ESTIMATED_VALUE) |
 | SLEEP_PERFORMANCE | ASSOCIATION of the night's sleep duration (provider metric, SLEEP consent) and `run.efficiency_hr` of that training day: Spearman rank correlation at least 0.5 in absolute value over 10 or more runs in 56 days; NON_COMPARABLE_SESSION when the runs span comparable groups | each pair's two values | LOW; MEDIUM from 20 pairs and 0.6 |
@@ -86,3 +86,8 @@ evidence) is not stored again; `coach insights list` shows the stored ones.
   association, not a cause." (FR-INS-003). The sleep variable is named
   `<provider>.sleep_duration`.
 - Event: `insight.detected` (the pattern ID only).
+- Reading insights (`coach insights list`, reports, lineage) needs the consents of the
+  pattern's data granted now (`REQUIRED_CONSENTS`: ACTIVITIES, plus SLEEP for
+  SLEEP_PERFORMANCE; none for INSUFFICIENT_RECOVERY and ACCUMULATED_FATIGUE, built from
+  the athlete's own declarations and decisions): a revocation hides them at once (privacy
+  spec 1); deleting them comes with the deletion workflow (P15).

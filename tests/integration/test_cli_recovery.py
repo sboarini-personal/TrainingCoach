@@ -146,3 +146,17 @@ def test_recovery_status_assesses_the_day_and_blocks_intensity(cli: Cli) -> None
     )
     assert "recovery block: active" in lines
     assert lines[-1] == "training-load guidance, not a medical assessment"
+
+
+@pytest.mark.req("SAFE-MED-002", "SAFE-MED-003")
+def test_a_red_flag_activates_the_hold_without_a_timezone_or_with_a_bad_day(cli: Cli) -> None:
+    code, output = cli.run("checkin", "add", "--red-flag", "chest_pain")
+    assert code == 2
+    assert "SAFETY_HOLD" in output
+    assert "coach profile timezone" in output
+    assert cli.run("safety", "status") == (0, "safety hold: active\n")
+    other = cli.run("safety", "release", "--cleared-by-professional")
+    assert other[0] == 0
+    code, output = cli.run("checkin", "add", "--day", "2026-13-40", "--notes", "me duele el pecho")
+    assert (code, "SAFETY_HOLD" in output) == (2, True)
+    assert cli.run("safety", "status") == (0, "safety hold: active\n")

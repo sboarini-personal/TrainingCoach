@@ -4,6 +4,7 @@ Synthetic values only."""
 from __future__ import annotations
 
 import itertools
+import math
 import re
 from datetime import date, timedelta
 from typing import Any
@@ -112,7 +113,7 @@ def test_a_load_spike_against_the_four_weeks_before_is_a_finding() -> None:
         week_total("2026-W40", 900.0),
         no_activity("2026-W39"),  # counts 0
     ]
-    finding = patterns.aggressive_progression(acute, chronic)
+    finding = patterns.aggressive_progression(acute, chronic, history_start=date(2026, 9, 1))
     assert finding is not None
     assert finding.observation.startswith(
         "Session RPE load in 2026-W43 was 1600 AU, 2.4 times the mean of the four weeks before"
@@ -122,11 +123,17 @@ def test_a_load_spike_against_the_four_weeks_before_is_a_finding() -> None:
     assert finding.period == DateRange(date(2026, 9, 21), date(2026, 10, 25))
     assert len(finding.evidence) == 4
     unknown = [week_total("2026-W42", None), *chronic[1:]]
-    assert patterns.aggressive_progression(acute, unknown) is None  # not evaluated
+    assert patterns.aggressive_progression(acute, unknown, history_start=date(2026, 9, 1)) is None
     steady = week_total("2026-W43", 900.0)
-    assert patterns.aggressive_progression(steady, chronic) is None
+    assert patterns.aggressive_progression(steady, chronic, history_start=date(2026, 9, 1)) is None
     rested = [no_activity(f"2026-W{week}") for week in (42, 41, 40, 39)]
-    assert patterns.aggressive_progression(acute, rested) is None  # no chronic load
+    assert patterns.aggressive_progression(acute, rested, history_start=date(2026, 9, 1)) is None
+    # a new athlete: weeks before the first record are unknown, not rest
+    for first in (date(2026, 9, 28), None):
+        assert patterns.aggressive_progression(acute, chronic, history_start=first) is None
+    # the first record inside the earliest of the four weeks: evaluated
+    inside = patterns.aggressive_progression(acute, chronic, history_start=date(2026, 9, 27))
+    assert inside is not None
 
 
 # --------------------------------------------------------------------------- recovery
@@ -289,8 +296,9 @@ def test_the_intensity_distribution_flags_too_much_hard_and_too_little_easy() ->
     found = {item.kind: item for item in patterns.intensity(sessions, period)}
     assert set(found) == {Pattern.EXCESSIVE_INTENSITY, Pattern.INSUFFICIENT_EASY}
     observation = found[Pattern.EXCESSIVE_INTENSITY].observation
-    assert "40% of 2.5 h of heart-rate zone time was in zones 1 and 2 and 40% in zones 4 and 5" in (
-        observation
+    assert (
+        "40.0% of 2.5 h of heart-rate zone time was in zones 1 and 2 and 40.0% in zones 4 and 5"
+        in (observation)
     )
     easy = ZoneSession(UUID(int=3), (1800.0, 1200.0, 300.0, 100.0, 0.0))
     assert patterns.intensity([easy, easy, easy], period) == []
@@ -402,3 +410,22 @@ def test_observation_numbers_trace_to_evidence_values() -> None:
     known = {round(monotony.value, 2), round(strain.value), 500.0, 0.0}
     rule_and_labels = {2.0, 1.0, 0.0, 2026.0, 42.0}  # the threshold, rules 1.0.0, the ISO week
     assert stated <= known | rule_and_labels
+
+
+@pytest.mark.req("FR-INS-002")
+def test_percent_metrics_need_a_change_of_one_point_and_an_exact_fit_is_named() -> None:
+    period = DateRange(UNTIL - timedelta(days=55), UNTIL)
+    kwargs: dict[str, Any] = {
+        "label": "RUNNING ROAD FLAT",
+        "points": points(6),
+        "unit": "%",
+        "period": period,
+        "calculation_version": "1.0.0",
+    }
+    drift = patterns.TREND_WATCHES[0]
+    small = Trend(6, 0.015, 0.8, 30.0, 3.0, Confidence.MEDIUM)  # +30 % of a small mean
+    assert patterns.worsening(drift, trend=small, **kwargs) is None
+    exact = Trend(6, 0.05, 2.8, 40.0, math.inf, Confidence.HIGH)
+    finding = patterns.worsening(drift, trend=exact, **kwargs)
+    assert finding is not None
+    assert finding.observation.endswith("least-squares trend of 6 sessions, an exact linear fit.")

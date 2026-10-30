@@ -514,14 +514,17 @@ class ReportService:
                 evidence=evidence,
                 confidence=confidence,
             ),
-            ReportItem(
-                label="longest gap between training days",
-                value=float(max(gaps, default=0)),
-                unit="days",
-                evidence=evidence,
-                confidence=confidence,
-            ),
         ]
+        if gaps:  # a gap needs two training days: never an invented 0
+            items.append(
+                ReportItem(
+                    label="longest gap between training days",
+                    value=float(max(gaps)),
+                    unit="days",
+                    evidence=evidence,
+                    confidence=confidence,
+                )
+            )
         return Section("Consistency", tuple(items))
 
     def _load(self, scope: OwnerScope, weeks: Sequence[str]) -> Section:

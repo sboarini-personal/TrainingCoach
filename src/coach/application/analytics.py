@@ -482,6 +482,14 @@ class AnalyticsService:
         with self._batch():
             return self._members(scope, period)
 
+    def first_training_day(self, scope: OwnerScope) -> date | None:
+        """The training day of the athlete's first activity that counts, if any."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        days = [
+            item.training_day for item in self._store.list_all(scope) if item.counts_toward_totals
+        ]
+        return min(days, default=None)
+
     # ------------------------------------------------------------------ zones
 
     def zone_sessions(self, scope: OwnerScope, period: DateRange) -> list[ZoneSession]:

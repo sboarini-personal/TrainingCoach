@@ -133,10 +133,16 @@ class WeekLoad:
     total: DerivedMetricValue | None  # the week's any.srpe_load_total; None: no activity
 
 
-def aggressive_progression(acute: WeekLoad, chronic: Sequence[WeekLoad]) -> Finding | None:
+def aggressive_progression(
+    acute: WeekLoad, chronic: Sequence[WeekLoad], *, history_start: date | None
+) -> Finding | None:
     """AGGRESSIVE_PROGRESSION: an ended week's session RPE load at least 1.5 times the mean
-    of the four weeks before it (a week without activity counts 0)."""
-    if len(chronic) != CHRONIC_WEEKS or acute.total is None:
+    of the four weeks before it. A week without activity counts 0 only inside the athlete's
+    history: the first training day recorded must fall in or before the earliest of the four
+    weeks, else the pattern is not evaluated (weeks before any record are unknown, not rest)."""
+    if len(chronic) != CHRONIC_WEEKS or acute.total is None or history_start is None:
+        return None
+    if history_start > min(item.period.end for item in chronic):
         return None
     weeks = [acute, *chronic]
     if any(
@@ -249,12 +255,15 @@ class TrendWatch:
     kind: Pattern
     metric_id: str
     worse: Worse
+    # A metric already in percent (drift, fade) has small means, so a relative change is
+    # fragile: it needs this absolute change, in percentage points, instead.
+    min_points: float | None = None
 
 
 TREND_WATCHES: Final = (
-    TrendWatch(Pattern.HR_DRIFT, "run.hr_drift", Worse.RISING),
+    TrendWatch(Pattern.HR_DRIFT, "run.hr_drift", Worse.RISING, min_points=1.0),
     TrendWatch(Pattern.PACE_DETERIORATION, "run.efficiency_hr", Worse.FALLING),
-    TrendWatch(Pattern.POWER_DEGRADATION, "cyc.power_fade", Worse.RISING),
+    TrendWatch(Pattern.POWER_DEGRADATION, "cyc.power_fade", Worse.RISING, min_points=1.0),
     TrendWatch(Pattern.TECHNICAL_EFFICIENCY, "swim.swolf_avg", Worse.RISING),
 )
 
@@ -269,19 +278,25 @@ def worsening(
     period: DateRange,
     calculation_version: str,
 ) -> Finding | None:
-    """A comparable group's trend (metrics spec 11) worsening by 5 % or more, with at least
-    MEDIUM confidence; groups are never combined."""
+    """A comparable group's trend (metrics spec 11) worsening by 5 % or more (by 1 percentage
+    point for a metric in percent), with at least MEDIUM confidence; groups are never
+    combined."""
     if trend is None or trend.confidence is Confidence.LOW:
         return None
     relative = trend.relative_change_percent
-    if relative is None or abs(relative) < TREND_MIN_CHANGE_PERCENT:
+    if watch.min_points is not None:
+        if abs(trend.change) < watch.min_points:
+            return None
+    elif relative is None or abs(relative) < TREND_MIN_CHANGE_PERCENT:
         return None
     if (trend.change > 0) != (watch.worse is Worse.RISING):
         return None
+    relative_text = "" if relative is None else f" ({relative:+.1f} %)"
+    fit = f"t {trend.t_value:.1f}" if math.isfinite(trend.t_value) else "an exact linear fit"
     observation = (
-        f"{watch.metric_id} of {label} sessions changed by {trend.change:+.2f} {unit} "
-        f"({relative:+.1f} %) over the {period.days} days to {period.end}: least-squares trend "
-        f"of {trend.sessions} sessions, t {trend.t_value:.1f}."
+        f"{watch.metric_id} of {label} sessions changed by {trend.change:+.2f} {unit}"
+        f"{relative_text} over the {period.days} days to {period.end}: least-squares trend "
+        f"of {trend.sessions} sessions, {fit}."
     )
     evidence = tuple(
         EvidenceRef(EvidenceKind.DERIVED_METRIC, point.value_id)
@@ -374,8 +389,8 @@ def intensity(sessions: Sequence[ZoneSession], period: DateRange) -> list[Findin
     hard = math.fsum(math.fsum(item.seconds_in_zone[3:]) for item in usable) / total
     hours = total / 3600
     observation = (
-        f"In the {period.days} days to {period.end}, {easy:.0%} of {hours:.1f} h of heart-rate "
-        f"zone time was in zones 1 and 2 and {hard:.0%} in zones 4 and 5 ({len(usable)} "
+        f"In the {period.days} days to {period.end}, {easy:.1%} of {hours:.1f} h of heart-rate "
+        f"zone time was in zones 1 and 2 and {hard:.1%} in zones 4 and 5 ({len(usable)} "
         "sessions, five-zone models)."
     )
     estimated = any(item.estimated for item in usable)

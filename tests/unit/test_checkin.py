@@ -6,14 +6,16 @@ import itertools
 from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from activity_world import MutableClock
 from coach.application.coaching import CoachingConditions
+from coach.application.errors import ApplicationError
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
-from coach.application.recovery import CheckInAnswers, RecoveryService
+from coach.application.recovery import CheckInAnswers, CheckInRefusedError, RecoveryService
 from coach.application.safety import hold_notice
 from coach.application.screening import SecretScreen
 from coach.domain.coaching.state import Actor, CoachingState, Condition
@@ -300,3 +302,59 @@ def test_pain_answers_are_consistent(answers: CheckInAnswers) -> None:
 def test_pain_intensity_zero_is_no_pain() -> None:
     result = RecoveryWorld().service.record_checkin(SCOPE, CheckInAnswers(pain_intensity=0))
     assert (result.checkin.pain_flag, result.checkin.pain) == (False, None)
+
+
+class NoTimezoneError(ApplicationError):
+    """The training day cannot be known."""
+
+
+@pytest.mark.req("SAFE-MED-002", "SAFE-MED-003")
+def test_without_a_known_day_the_red_flags_still_activate_the_hold() -> None:
+    world = RecoveryWorld()
+
+    def no_timezone(_scope: OwnerScope) -> ZoneInfo:
+        raise NoTimezoneError
+
+    service = RecoveryService(
+        world.checkins,
+        conditions=world.conditions,
+        screen=SecretScreen(world.events),
+        timezone_of=no_timezone,
+        events=world.events,
+        clock=world.clock,
+        ids=lambda: UUID(int=7),
+    )
+    with pytest.raises(CheckInRefusedError) as refused:
+        service.record_checkin(SCOPE, CheckInAnswers(red_flags=(RedFlag.RF_CHEST_PAIN,)))
+    assert refused.value.red_flags == (RedFlag.RF_CHEST_PAIN,)
+    assert "emergencia" in refused.value.safety_notice
+    assert Condition.SAFETY_HOLD in world.conditions.current(SCOPE).conditions
+    with pytest.raises(NoTimezoneError):  # without red flags the error stands as it is
+        service.record_checkin(SCOPE, CheckInAnswers(fatigue=3))
+
+
+@pytest.mark.req("SAFE-MED-002")
+@pytest.mark.parametrize(
+    "answers",
+    [
+        CheckInAnswers(pain_location="pecho"),  # no intensity
+        CheckInAnswers(pain_intensity=0, pain_location="dolor en el pecho"),  # "no pain"
+        CheckInAnswers(pain_intensity=2, pain_location="zona pectoral"),
+        CheckInAnswers(pain_intensity=2, pain_location="dolor torácico"),
+        CheckInAnswers(notes="me duele el pecho desde ayer"),
+        CheckInAnswers(notes="My chest hurts when I climb stairs"),
+    ],
+)
+def test_chest_pain_is_a_red_flag_however_it_is_answered(answers: CheckInAnswers) -> None:
+    world = RecoveryWorld()
+    result = world.service.record_checkin(SCOPE, answers)
+    assert RedFlag.RF_CHEST_PAIN in result.red_flags
+    assert Condition.SAFETY_HOLD in world.conditions.current(SCOPE).conditions
+
+
+@pytest.mark.req("SAFE-MED-002")
+@pytest.mark.parametrize(
+    "notes", ["me falta el aire al caminar", "me cuesta respirar", "it is hard to breathe"]
+)
+def test_common_breathing_phrases_are_red_flags(notes: str) -> None:
+    assert detect(notes) == (RedFlag.RF_BREATHING,)

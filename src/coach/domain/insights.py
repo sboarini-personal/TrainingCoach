@@ -11,7 +11,7 @@ detection that finds the same thing again is not stored twice.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
@@ -23,6 +23,7 @@ from coach.domain.common.evidence import EvidenceRef
 from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.text import clean_optional_text, clean_text
 from coach.domain.common.time import DateRange, ensure_utc
+from coach.domain.consent.ledger import ConsentType
 
 PATTERN_RULES_VERSION: Final = "1.0.0"
 MAX_STATEMENT: Final = 1000
@@ -47,6 +48,23 @@ class Pattern(StrEnum):
     TECHNICAL_EFFICIENCY = "PATTERN.TECHNICAL_EFFICIENCY"
     ADHERENCE = "PATTERN.ADHERENCE"
     PLANNED_VS_ACTUAL = "PATTERN.PLANNED_VS_ACTUAL"
+
+
+_ACTIVITIES: Final = frozenset({ConsentType.ACTIVITIES})
+# The consents an insight of each pattern needs to be read (privacy spec 1): revoking one hides
+# the insights built from that data at once. Recovery assessments and check-ins are the
+# athlete's own declarations and decisions, read without a category consent.
+REQUIRED_CONSENTS: Final[Mapping[Pattern, frozenset[ConsentType]]] = {
+    **dict.fromkeys(Pattern, _ACTIVITIES),
+    Pattern.SLEEP_PERFORMANCE: frozenset({ConsentType.ACTIVITIES, ConsentType.SLEEP}),
+    Pattern.INSUFFICIENT_RECOVERY: frozenset(),
+    Pattern.ACCUMULATED_FATIGUE: frozenset(),
+}
+
+
+def readable(kind: Pattern, granted: frozenset[ConsentType]) -> bool:
+    """Whether an insight of this pattern may be read with the consents granted now."""
+    return REQUIRED_CONSENTS[kind] <= granted
 
 
 class Relationship(StrEnum):

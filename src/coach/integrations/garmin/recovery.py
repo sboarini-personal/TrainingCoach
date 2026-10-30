@@ -90,6 +90,8 @@ def _number(metric: RecoveryMetric, value: Any) -> float | None:
         number = float(value)
     except OverflowError:  # an integer too large for any measurement
         return None
+    if metric is RecoveryMetric.SLEEP_DURATION and number == 0:
+        return None  # a night without measured sleep (the watch not worn): no reading
     return number if spec.low <= number <= spec.high else None
 
 

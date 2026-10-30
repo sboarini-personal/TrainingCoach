@@ -272,7 +272,8 @@ documented endpoint per recovery metric, each requested only with that metric's 
 - The normaliser reads nothing else. A payload that is not valid JSON or not shaped as the
   document describes is `PROVIDER_PROTOCOL_ERROR` `DAILY_FORMAT`, a resting heart rate
   `calendarDate` that is not a `ConnectDate` naming the requested day included. A value that
-  is absent, not a number (an integer too large for a float included) or outside the
+  is absent, not a number (an integer too large for a float included), a sleep time of 0 s
+  (a night without measured sleep) or outside the
   metric's range (resting HR 25 to 150 bpm, HRV 1 to 300 ms, sleep 0 to 86,400 s, Body
   Battery 0 to 100) is left out; a day stated twice with different values is left out.
 - **Minimised RAW (ADR-032, precision of INT-GAR-009).** The payloads hold more than the

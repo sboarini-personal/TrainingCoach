@@ -28,7 +28,7 @@ from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import UncertaintyReason
 from coach.domain.common.time import DateRange
 from coach.domain.consent.ledger import ConsentType
-from coach.domain.insights import Insight, Pattern, Relationship
+from coach.domain.insights import Insight, Pattern, Relationship, readable
 from coach.domain.recovery.daily import RecoveryMetric
 from coach.metrics.catalog import CATALOG, SRPE_LOAD_TOTAL
 from coach.metrics.derived import MetricSubject, SubjectKind
@@ -128,12 +128,16 @@ class InsightService:
         return DetectionReport(today, insights, new, tuple(skipped))
 
     def recent(self, scope: OwnerScope, *, until: date, days: int) -> Sequence[Insight]:
-        """Stored insights whose days reach into the period, newest first."""
+        """Stored insights whose days reach into the period and whose data may be read with
+        the consents granted now (a revocation hides them at once), newest first."""
         start = until - timedelta(days=days - 1)
+        granted = self._consents.granted(scope)
         found = [
             item
             for item in self._insights.list_all(scope)
-            if item.period.end >= start and item.period.start <= until
+            if item.period.end >= start
+            and item.period.start <= until
+            and readable(item.kind, granted)
         ]
         return sorted(found, key=lambda item: (item.generated_at, item.kind.value), reverse=True)
 
@@ -154,7 +158,9 @@ class InsightService:
             report = self._analytics.week(scope, key)
             total = report.cross_sport.get(SRPE_LOAD_TOTAL.metric_id)
             weeks.append(WeekLoad(key, report.period, None if total is None else total.value))
-        progression = patterns.aggressive_progression(weeks[0], weeks[1:])
+        progression = patterns.aggressive_progression(
+            weeks[0], weeks[1:], history_start=self._analytics.first_training_day(scope)
+        )
         if progression is not None:
             found.append(progression)
         return found

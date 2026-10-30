@@ -57,6 +57,10 @@ def session(day_offset: int, number: int) -> Observation:
 
 
 def reports(world: World) -> ReportService:
+    return built(world)[0]
+
+
+def built(world: World) -> tuple[ReportService, InsightService]:
     conditions = CoachingConditions(
         InMemoryRepository[CoachingState](),
         audit=world.audit,
@@ -101,7 +105,7 @@ def reports(world: World) -> ReportService:
         clock=world.clock,
         ids=world.ids,
     )
-    return ReportService(
+    report_service = ReportService(
         activities=world.service,
         analytics=analytics,
         assessments=assessments,
@@ -111,6 +115,7 @@ def reports(world: World) -> ReportService:
         today=recovery.today,
         clock=world.clock,
     )
+    return report_service, insights
 
 
 def trained() -> World:
@@ -265,3 +270,26 @@ def test_without_the_activities_consent_activity_sections_are_not_available() ->
     for name in ("Volume by sport", "Intensity distribution", "Strength by muscle group"):
         assert report.section(name).unavailable is Unavailable.NO_CONSENT
     valid(report)
+
+
+@pytest.mark.req("FR-RPT-003")
+def test_one_training_day_has_no_longest_gap() -> None:
+    world = World()
+    world.clock.now = IMPORTED
+    world.ingest(session(0, 501))
+    consistency = values(reports(world).monthly(SCOPE, "2026-10"), "Consistency")
+    assert consistency == {"sessions": 1.0, "training days": 1.0}  # never an invented 0
+
+
+@pytest.mark.req("FR-RPT-002", "PRIV-CON-002")
+def test_a_revoked_consent_hides_insights_from_the_reports() -> None:
+    world = trained()
+    service, insights = built(world)
+    insights.detect(SCOPE)
+    trends = values(service.weekly(SCOPE, "2026-W43"), "Trends")
+    assert {"PATTERN.MONOTONY", "PATTERN.AGGRESSIVE_PROGRESSION"} <= set(trends)
+    world.consents.revoke(SCOPE, ConsentType.ACTIVITIES)
+    report = service.weekly(SCOPE, "2026-W43")
+    assert report.section("Trends").unavailable is Unavailable.NO_DATA  # hidden at once
+    month = service.monthly(SCOPE, "2026-10")
+    assert month.section("Risks").unavailable is Unavailable.NO_DATA
