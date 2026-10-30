@@ -22,7 +22,7 @@ from typing import Final
 from uuid import UUID
 
 from coach.application.activities import ActivityService
-from coach.application.activity_metrics import field_evidence
+from coach.application.activity_metrics import HR_ZONES_FIELD, field_evidence
 from coach.application.consent import ConsentGate
 from coach.application.derived_metrics import DerivedMetricService
 from coach.application.errors import NotFoundError
@@ -34,6 +34,7 @@ from coach.domain.activity.fields import (
     STREAM_KEYS,
     Cadence,
     CadenceUnit,
+    HrZones,
     Pain,
     StreamKind,
     StrokeType,
@@ -57,6 +58,7 @@ from coach.domain.strength.vocabulary import BodyRegion, MuscleGroup
 from coach.metrics.catalog import (
     CATALOG,
     DAY_LOADS,
+    HR_ZONE_TIME,
     MAX_DAY_LOAD,
     PERIOD_TOTALS,
     SRPE_LOAD_TOTAL,
@@ -90,6 +92,7 @@ from coach.planning.interference import (
     swim_demands,
     tennis_demands,
 )
+from coach.planning.patterns import ZoneSession
 
 # A training day is a local date: the activity starts at most 14 h away from it in UTC.
 _START_MARGIN: Final = timedelta(days=2)
@@ -471,6 +474,29 @@ class AnalyticsService:
             )
         return MetricInput(value.value, evidence, confidence, reasons)
 
+    # ------------------------------------------------------------------ zones
+
+    def zone_sessions(self, scope: OwnerScope, period: DateRange) -> list[ZoneSession]:
+        """The heart-rate zone time of the ACTIVE sessions of a period that have it (the
+        EFFECTIVE view's ``cardiovascular.hrZones``), estimated when the model is (ADR-028)."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        with self._batch():
+            members = self._members(scope, period)
+            found = []
+            for view in members:
+                zones = view.values.get(HR_ZONES_FIELD)
+                if not isinstance(zones, HrZones):
+                    continue
+                first = self._metrics.current(
+                    scope, HR_ZONE_TIME.metric_id, MetricSubject.activity(view.activity_id, zone=1)
+                )
+                estimated = (
+                    first is not None
+                    and UncertaintyReason.ESTIMATED_VALUE in first.uncertainty_reasons
+                )
+                found.append(ZoneSession(view.activity_id, zones.seconds_in_zone, estimated))
+        return found
+
     # ------------------------------------------------------------------ strength
 
     def strength_week(self, scope: OwnerScope, week: str) -> StrengthWeek:
@@ -735,11 +761,12 @@ class AnalyticsService:
         grouped: dict[str, list[Point]] = {}
         without = 0
         for view in members:
-            value = self._trend_value(scope, metric_id, view, stroke)
-            if value is None:
+            found = self._trend_value(scope, metric_id, view, stroke)
+            if found is None:
                 without += 1
                 continue
-            point = Point(view.training_day, value, view.activity_id)
+            value, value_id = found
+            point = Point(view.training_day, value, view.activity_id, value_id)
             grouped.setdefault(group_of(view, stroke), []).append(point)
         groups = tuple(
             TrendGroup(label, tuple(points), trend_of(points, weeks * 7))
@@ -765,18 +792,20 @@ class AnalyticsService:
 
     def _trend_value(
         self, scope: OwnerScope, metric_id: str, view: Activity, stroke: StrokeType | None
-    ) -> float | None:
+    ) -> tuple[float, UUID | None] | None:
         if metric_id == CADENCE_FIELD:
             cadence = view.values.get(CADENCE_FIELD)
             if view.sport is not Sport.RUNNING or not isinstance(cadence, Cadence):
                 return None
-            return cadence.average if cadence.unit is CadenceUnit.STEPS_PER_MIN else None
+            if cadence.unit is not CadenceUnit.STEPS_PER_MIN or cadence.average is None:
+                return None
+            return cadence.average, None
         current = self._metrics.current(
             scope, metric_id, MetricSubject.activity(view.activity_id, stroke=stroke)
         )
-        if current is None or current.status is not DerivedStatus.COMPUTED:
+        if current is None or current.status is not DerivedStatus.COMPUTED or current.value is None:
             return None
-        return current.value
+        return current.value, current.value_id
 
     # ------------------------------------------------------------------ activities
 

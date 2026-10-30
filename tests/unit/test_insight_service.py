@@ -1,0 +1,125 @@
+"""Insight detection over stored activities (insights spec; FR-INS-001, FR-INS-002).
+Synthetic sessions only."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
+
+import pytest
+
+from activity_world import SCOPE, World
+from coach.application.analytics import AnalyticsService
+from coach.application.coaching import CoachingConditions
+from coach.application.events import EventName
+from coach.application.insights import InsightService
+from coach.application.recovery import RecoveryService
+from coach.application.recovery_assessment import RecoveryAssessmentService
+from coach.application.screening import SecretScreen
+from coach.domain.activity.observation import Observation, SourceKind
+from coach.domain.coaching.state import CoachingState
+from coach.domain.common.evidence import EvidenceKind
+from coach.domain.insights import Insight, Pattern, Relationship
+from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription
+from coach.domain.recovery.checkin import DailyCheckIn
+from coach.domain.recovery.daily import RecoveryObservation
+from coach.infrastructure.memory import InMemoryRepository
+from samples import BUENOS_AIRES, START, sample_observation, tennis_values
+
+IMPORTED = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)  # Tuesday of 2026-W44
+
+
+def session(day_offset: int, rpe: float, number: int) -> Observation:
+    values = tennis_values(
+        **{"timing.startTimeUtc": START + timedelta(days=day_offset), "subjective.rpe": rpe}
+    )
+    return sample_observation(
+        SourceKind.ATHLETE_ENTRY,
+        raw_source_id=UUID(int=number),
+        sha256=f"{number:064x}",
+        values=values,
+        received_at=IMPORTED,
+    )
+
+
+def service(world: World) -> InsightService:
+    conditions = CoachingConditions(
+        InMemoryRepository[CoachingState](),
+        audit=world.audit,
+        events=world.events,
+        clock=world.clock,
+    )
+    recovery = RecoveryService(
+        InMemoryRepository[DailyCheckIn](),
+        conditions=conditions,
+        screen=SecretScreen(world.events),
+        timezone_of=lambda _scope: BUENOS_AIRES,
+        events=world.events,
+        clock=world.clock,
+        ids=world.ids,
+        observations=InMemoryRepository[RecoveryObservation](),
+        consents=world.consents_gate,
+    )
+    assessments = RecoveryAssessmentService(
+        recovery,
+        InMemoryRepository[RecoveryAssessment](),
+        InMemoryRepository[RecoveryPrescription](),
+        consents=world.consents_gate,
+        conditions=conditions,
+        events=world.events,
+        clock=world.clock,
+        ids=world.ids,
+    )
+    analytics = AnalyticsService(
+        activities=world.service,
+        store=world.activities,
+        overrides=world.overrides,
+        metrics=world.metrics,
+        consents=world.consents_gate,
+    )
+    return InsightService(
+        analytics,
+        recovery,
+        assessments,
+        InMemoryRepository[Insight](),
+        consents=world.consents_gate,
+        events=world.events,
+        clock=world.clock,
+        ids=world.ids,
+    )
+
+
+@pytest.mark.req("FR-INS-001", "FR-INS-002", "FR-MET-005")
+def test_a_monotonous_week_after_lighter_ones_is_found_from_stored_sessions() -> None:
+    world = World()
+    world.clock.now = IMPORTED
+    number = 300
+    for week in range(1, 5):  # 2026-W39 to 2026-W42: one session a week
+        world.ingest(session(-7 * week, 5.0, number := number + 1))
+    for day in range(-1, 5):  # 2026-W43, Monday to Saturday: the same session every day
+        world.ingest(session(day, 5.0, number := number + 1))
+    insights = service(world)
+    found = insights.detect(SCOPE)
+    kinds = {item.kind: item for item in found.insights}
+    assert set(kinds) == {Pattern.MONOTONY, Pattern.AGGRESSIVE_PROGRESSION}
+    assert found.new == 2
+    monotony = kinds[Pattern.MONOTONY]
+    assert monotony.observation.startswith("Training monotony in 2026-W43 was 2.45")
+    assert "450 450 450 450 450 450 0 AU" in monotony.observation
+    assert {ref.kind for ref in monotony.evidence} == {EvidenceKind.DERIVED_METRIC}
+    assert (monotony.interpretation, monotony.hypothesis, monotony.recommendation) == (
+        None,
+        None,
+        None,
+    )  # the AI coach's parts (P13)
+    assert monotony.relationship is Relationship.NONE
+    progression = kinds[Pattern.AGGRESSIVE_PROGRESSION]
+    assert progression.observation.startswith(
+        "Session RPE load in 2026-W43 was 2700 AU, 6.0 times the mean of the four weeks before"
+    )
+    assert (EventName.INSIGHT_DETECTED, {"kind": "PATTERN.MONOTONY"}) in world.events.events
+    again = insights.detect(SCOPE)  # found again: not stored twice
+    assert (again.new, {item.insight_id for item in again.insights}) == (
+        0,
+        {item.insight_id for item in found.insights},
+    )

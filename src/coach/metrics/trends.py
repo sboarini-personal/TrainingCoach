@@ -32,6 +32,7 @@ class Point:
     day: date
     value: float
     activity_id: UUID
+    value_id: UUID | None = None  # the derived value read (None for a field such as cadence)
 
 
 @dataclass(frozen=True, slots=True)

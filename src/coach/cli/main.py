@@ -30,6 +30,7 @@ from coach.application.secrets import SecretValue
 from coach.cli import activities as activity_commands
 from coach.cli import analytics as analytics_commands
 from coach.cli import garmin as garmin_commands
+from coach.cli import insights as insight_commands
 from coach.cli import recovery as recovery_commands
 from coach.cli import strength as strength_commands
 from coach.cli.runtime import Runtime, build_runtime
@@ -222,6 +223,7 @@ def _parser() -> argparse.ArgumentParser:
         "--stroke", choices=["BACKSTROKE", "BREASTSTROKE", "BUTTERFLY", "FREESTYLE"]
     )
     recovery_commands.add_parsers(commands)
+    insight_commands.add_parsers(commands)
     garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
         dest="action", required=True
     )
@@ -427,6 +429,10 @@ def main(
                 return recovery_commands.data(runtime, _session(runtime), args, stream)
             case ("recovery", "status"):
                 return recovery_commands.assessment(runtime, _session(runtime), stream)
+            case ("insights", "detect"):
+                return insight_commands.detect(runtime, _session(runtime), stream)
+            case ("insights", "list"):
+                return insight_commands.list_insights(runtime, _session(runtime), args, stream)
             case ("safety", "status"):
                 return recovery_commands.status(runtime, _session(runtime), stream)
             case ("safety", "release"):

@@ -68,6 +68,7 @@ Structured (JSON) events are emitted for at least:
 | Ingestion | `ingestion.file.received`, `.rejected`, `.parsed`, `.failed`, `ingestion.duplicate` |
 | Activities | `activity.created`, `activity.corrected` (field path only), `activity.reprocessed` (counts only, P9) |
 | Recovery | `recovery.checkin.recorded` (the number of red flags only; P11), `recovery.assessed` (status and confidence codes), `recovery.prescription.created` (the type only) |
+| Insights | `insight.detected` (the pattern ID only; P11) |
 | Strength | `strength.session.changed` (the kind of change only: RECORDED, REMOVED, RELABELLED, WATCH_SETS_USED, WATCH_SETS_IGNORED; P10) |
 | Deduplication | `dedup.linked`, `dedup.ambiguous`, `dedup.merged`, `dedup.kept_separate`, `dedup.split` |
 | Data quality | `quality.issue.raised`, `quality.issue.resolved` |

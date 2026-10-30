@@ -27,6 +27,7 @@ from coach.application.contracts import (
     CONSENT_LEDGER_CODEC,
     CREDENTIAL_RECORD_CODEC,
     DATA_QUALITY_ISSUE_CODEC,
+    INSIGHT_CODEC,
     INTEGRATION_STATUS_CODEC,
     LAPS_CODEC,
     LENGTHS_CODEC,
@@ -44,6 +45,7 @@ from coach.application.derived_metrics import DerivedMetricService
 from coach.application.errors import ApplicationError, NotFoundError
 from coach.application.ids import new_id
 from coach.application.ingestion import IngestionService
+from coach.application.insights import InsightService
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.providers import FitnessProvider
@@ -147,6 +149,7 @@ class Runtime:
     recovery: RecoveryService
     recovery_sync: RecoverySyncService
     recovery_assessment: RecoveryAssessmentService
+    insights: InsightService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
@@ -323,6 +326,16 @@ def build_runtime(
         safety_hold=lambda scope: Condition.SAFETY_HOLD in conditions.current(scope).conditions,
         batch=database.batch,
     )
+    insights = InsightService(
+        analytics,
+        recovery,
+        recovery_assessment,
+        SqliteAggregateRepository(database, INSIGHT_CODEC),
+        consents=gate,
+        events=events,
+        clock=clock,
+        ids=new_id,
+    )
     ingestion_records = SqliteIngestionRecordRepository(database)
     ingestion = IngestionService(
         formats=LocalFileFormats(ParserSandbox(layout.quarantine)),
@@ -394,6 +407,7 @@ def build_runtime(
         recovery=recovery,
         recovery_sync=recovery_sync,
         recovery_assessment=recovery_assessment,
+        insights=insights,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

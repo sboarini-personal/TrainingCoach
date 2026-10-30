@@ -49,6 +49,7 @@ from coach.application.contracts.ingestion import (
     time_series_from_contract,
     time_series_to_contract,
 )
+from coach.application.contracts.insights import insight_from_contract, insight_to_contract
 from coach.application.contracts.integration import (
     integration_status_from_contract,
     integration_status_to_contract,
@@ -90,6 +91,7 @@ from coach.domain.coaching.state import CoachingState
 from coach.domain.consent.ledger import ConsentLedger
 from coach.domain.goals.goal import Goal, SportEvent
 from coach.domain.ingestion.record import IngestionRecord
+from coach.domain.insights import Insight
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.raw.source import RawSource
 from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription
@@ -211,6 +213,9 @@ RECOVERY_PRESCRIPTION_CODEC: Final[DocumentCodec[RecoveryPrescription]] = Docume
     prescription_to_contract,
     prescription_from_contract,
 )
+INSIGHT_CODEC: Final[DocumentCodec[Insight]] = DocumentCodec(
+    "insight", "insight", insight_to_contract, insight_from_contract
+)
 INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
     "integration_status",
     "integration-status",
@@ -241,5 +246,6 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     RECOVERY_OBSERVATION_CODEC,
     RECOVERY_ASSESSMENT_CODEC,
     RECOVERY_PRESCRIPTION_CODEC,
+    INSIGHT_CODEC,
     INTEGRATION_STATUS_CODEC,
 )

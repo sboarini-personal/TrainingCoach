@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:insight:1",
   "title": "PerformanceInsight",
-  "description": "Structured insight (FR-INS-001). Observation, interpretation, hypothesis and recommendation are separate. There is no causal relationship value (FR-INS-003). Owner spec: spec/functional/insights.spec.md.",
+  "description": "Structured insight (FR-INS-001). Observation, interpretation, hypothesis and recommendation are separate; the observation is written in code from derived values, the other three by the AI coach (null until P13). There is no causal relationship value (FR-INS-003). Owner spec: spec/functional/insights.spec.md.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -26,7 +26,27 @@
     "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
     "insightId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
     "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": {
+      "description": "Storage version (P11); insights are immutable, so it is 1. Absent before it existed.",
+      "type": "integer",
+      "minimum": 1
+    },
     "kind": { "type": "string", "pattern": "^PATTERN\\.[A-Z_]+$" },
+    "period": {
+      "description": "The days the observation covers (P11). Absent in insights from before it existed.",
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+        "end": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+      }
+    },
+    "rulesVersion": {
+      "description": "Version of the pattern rules that detected it (P11).",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
     "observation": {
       "description": "What the data shows; produced from derived metrics in code.",
       "type": "string",
