@@ -61,6 +61,9 @@ _EXERCISE_NAMES: Final[dict[str, dict[int, str]]] = {
     for name, table in Profile["types"].items()
     if name.endswith("_exercise_name")
 }
+# Categories the SDK profile names; the SDK decodes any other value as its number.
+_CATEGORIES: Final = frozenset(Profile["types"]["exercise_category"].values()) - {"unknown"}
+_EXERCISE_NAME: Final = re.compile(r"[a-z0-9_]{1,80}")
 
 # device_info subfields that name a device type (the SDK expands them by source_type)
 _DEVICE_TYPES: Final = ("antplus_device_type", "ble_device_type")
@@ -247,13 +250,14 @@ def _exercises(message: dict[str, Any]) -> list[str]:
     subtypes = _listed(message.get("category_subtype"))
     codes: list[str] = []
     for index, category in enumerate(categories[:MAX_SET_EXERCISES]):
-        code = _code(category)
-        if code is None or code == "unknown":
+        if not isinstance(category, str) or category not in _CATEGORIES:
             continue
+        code = category
         subtype = subtypes[index] if index < len(subtypes) else None
         if isinstance(subtype, int) and not isinstance(subtype, bool):
-            name = _code(_EXERCISE_NAMES.get(code, {}).get(subtype)) or str(subtype)
-            code = f"{code}/{name}"
+            name = _EXERCISE_NAMES.get(category, {}).get(subtype)
+            known = isinstance(name, str) and _EXERCISE_NAME.fullmatch(name)
+            code = f"{category}/{name if known else subtype}"
         if code not in codes:
             codes.append(code)
     return codes

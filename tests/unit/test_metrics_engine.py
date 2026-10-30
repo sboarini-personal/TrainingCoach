@@ -242,8 +242,14 @@ def test_cross_sport_totals_cover_time_and_session_rpe_only() -> None:
         item.definition.metric_id for item in PERIOD_TOTALS if not item.definition.cross_sport
     }
     assert cross_sport == {"any.duration_elapsed", "any.duration_moving", "any.srpe_load_total"}
-    # mechanical work is external load of one sport (P9): never added across sports
-    assert sport_only == {"any.distance_total", "any.elevation_gain_total", "cyc.work_total"}
+    # mechanical work (P9) and volume load (P10) are external load of one sport: never
+    # added across sports
+    assert sport_only == {
+        "any.distance_total",
+        "any.elevation_gain_total",
+        "cyc.work_total",
+        "str.volume_load_total",
+    }
     elapsed = total(DURATION_ELAPSED, WEEK, contribution(1, 3600.0), contribution(2, 1800.0))
     assert elapsed.value == 5400.0
 
@@ -282,6 +288,9 @@ def test_the_catalogue_is_registered_with_origins_and_references() -> None:
         "swim.pace_degradation": MetricOrigin.APPLICATION_DERIVED,
         "swim.technical_fatigue": MetricOrigin.APPLICATION_DERIVED,
         "ten.neuromuscular_load": MetricOrigin.APPLICATION_DERIVED,  # P9 (tennis spec 4)
+        "str.volume_load": MetricOrigin.STANDARD_CALCULATION,  # P10 (strength spec 8)
+        "str.volume_load_total": MetricOrigin.STANDARD_CALCULATION,
+        "str.weekly_sets_by_muscle": MetricOrigin.APPLICATION_DERIVED,
     }
     assert {item.metric_id: item.origin for item in CATALOG} == expected
     for item in CATALOG:
@@ -289,6 +298,7 @@ def test_the_catalogue_is_registered_with_origins_and_references() -> None:
         assert item.provider is None
     assert "Seiler" in (HR_ZONE_TIME.reference or "")
     assert "Foster" in (SRPE_LOAD_TOTAL.reference or "")
+    assert "McBride" in (CATALOG.get("str.volume_load").reference or "")
     assert "SI" in (SPEED_AVG.reference or "")
     assert (RUN_PACE_AVG.sport, SWIM_PACE_100M_AVG.sport) == (Sport.RUNNING, Sport.SWIMMING)
     assert HR_ZONE_TIME.dimension is DimensionKind.ZONE

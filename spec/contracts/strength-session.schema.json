@@ -52,7 +52,17 @@
     "load": { "type": ["number", "null"], "minimum": 0, "maximum": 1000 },
     "rpe": { "type": ["number", "null"], "minimum": 1, "maximum": 10, "multipleOf": 0.5 },
     "entry": {
+      "description": "At least one value is stated.",
       "type": "object",
+      "anyOf": [
+        { "properties": { "completedReps": { "type": "integer" } } },
+        { "properties": { "actualLoadKg": { "type": "number" } } },
+        { "properties": { "actualRpe": { "type": "number" } } },
+        { "properties": { "actualRir": { "type": "integer" } } },
+        { "properties": { "targetReps": { "type": "integer" } } },
+        { "properties": { "targetLoadKg": { "type": "number" } } },
+        { "properties": { "targetRpe": { "type": "number" } } }
+      ],
       "required": [
         "exerciseId",
         "setNumber",

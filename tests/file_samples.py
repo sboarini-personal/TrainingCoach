@@ -124,7 +124,7 @@ def fit_set(
     reps: int | None = None,
     weight: float | None = None,
     set_type: str = "active",
-    category: str | list[str] | None = None,
+    category: str | int | list[str | int] | None = None,
     subtype: int | list[int | None] | None = None,
 ) -> dict[str, Any]:
     """A FIT strength set message; ``subtype`` numbers an exercise name of the category in

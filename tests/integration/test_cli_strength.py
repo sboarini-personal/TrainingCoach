@@ -135,7 +135,7 @@ def test_sets_need_a_known_exercise_and_a_strength_activity(cli: Cli, tmp_path: 
     activity = _imported_workout(cli, tmp_path)
     code, output = cli.run("strength", "log", activity, "sentadilla rara", "--reps", "8")
     assert (code, "unknown exercise 'sentadilla rara'" in output) == (2, True)
-    code, output = cli.run("strength", "log", activity, "ex.back_squat")
+    code, output = cli.run("strength", "log", activity, "ex.back_squat", "--set", "1")
     assert (code, "at least one value" in output) == (2, True)
     code, output = cli.run("strength", "log", activity, "ex.back_squat", "--remove")
     assert (code, "--set" in output) == (2, True)
@@ -143,3 +143,50 @@ def test_sets_need_a_known_exercise_and_a_strength_activity(cli: Cli, tmp_path: 
     assert (code, "recorded no fit:lunge" in output) == (2, True)
     missing = "0193b2a0-0000-7000-8000-00000000ffff"
     assert cli.run("strength", "sets", missing) == (2, "error: activity not found\n")
+
+
+@pytest.mark.req("FR-STR-008", "FR-MET-005")
+def test_the_strength_week_reports_hard_sets_and_volume_load(cli: Cli, tmp_path: Path) -> None:
+    activity = _imported_workout(cli, tmp_path)
+    for number, rpe in (("1", "8"), ("2", "5")):
+        code, output = cli.run(
+            "strength", "log", activity, "ex.back_squat", "--set", number, "--rpe", rpe
+        )
+        assert code == 0, output
+    code, output = cli.run("strength", "week", "--week", "2026-W43")
+    assert code == 0, output
+    lines = output.splitlines()
+    assert lines[0] == "week 2026-W43 (2026-10-19 to 2026-10-25): 1 strength sessions, 3 sets"
+    assert lines[1] == "volume load 1220 kg"  # 8 x 60 + 8 x 62.5 + 12 x 20
+    assert "  QUADRICEPS       1 sets" in lines
+    assert "  HAMSTRINGS       0.5 sets" in lines
+    assert lines[-1] == "1 sets of an exercise the watch did not name (coach strength relabel)"
+    code, output = cli.run("load", "week", "--week", "2026-W43")
+    assert code == 0, output
+    assert "volume load 1220 kg" in output
+
+
+PASTED_KEY = "Zx81Qp0LmN4vB7cT2wYe9KdR"  # pragma: allowlist secret
+
+
+@pytest.mark.req("FR-STR-003", "SEC-SEC-005")
+def test_review_findings_on_the_catalogue_commands(cli: Cli) -> None:
+    code, output = cli.run("strength", "exercises", "--pattern", "SQUAT", "deadlift")
+    assert (code, "no exercise matches" in output) == (0, True)  # the pattern always applies
+    code, output = cli.run("strength", "alias", PASTED_KEY, "ex.back_squat")
+    assert code == 2
+    assert PASTED_KEY not in output
+    assert "coach secret set" in output
+    assert cli.run("strength", "alias") == (0, "no aliases of your own\n")
+
+
+@pytest.mark.req("FR-STR-005")
+def test_an_entry_without_reps_names_its_set(cli: Cli, tmp_path: Path) -> None:
+    activity = _imported_workout(cli, tmp_path)
+    code, output = cli.run("strength", "log", activity, "ex.back_squat", "--rpe", "8")
+    assert (code, "name it with --set" in output) == (2, True)
+    code, output = cli.run(
+        "strength", "log", activity, "ex.back_squat", "--reps", "5", "--load", "70"
+    )
+    assert code == 0, output
+    assert _rows(output)[-1][:5] == ["ex.back_squat", "3", "5", "70", "-"]  # a new set

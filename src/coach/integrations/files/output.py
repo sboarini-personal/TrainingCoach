@@ -190,7 +190,7 @@ def _text(value: Any, maximum: int) -> str | None:
 def _code(value: Any) -> str | None:
     if value is None:
         return None
-    _check(isinstance(value, str) and bool(_CODE.match(value)))
+    _check(isinstance(value, str) and bool(_CODE.fullmatch(value)))
     return str(value)
 
 
@@ -241,7 +241,7 @@ def _set(value: Any) -> ParsedSet:
     document = _object(value, SET_KEYS, SET_KEYS)
     exercises = document.pop("exercises")
     _check(isinstance(exercises, list) and len(exercises) <= MAX_SET_EXERCISES)
-    _check(all(isinstance(item, str) and _EXERCISE_CODE.match(item) for item in exercises))
+    _check(all(isinstance(item, str) and _EXERCISE_CODE.fullmatch(item) for item in exercises))
     label = _text(document.pop("type"), 64)
     numbers = {key: _number(item) for key, item in document.items() if item is not None}
     _check("startOffsetSeconds" in numbers)
@@ -316,7 +316,7 @@ def decode_response(
         )
         name, parser_version = _code(parser["name"]), parser["version"]
         _check(name is not None and isinstance(parser_version, str))
-        _check(bool(_SEMVER.match(parser_version)))
+        _check(bool(_SEMVER.fullmatch(parser_version)))
         sessions_raw = document["sessions"]
         _check(isinstance(sessions_raw, list) and len(sessions_raw) <= max_sessions)
         sessions = tuple(_session(item) for item in sessions_raw)

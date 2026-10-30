@@ -58,6 +58,11 @@ CRAIG_PENDERGAST_1979: Final = (
     "Craig AB Jr, Pendergast DR. Relationships of stroke rate, distance per stroke, and "
     "velocity in competitive swimming. Med Sci Sports. 1979;11(3):278-283"
 )
+MCBRIDE_2009: Final = (
+    "McBride JM, McCaulley GO, Cormie P, Nuzzo JL, Cavill MJ, Triplett NT. Comparison of "
+    "methods to quantify volume during resistance exercise. J Strength Cond Res. "
+    "2009;23(1):106-110 (volume load: repetitions x load)"
+)
 PERIODS: Final = frozenset({SubjectKind.DAY, SubjectKind.WEEK})
 DISTANCE_SPORTS: Final = frozenset({Sport.RUNNING, Sport.CYCLING, Sport.SWIMMING})
 
@@ -532,6 +537,57 @@ TEN_NEUROMUSCULAR_LOAD: Final = MetricDefinition(
     calculate=tennis.neuromuscular_load,
 )
 SWIM_PER_SESSION: Final = (SWIM_PACE_DEGRADATION, SWIM_TECHNICAL_FATIGUE)
+
+# --------------------------------------------------------------------------- strength (P10)
+
+MAX_VOLUME_LOAD_KG: Final = 1_000_000.0
+MAX_SETS: Final = 1000.0
+
+
+def _volume_load(inputs: Mapping[str, float]) -> float:
+    return inputs["volume_load_kg"]
+
+
+STR_VOLUME_LOAD: Final = MetricDefinition(
+    metric_id="str.volume_load",
+    name="Volume load",
+    sport=Sport.STRENGTH,
+    unit="kg",
+    method=(
+        "Sum of repetitions x external load (kg) over the executed sets whose repetitions and "
+        "load are known; bodyweight sets add 0, sets left out are counted. Not comparable "
+        "between protocols of different intensities (strength spec 8)"
+    ),
+    required_inputs=(
+        InputSpec("volume_load_kg", "kg", 0, MAX_VOLUME_LOAD_KG),
+        InputSpec("sets_counted", "sets", 0, MAX_SETS, minimum_exclusive=True),
+        InputSpec("sets_left_out", "sets", 0, MAX_SETS),
+    ),
+    minimum_data_quality=Confidence.LOW,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=MCBRIDE_2009,
+    calculate=_volume_load,
+)
+STR_WEEKLY_SETS_BY_MUSCLE: Final = MetricDefinition(
+    metric_id="str.weekly_sets_by_muscle",
+    name="Hard sets per muscle group",
+    sport=Sport.STRENGTH,
+    unit="sets",
+    method=(
+        "Sum over the week's executed sets of a known exercise of the muscle group's share "
+        "(primary 1, secondary 0.5) when the set was hard: RIR 4 or less, else RPE 6 or more; "
+        "0 when it was not; unknown without RIR and RPE (strength spec 8)"
+    ),
+    required_inputs=(InputSpec("hard_set_share", "sets", 0, 1),),
+    minimum_data_quality=Confidence.LOW,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.APPLICATION_DERIVED,
+    aggregation=Aggregation.SUM,
+    subject_kinds=frozenset({SubjectKind.WEEK}),
+    dimension=DimensionKind.MUSCLE,
+)
+
 STREAM_ANALYSES: Final = (
     StreamAnalysis(
         definition=RUN_HR_DRIFT,
@@ -656,6 +712,15 @@ CYC_WORK_TOTAL: Final = _total(
     origin=MetricOrigin.STANDARD_CALCULATION,
     reference=SI_WORK + " (work adds up)",
 )
+STR_VOLUME_LOAD_TOTAL: Final = _total(
+    "str.volume_load_total",
+    "Volume load",
+    "kg",
+    InputSpec("volume_load_kg", "kg", 0, 100 * MAX_VOLUME_LOAD_KG),
+    cross_sport=False,
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=MCBRIDE_2009 + " (volume load adds up)",
+)
 SRPE_LOAD_TOTAL: Final = _total(
     "any.srpe_load_total",
     "Session RPE load",
@@ -690,6 +755,9 @@ CATALOG: Final = MetricRegistry(
         *SWIM_PER_STROKE,
         *SWIM_PER_SESSION,
         TEN_NEUROMUSCULAR_LOAD,
+        STR_VOLUME_LOAD,
+        STR_VOLUME_LOAD_TOTAL,
+        STR_WEEKLY_SETS_BY_MUSCLE,
     )
 )
 
@@ -788,4 +856,10 @@ PERIOD_TOTALS: Final = (
     ),
     PeriodTotal(SRPE_LOAD_TOTAL, activity_metric=SRPE_LOAD),
     PeriodTotal(CYC_WORK_TOTAL, activity_metric=CYC_WORK_KJ, sports=_CYCLING, qualifying_only=True),
+    PeriodTotal(
+        STR_VOLUME_LOAD_TOTAL,
+        activity_metric=STR_VOLUME_LOAD,
+        sports=frozenset({Sport.STRENGTH}),
+        qualifying_only=True,
+    ),
 )

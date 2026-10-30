@@ -88,11 +88,12 @@ class WatchSet:
         if self.exercise_id is not None:
             check_exercise_id(self.exercise_id)
         code = self.provider_exercise
-        if code is not None and not PROVIDER_EXERCISE.match(code):
+        if code is not None and not PROVIDER_EXERCISE.fullmatch(code):
             raise DomainValidationError(f"invalid provider exercise code: {code!r}")
 
     @property
     def active(self) -> bool:
+        """A set the file gives no type is taken as active; REST sets are the rests."""
         return self.type is not SetType.REST
 
 

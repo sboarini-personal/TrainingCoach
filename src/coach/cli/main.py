@@ -193,6 +193,10 @@ def _parser() -> argparse.ArgumentParser:
     relabelling.add_argument("watch_exercise", help="as `coach strength sets` shows it")
     relabelling.add_argument("exercise", nargs="?", help="an ID, a catalogue name or an alias")
     relabelling.add_argument("--remove", action="store_true", help="forget the relabel")
+    weekly = strength.add_parser(
+        "week", help="hard sets per muscle group and volume load of one ISO week"
+    )
+    weekly.add_argument("--week", help="ISO week, for example 2026-W44; default this week")
     watching = strength.add_parser("watch-sets", help="use or ignore the watch's sets")
     watching.add_argument("activity_id", type=UUID)
     watching.add_argument("choice", choices=["use", "ignore"])
@@ -376,6 +380,8 @@ def main(
                 return strength_commands.log(runtime, _session(runtime), args, stream)
             case ("strength", "relabel"):
                 return strength_commands.relabel(runtime, _session(runtime), args, stream)
+            case ("strength", "week"):
+                return strength_commands.week(runtime, _session(runtime), args, stream)
             case ("strength", "watch-sets"):
                 return strength_commands.watch_sets(runtime, _session(runtime), args, stream)
             case ("analysis", "trend"):

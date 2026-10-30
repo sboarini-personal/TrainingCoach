@@ -110,7 +110,7 @@ class Relabel:
 
     def __post_init__(self) -> None:
         label = self.watch_exercise
-        if not (PROVIDER_EXERCISE.match(label) or label.startswith("ex.")):
+        if not (PROVIDER_EXERCISE.fullmatch(label) or label.startswith("ex.")):
             raise DomainValidationError(f"not an exercise the watch names: {label!r}")
         if label.startswith("ex."):
             check_exercise_id(label)
@@ -267,6 +267,19 @@ def _entry_result(entry: SetEntry) -> StrengthSetResult:
         ),
         entry,
     )
+
+
+def entry_targets(
+    watch: WatchSets | None, session: StrengthSession
+) -> dict[tuple[str, int], float | None]:
+    """For each entry, the start offset of the watch set it corrects; ``None`` when it is a
+    set of its own. A relabel must leave these unchanged (strength spec 5)."""
+    matched = {
+        (item.exercise_id, item.set_number): item.start_offset_seconds
+        for item in reconcile(watch, session)
+        if item.source is SetSource.FIT and item.exercise_id is not None
+    }
+    return {entry.key: matched.get(entry.key) for entry in session.entries}
 
 
 def reconcile(

@@ -1,4 +1,5 @@
-"""Analytics reads: period totals, the week report and recomputation (metrics spec 9.3 to 9.5).
+"""Analytics reads: period totals, the week report, recomputation (metrics spec 9.3 to 9.5)
+and the strength week: hard sets per muscle group and volume load (strength spec 8).
 
 Every read requires the ACTIVITIES consent and is owner-scoped. Period totals are materialised
 when requested from the EFFECTIVE views of the period's ACTIVE activities: an unchanged
@@ -24,6 +25,7 @@ from coach.application.derived_metrics import DerivedMetricService
 from coach.application.errors import NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.application.ports import ActivityRepository, Batch, OverrideRepository
+from coach.application.strength import StrengthService
 from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import Cadence, CadenceUnit, StrokeType
 from coach.domain.activity.overrides import TRAINING_DAY_FIELD, EntityType
@@ -33,7 +35,14 @@ from coach.domain.common.quality import UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange, TrainingDayBasis
 from coach.domain.consent.ledger import ConsentType
-from coach.metrics.catalog import CATALOG, PERIOD_TOTALS, PeriodTotal
+from coach.domain.strength.vocabulary import MuscleGroup
+from coach.metrics.catalog import (
+    CATALOG,
+    PERIOD_TOTALS,
+    STR_VOLUME_LOAD_TOTAL,
+    STR_WEEKLY_SETS_BY_MUSCLE,
+    PeriodTotal,
+)
 from coach.metrics.derived import (
     DerivedMetricValue,
     DerivedStatus,
@@ -42,6 +51,7 @@ from coach.metrics.derived import (
     SubjectKind,
 )
 from coach.metrics.registry import MetricDefinition
+from coach.metrics.strength import is_hard, muscle_shares
 from coach.metrics.subjects import DimensionKind
 from coach.metrics.trends import Point, Trend, group_of
 from coach.metrics.trends import trend as trend_of
@@ -117,6 +127,25 @@ class PeriodReport:
     cross_sport: Mapping[str, TotalReport]
 
 
+@dataclass(frozen=True, slots=True)
+class MuscleSets:
+    muscle: MuscleGroup
+    hard_sets: TotalReport  # unknown sets: their effort (RIR, RPE) is not known
+
+
+@dataclass(frozen=True, slots=True)
+class StrengthWeek:
+    """Hard sets per muscle group and volume load of an ISO week (strength spec 8)."""
+
+    subject: MetricSubject
+    period: DateRange
+    activities: int  # ACTIVE strength activities of the week
+    sets: int  # executed sets
+    unattributed: int  # sets of an exercise the watch did not name: no muscle group
+    muscles: tuple[MuscleSets, ...]  # only the muscle groups the week's sets worked
+    volume_load: TotalReport | None
+
+
 class AnalyticsService:
     def __init__(
         self,
@@ -127,8 +156,10 @@ class AnalyticsService:
         metrics: DerivedMetricService,
         consents: ConsentGate,
         totals: Sequence[PeriodTotal] = PERIOD_TOTALS,
+        strength: StrengthService | None = None,
         batch: Batch = nullcontext,
     ) -> None:
+        self._strength = strength
         self._activities = activities
         self._store = store
         self._overrides = overrides
@@ -298,6 +329,79 @@ class AnalyticsService:
             current.input_confidence or activity.quality.confidence,
             frozenset(reasons | current.uncertainty_reasons),
         )
+
+    # ------------------------------------------------------------------ strength
+
+    def strength_week(self, scope: OwnerScope, week: str) -> StrengthWeek:
+        """Hard sets per muscle group (str.weekly_sets_by_muscle) and volume load of a week,
+        from the executed sets of its ACTIVE strength activities (strength spec 8)."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        if self._strength is None:
+            raise DomainValidationError("strength sessions are not available here")
+        subject = MetricSubject(SubjectKind.WEEK, week)
+        with self._batch():
+            members = [
+                view
+                for view in self._members(scope, subject.period())
+                if view.sport is Sport.STRENGTH
+            ]
+            by_muscle: dict[MuscleGroup, list[MetricInput]] = {}
+            sets = unattributed = 0
+            for view in members:
+                reasons: set[UncertaintyReason] = set()
+                if view.values.get(_BASIS_FIELD) is TrainingDayBasis.ATHLETE_TIMEZONE_ESTIMATED:
+                    reasons.add(UncertaintyReason.ESTIMATED_VALUE)
+                for item in self._strength.of_view(scope, view).sets:
+                    sets += 1
+                    shares = muscle_shares(item, self._strength.catalogue)
+                    if not shares:
+                        unattributed += 1
+                        continue
+                    hard = is_hard(item)
+                    evidence = EvidenceRef(
+                        EvidenceKind.STRENGTH_SET_RESULT,
+                        view.activity_id,
+                        note=f"{item.exercise_id}#{item.set_number}",
+                    )
+                    for muscle, share in shares.items():
+                        value = None if hard is None else (share if hard else 0.0)
+                        by_muscle.setdefault(muscle, []).append(
+                            MetricInput(
+                                value, evidence, view.quality.confidence, frozenset(reasons)
+                            )
+                        )
+            muscles = []
+            metric_id = STR_WEEKLY_SETS_BY_MUSCLE.metric_id
+            for muscle in MuscleGroup:
+                muscle_subject = subject.with_dimension(muscle.value)
+                contributions = by_muscle.get(muscle)
+                if not contributions:
+                    self._metrics.retire(scope, metric_id, muscle_subject)
+                    continue
+                stored = self._metrics.compute_total(
+                    scope, metric_id, muscle_subject, contributions
+                )
+                known = [entry.value for entry in contributions if entry.value is not None]
+                report = TotalReport(stored, math.fsum(known), len(contributions) - len(known))
+                muscles.append(MuscleSets(muscle, report))
+            volume = self._strength_volume(scope, subject, members)
+        return StrengthWeek(
+            subject, subject.period(), len(members), sets, unattributed, tuple(muscles), volume
+        )
+
+    def _strength_volume(
+        self, scope: OwnerScope, subject: MetricSubject, members: Sequence[Activity]
+    ) -> TotalReport | None:
+        item = next(
+            (total for total in self._totals if total.definition is STR_VOLUME_LOAD_TOTAL), None
+        )
+        sport_subject = subject.with_dimension(Sport.STRENGTH.value)
+        if item is None or not members:
+            return None
+        report = self._total(scope, item, sport_subject, members)
+        if report is None:
+            self._metrics.retire(scope, item.definition.metric_id, sport_subject)
+        return report
 
     # ------------------------------------------------------------------ trends
 

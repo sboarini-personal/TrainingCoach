@@ -172,3 +172,46 @@ def test_every_mapped_fit_name_exists_in_the_sdk_profile_and_the_catalogue() -> 
         "ex.back_squat",
         "fit:squat/barbell_back_squat",
     )
+
+
+def _subtype(category: str, name: str) -> int:
+    table: dict[int, str] = Profile["types"][f"{category}_exercise_name"]
+    return next(number for number, value in table.items() if value == name)
+
+
+@pytest.mark.req("FR-STR-003", "INT-FIL-001")
+def test_every_mapped_fit_exercise_is_recognised_through_the_parser(tmp_path: Path) -> None:
+    """Names longer than 40 characters included (review of P10.2)."""
+    at = START + timedelta(seconds=60)
+    sets, expected = [], []
+    for code, exercise_id in FIT_EXERCISES.items():
+        category, name = code.split("/")
+        sets.append(fit_set(at, 20, reps=5, category=category, subtype=_subtype(category, name)))
+        expected.append(exercise_id)
+        at += timedelta(seconds=20)
+    (session,) = _decode(tmp_path, fit_file([strength_session(sets, seconds=len(sets) * 20 + 120)]))
+    assert session.sets is not None
+    assert [item.exercise_id for item in session.sets.sets] == expected
+    assert FIT_EXERCISES["deadlift/single_leg_romanian_deadlift_with_dumbbell"] == (
+        "ex.single_leg_romanian_deadlift"
+    )
+    assert "hip_raise/barbell_hip_thrust_on_floor" not in FIT_EXERCISES  # a glute bridge
+
+
+@pytest.mark.req("FR-STR-003", "INT-FIL-001")
+def test_categories_the_profile_does_not_name_are_left_out(tmp_path: Path) -> None:
+    step_up = _subtype("squat", "barbell_step_up")
+    sets = [
+        fit_set(
+            START + timedelta(seconds=60), 40, reps=8, category=["squat", 48], subtype=[step_up, 3]
+        ),
+        fit_set(START + timedelta(seconds=200), 40, reps=8, category=48, subtype=3),
+    ]
+    (session,) = _decode(tmp_path, fit_file([strength_session(sets)]))
+    assert session.sets is not None
+    first, second = session.sets.sets
+    assert (first.exercise_id, first.provider_exercise) == (
+        "ex.step_up",
+        "fit:squat/barbell_step_up",
+    )
+    assert (second.exercise_id, second.provider_exercise) == (None, None)

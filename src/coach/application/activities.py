@@ -443,6 +443,12 @@ class ActivityService:
 
     # ------------------------------------------------------------------ reads
 
+    @_atomic
+    def refresh(self, scope: OwnerScope, activity_id: UUID) -> None:
+        """Recompute the metrics of an activity after a change outside it: its strength
+        session (strength spec 5)."""
+        self._after_change(scope, self._stores.activities.get(scope, activity_id))
+
     def effective(self, scope: OwnerScope, activity_id: UUID) -> EffectiveActivity:
         return self._effective(scope, self._stores.activities.get(scope, activity_id))
 

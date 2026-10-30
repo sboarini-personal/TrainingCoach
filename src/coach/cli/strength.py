@@ -13,6 +13,7 @@ from coach.application.errors import InvalidOperationError, NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.application.strength import SessionSets
 from coach.cli.activities import CONSENT_HINT, CommandError
+from coach.cli.analytics import total_text, week_argument
 from coach.cli.runtime import Runtime
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.common.errors import DomainValidationError
@@ -48,7 +49,7 @@ def exercises(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out
         exact = CATALOGUE.resolve(args.text, own_aliases(profile.exercise_aliases))
         found = (
             [exact]
-            if exact is not None
+            if exact is not None and exact in found
             else [item for item in CATALOGUE.search(args.text) if item in found]
         )
     if len(found) == 1 and args.text is not None:
@@ -101,13 +102,11 @@ def alias(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Te
         return 0
     if args.exercise_id is None:
         raise CommandError("name the exercise, for example ex.bulgarian_split_squat")
-    if args.exercise_id not in CATALOGUE:
-        raise CommandError(f"unknown exercise: {args.exercise_id}")
-    owner = CATALOGUE.owner_of(args.text)
-    if owner is not None:
-        raise CommandError(f"{args.text!r} is already a catalogue name of {owner}")
+    screened = runtime.screen.screen(args.text, source="exercise_alias")
+    if screened.notice is not None:
+        raise CommandError(screened.notice)  # never stored (SEC-SEC-005)
     try:
-        added = ExerciseAlias(args.text, args.exercise_id)
+        added = CATALOGUE.check_own_alias(ExerciseAlias(args.text, args.exercise_id))
     except DomainValidationError as error:
         raise CommandError(str(error)) from None
     _save(runtime, scope, profile, stored, (*kept, added))
@@ -225,6 +224,10 @@ def log(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Text
             found = runtime.strength.remove(scope, args.activity_id, exercise_id, args.set_number)
         else:
             number = args.set_number
+            if number is None and args.reps is None:
+                raise CommandError(
+                    "without --reps an entry describes a set already done: name it with --set"
+                )
             if number is None:
                 current = runtime.strength.sets(scope, args.activity_id)
                 done = [item.set_number for item in current.sets if item.exercise_id == exercise_id]
@@ -260,4 +263,35 @@ def watch_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, ou
     with _translated():
         found = runtime.strength.use_watch_sets(scope, args.activity_id, args.choice == "use")
     _show(found, out)
+    return 0
+
+
+def week(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Hard sets per muscle group and volume load of an ISO week (strength spec 8)."""
+    key = week_argument(args.week, runtime, scope)
+    with _translated():
+        report = runtime.analytics.strength_week(scope, key)
+    period = report.period
+    print(
+        f"week {key} ({period.start} to {period.end}): {report.activities} strength "
+        f"sessions, {report.sets} sets",
+        file=out,
+    )
+    if report.volume_load is not None:
+        print(f"volume load {total_text(report.volume_load)}", file=out)
+    if report.muscles:
+        print(
+            "hard sets per muscle group (primary 1, secondary 0.5; hard: RIR 4 or less, "
+            "else RPE 6 or more):",
+            file=out,
+        )
+    for item in report.muscles:
+        text = total_text(item.hard_sets).replace(" unknown)", " of unknown effort)")
+        print(f"  {item.muscle.value:<16} {text}", file=out)
+    if report.unattributed:
+        print(
+            f"{report.unattributed} sets of an exercise the watch did not name "
+            "(coach strength relabel)",
+            file=out,
+        )
     return 0

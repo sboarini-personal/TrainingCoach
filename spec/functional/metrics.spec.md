@@ -27,7 +27,7 @@ Every metric is registered in code with:
 | reference | literature or provider documentation, when the method is not original |
 | provider, providerMetricName | provider metrics only: the provider and its own name for the metric |
 | subjectKinds | the subject kinds a value may describe (section 4); P8 |
-| dimension | optional qualifier of the subject: SPORT, ZONE or STROKE (section 4); P8 (ZONE was HR_ZONE until P9, when power zones joined; STROKE from P9) |
+| dimension | optional qualifier of the subject: SPORT, ZONE, STROKE or MUSCLE (section 4); P8 (ZONE was HR_ZONE until P9, when power zones joined; STROKE from P9; MUSCLE from P10) |
 | crossSport | SPORT dimension only: whether a value may also cover all sports together; P8 |
 | aggregation | SUM: a period total over contributions of the metric's single input; P8 |
 
@@ -78,7 +78,9 @@ Registry rules (enforced when the registry is built):
 - (P8, contract 1.1.0) `subject.dimension` optionally qualifies the subject: a sport code
   (`RUNNING`, ...) for the SPORT dimension, `Z1` to `Z10` for the ZONE dimension (heart-rate
   or power zones, by metric), and from P9 (contract 1.2.0) a stroke type (`FREESTYLE`,
-  `BACKSTROKE`, `BREASTSTROKE`, `BUTTERFLY`) for the STROKE dimension. The
+  `BACKSTROKE`, `BREASTSTROKE`, `BUTTERFLY`) for the STROKE dimension, and from P10
+  (contract 1.3.0) a muscle group (`QUADRICEPS`, ...; strength spec 2) for the MUSCLE
+  dimension. The
   dimension is part of the subject: one current value exists per athlete, metric, kind, key
   and dimension. A metric declares whether it has a dimension; a value of a dimensioned
   metric without a dimension exists only for cross-sport metrics and covers all sports.
@@ -159,8 +161,9 @@ until a reference is recorded.
 | `cyc.work_kj`, `cyc.work_total`, `cyc.power_fade`, `cyc.interval_power_consistency` | STANDARD_CALCULATION (work), APPLICATION_DERIVED (others) | P9 | added in P9: measured power only (cycling spec 6) |
 | `swim.swolf_avg` | APPLICATION_DERIVED (P9 decision, swimming spec 5) | P9 | valid pool lengths only, per stroke type |
 | `swim.distance_per_stroke`, `swim.pace_variability`, `swim.pace_degradation`, `swim.technical_fatigue` | STANDARD_CALCULATION (distance per stroke), APPLICATION_DERIVED (others) | P9 | added in P9 (FR-SWM-002, FR-SWM-003); swimming spec 5 |
-| `str.volume_load` | STANDARD_CALCULATION | P10 | sets x reps x kg |
-| `str.weekly_sets_by_muscle` | APPLICATION_DERIVED | P10 | primary muscles count 1, secondary 0.5 (proposed) |
+| `str.volume_load` | STANDARD_CALCULATION | P10 | repetitions x kg over the executed sets (McBride et al. 2009); strength spec 8 |
+| `str.volume_load_total` | STANDARD_CALCULATION | P10 | added in P10: the week's volume load of STRENGTH, qualifying-only like `cyc.work_total`; one sport only |
+| `str.weekly_sets_by_muscle` | APPLICATION_DERIVED | P10 | hard sets per muscle group (WEEK, dimension MUSCLE): primary muscles count 1, secondary 0.5; strength spec 8 |
 | `ten.session_load` | STANDARD_CALCULATION | P9 | session RPE: the `any.srpe_load` of TENNIS activities, not a second metric (P9 decision, tennis spec 4) |
 | `ten.neuromuscular_load` | APPLICATION_DERIVED | P9 | added in P9: regional load level (FR-TEN-003); tennis spec 4 |
 | `garmin.training_effect_aerobic`, `garmin.training_effect_anaerobic` | PROVIDER_DERIVED | P7 | Garmin-specific |

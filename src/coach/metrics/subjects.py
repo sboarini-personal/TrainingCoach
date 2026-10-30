@@ -2,8 +2,8 @@
 
 A subject is a kind and a key (an activity, a day, an ISO week, an exercise) and, from P8, an
 optional dimension: a sport for per-sport period totals, a zone (heart rate or power) for
-time in zones, or from P9 a swimming stroke type. The dimension is part of the subject's
-identity.
+time in zones, from P9 a swimming stroke type, or from P10 a muscle group. The dimension is
+part of the subject's identity.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from coach.domain.activity.fields import StrokeType
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
+from coach.domain.strength.vocabulary import MuscleGroup
 
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _WEEK = re.compile(r"^(?P<year>[0-9]{4})-W(?P<week>0[1-9]|[1-4][0-9]|5[0-3])$")
@@ -46,6 +47,7 @@ class DimensionKind(StrEnum):
     SPORT = "SPORT"
     ZONE = "ZONE"  # heart-rate or power zones, by metric (HR_ZONE until P9)
     STROKE = "STROKE"  # a swimming stroke type (P9)
+    MUSCLE = "MUSCLE"  # a muscle group (P10)
 
 
 PERIOD_KINDS: Final = frozenset({SubjectKind.DAY, SubjectKind.WEEK})
@@ -78,13 +80,16 @@ _KEY_RULES: Final[dict[SubjectKind, Callable[[str], bool]]] = {
 
 
 def dimension_kind(code: str) -> DimensionKind:
-    """The kind of a dimension code: a sport code or a zone code ``Z1`` to ``Z10``."""
+    """The kind of a dimension code: a sport, a zone ``Z1`` to ``Z10``, a stroke type or a
+    muscle group (the vocabularies share no code)."""
     if _ZONE.match(code):
         return DimensionKind.ZONE
     if code in Sport.__members__.values():
         return DimensionKind.SPORT
     if code in STROKES:
         return DimensionKind.STROKE
+    if code in MuscleGroup.__members__.values():
+        return DimensionKind.MUSCLE
     raise DomainValidationError(f"invalid subject dimension: {code!r}")
 
 
@@ -127,8 +132,15 @@ class MetricSubject:
         return cls(SubjectKind.DAY, day.isoformat(), None if sport is None else sport.value)
 
     @classmethod
-    def week(cls, day: date, *, sport: Sport | None = None) -> MetricSubject:
-        return cls(SubjectKind.WEEK, week_key(day), None if sport is None else sport.value)
+    def week(
+        cls, day: date, *, sport: Sport | None = None, muscle: MuscleGroup | None = None
+    ) -> MetricSubject:
+        if sport is not None and muscle is not None:
+            raise DomainValidationError("a subject has one dimension")
+        dimension = None if sport is None else sport.value
+        if muscle is not None:
+            dimension = muscle.value
+        return cls(SubjectKind.WEEK, week_key(day), dimension)
 
     @property
     def dimension_kind(self) -> DimensionKind | None:
@@ -145,6 +157,12 @@ class MetricSubject:
         if self.dimension is None or self.dimension_kind is not DimensionKind.STROKE:
             return None
         return StrokeType(self.dimension)
+
+    @property
+    def muscle(self) -> MuscleGroup | None:
+        if self.dimension is None or self.dimension_kind is not DimensionKind.MUSCLE:
+            return None
+        return MuscleGroup(self.dimension)
 
     @property
     def zone(self) -> int | None:

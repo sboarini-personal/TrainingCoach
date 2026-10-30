@@ -5,7 +5,7 @@ The executed sets are reconciled in the domain (``reconcile``) from the activity
 stream, the one its EFFECTIVE view resolved (STREAMS_PREFER_FIT), and the athlete's
 ``StrengthSession``. Entries name catalogue exercises only; unknown text is never guessed
 (the caller resolves names through the catalogue). Changes are audited with identifiers
-only.
+only, and the activity's metrics are recomputed (its volume load, strength spec 8).
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ from coach.domain.strength.session import (
     SetEntry,
     StrengthSession,
     StrengthSetResult,
+    entry_targets,
     reconcile,
     session_id_of,
 )
@@ -45,6 +46,20 @@ AUDIT_ACTION: Final = "strength.session_changed"
 type StreamReader = Callable[[OwnerScope, StreamKind, str], object | None]
 
 
+def session_reader(
+    sessions: OwnedRepository[StrengthSession],
+) -> Callable[[OwnerScope, UUID], StrengthSession | None]:
+    """The athlete's strength session of an activity, ``None`` when there is none."""
+
+    def read(scope: OwnerScope, activity_id: UUID) -> StrengthSession | None:
+        try:
+            return sessions.get(scope, session_id_of(activity_id))
+        except NotFoundError:
+            return None
+
+    return read
+
+
 @dataclass(frozen=True, slots=True)
 class SessionSets:
     """The executed sets of one strength activity and what they were reconciled from."""
@@ -53,6 +68,7 @@ class SessionSets:
     session: StrengthSession | None
     watch: WatchSets | None
     sets: tuple[StrengthSetResult, ...]
+    watch_unreadable: bool = False  # the activity has a SETS stream that could not be read
 
     def watch_exercises(self) -> list[str]:
         """What the watch named, in order of first appearance (catalogue IDs or codes)."""
@@ -79,6 +95,7 @@ class StrengthService:
         batch: Batch = nullcontext,
     ) -> None:
         self._sessions = sessions
+        self._session = session_reader(sessions)
         self._activities = activities
         self._consents = consents
         self._streams = streams
@@ -92,10 +109,13 @@ class StrengthService:
 
     def sets(self, scope: OwnerScope, activity_id: UUID) -> SessionSets:
         self._consents.require(scope, ConsentType.ACTIVITIES)
-        view = self._activities.effective(scope, activity_id).activity
-        session = self._session(scope, activity_id)
-        watch = self._watch(scope, view)
-        return SessionSets(view, session, watch, reconcile(watch, session))
+        return self.of_view(scope, self._activities.effective(scope, activity_id).activity)
+
+    def of_view(self, scope: OwnerScope, view: Activity) -> SessionSets:
+        """The executed sets of an activity's EFFECTIVE view (the caller checked consent)."""
+        session = self._session(scope, view.activity_id)
+        watch, unreadable = self._watch(scope, view)
+        return SessionSets(view, session, watch, reconcile(watch, session), unreadable)
 
     # ------------------------------------------------------------------ commands
 
@@ -152,6 +172,16 @@ class StrengthService:
             stored = self._session(scope, activity_id)
             current = stored or StrengthSession.new(scope.athlete_id, activity_id)
             updated = apply(current)
+            if change == "RELABELLED":
+                watch, _ = self._watch(scope, view)
+                before, after = entry_targets(watch, current), entry_targets(watch, updated)
+                moved = sorted({key[0] for key in before if before[key] != after[key]})
+                if moved:
+                    raise InvalidOperationError(
+                        "this relabel would move your entries of "
+                        + ", ".join(moved)
+                        + " to other sets: remove those entries first"
+                    )
             if stored is None:
                 saved = self._sessions.add(scope, updated)
             else:
@@ -168,20 +198,16 @@ class StrengthService:
                 )
             )
             self._events.emit(EventName.STRENGTH_SESSION_CHANGED, {"change": change})
-        watch = self._watch(scope, view)
-        return SessionSets(view, saved, watch, reconcile(watch, saved))
+            self._activities.refresh(scope, activity_id)  # its volume load (strength spec 8)
+        return self.of_view(scope, self._activities.effective(scope, activity_id).activity)
 
-    def _session(self, scope: OwnerScope, activity_id: UUID) -> StrengthSession | None:
-        try:
-            return self._sessions.get(scope, session_id_of(activity_id))
-        except NotFoundError:
-            return None
-
-    def _watch(self, scope: OwnerScope, view: Activity) -> WatchSets | None:
-        """The SETS stream the EFFECTIVE view resolved; ``None`` when there is none or it
-        cannot be read."""
+    def _watch(self, scope: OwnerScope, view: Activity) -> tuple[WatchSets | None, bool]:
+        """The SETS stream the EFFECTIVE view resolved and whether it exists but could not be
+        read (a missing or damaged blob)."""
         stream = next((item for item in view.streams if item.kind is StreamKind.SETS), None)
         if stream is None or view.provenance.get(STREAM_KEYS[StreamKind.SETS]) is None:
-            return None
+            return None, False
         content = self._streams(scope, StreamKind.SETS, stream.blob_sha256)
-        return content if isinstance(content, WatchSets) else None
+        if isinstance(content, WatchSets):
+            return content, False
+        return None, True

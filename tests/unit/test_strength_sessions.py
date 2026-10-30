@@ -11,6 +11,7 @@ import pytest
 
 from activity_world import SCOPE, World
 from coach.application.consent import ConsentRequiredError
+from coach.application.contracts import STRENGTH_SESSION_CODEC
 from coach.application.errors import InvalidOperationError, NotFoundError
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
@@ -23,11 +24,13 @@ from coach.domain.strength.session import (
     SetSource,
     StrengthSession,
     StrengthSetResult,
+    entry_targets,
     reconcile,
     session_id_of,
 )
 from coach.domain.strength.sets import SetType, WatchSet, WatchSets
 from samples import ACTIVITY, ATHLETE, NOW, OTHER_ATHLETE, SHA_C, START, sample_observation
+from schemas import validation_errors
 
 SETS_SHA = "5" * 64
 LATER = NOW + timedelta(hours=1)
@@ -294,3 +297,59 @@ def test_sessions_are_owner_scoped_and_need_the_activities_consent() -> None:
     world.consents.revoke(SCOPE, ConsentType.ACTIVITIES)
     with pytest.raises(ConsentRequiredError):
         world.strength.sets(SCOPE, activity_id)
+
+
+def watch_before_squats() -> WatchSets:
+    """An unrecognised squat (60 kg) before two back squat sets (100 kg)."""
+    return WatchSets(
+        start_time_utc=START,
+        sets=(
+            watch_set(0, None, weight=60.0, code="fit:squat/9999"),
+            watch_set(100, "ex.back_squat", weight=100.0, code="fit:squat/barbell_back_squat"),
+            watch_set(200, "ex.back_squat", weight=100.0, code="fit:squat/barbell_back_squat"),
+        ),
+    )
+
+
+@pytest.mark.req("FR-STR-005")
+def test_entry_targets_name_the_watch_set_each_entry_corrects() -> None:
+    mine = session(entry(number=1, actual_rpe=9.0), entry("ex.goblet_squat", 1, completed_reps=8))
+    assert entry_targets(watch_before_squats(), mine) == {
+        ("ex.back_squat", 1): 100.0,
+        ("ex.goblet_squat", 1): None,  # a set of its own
+    }
+    moved = mine.relabel("fit:squat/9999", "ex.back_squat")
+    assert entry_targets(watch_before_squats(), moved)[("ex.back_squat", 1)] == 0.0
+
+
+@pytest.mark.req("FR-STR-005")
+@pytest.mark.parametrize(
+    ("label", "exercise", "number"),
+    [
+        ("fit:squat/9999", "ex.back_squat", 1),  # the RPE would move to the 60 kg set
+        ("ex.back_squat", "ex.front_squat", 2),  # the entry would become a fourth set
+    ],
+)
+def test_a_relabel_that_would_move_entries_is_refused(
+    label: str, exercise: str, number: int
+) -> None:
+    world = World()
+    activity_id = strength_activity(world, sets=watch_before_squats())
+    world.strength.record(SCOPE, activity_id, entry(number=number, actual_rpe=9.0))
+    with pytest.raises(InvalidOperationError, match="remove those entries first"):
+        world.strength.relabel(SCOPE, activity_id, label, exercise)
+    found = world.strength.sets(SCOPE, activity_id)
+    assert len(found.sets) == 3
+    assert found.session is not None
+    assert found.session.relabels == ()
+    world.strength.remove(SCOPE, activity_id, "ex.back_squat", number)
+    assert len(world.strength.relabel(SCOPE, activity_id, label, exercise).sets) == 3
+
+
+@pytest.mark.req("FR-STR-005", "NFR-REL-004")
+def test_the_contract_refuses_an_entry_that_states_nothing() -> None:
+    document = STRENGTH_SESSION_CODEC.dump(session(entry(completed_reps=8)).with_version(1))
+    assert validation_errors("strength-session", document) == []
+    for key in ("completedReps",):
+        document["entries"][0][key] = None
+    assert validation_errors("strength-session", document) != []

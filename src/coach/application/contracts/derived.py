@@ -26,8 +26,8 @@ from coach.metrics.derived import (
 )
 
 # 1.1.0 added the optional subject dimension (metrics spec section 4, P8); 1.2.0 a stroke type
-# as dimension (swimming spec 5, P9).
-DERIVED_VALUE_SCHEMA_VERSION: Final = "1.2.0"
+# as dimension (swimming spec 5, P9); 1.3.0 a muscle group (strength spec 8, P10).
+DERIVED_VALUE_SCHEMA_VERSION: Final = "1.3.0"
 
 
 def _subject(subject: MetricSubject) -> Json:

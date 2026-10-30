@@ -327,7 +327,8 @@ other formats have none.
 Exercises: the parser writes each pair as the file's own code, `category/name` with the
 exercise name of the subtype in the SDK profile (`<category>_exercise_name`),
 `category/<number>` when the profile names no such subtype, or `category` alone when the
-subtype is unknown; unknown categories are left out. The parent maps the codes through the
+subtype is unknown (names are kept whole, up to 80 characters); categories the profile does
+not name (the SDK gives their number) and `unknown` are left out. The parent maps the codes through the
 FIT exercise mapping 1.0.0 (`coach.integrations.files.fit_exercises`): only exact
 equivalents of catalogue exercises are listed, a loaded variant ("weighted_...") being the
 same exercise, since its load is the set's weight. The set names a catalogue exercise only

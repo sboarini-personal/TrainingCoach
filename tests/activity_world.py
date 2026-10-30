@@ -13,7 +13,7 @@ from coach.application.consent import ConsentGate, ConsentService
 from coach.application.derived_metrics import DerivedMetricService
 from coach.application.ownership import OwnerScope
 from coach.application.screening import SecretScreen
-from coach.application.strength import StrengthService
+from coach.application.strength import StrengthService, session_reader
 from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import PowerSensor, StreamKind
 from coach.domain.activity.issues import DataQualityIssue
@@ -115,6 +115,7 @@ class World:
                 self.pool_length,
             ),
             streams=self.read_stream,
+            strength_sessions=session_reader(self.strength_sessions),
         )
         self.consents_gate = ConsentGate(self.ledgers, policy_version="1.0")
         self.service = ActivityService(

@@ -57,12 +57,16 @@ Catalogue 1.0.0 (P10, contract [../contracts/exercise.schema.json](../contracts/
 - About 50 exercises covering every movement pattern, with English and Spanish aliases, the
   muscles, equipment, difficulty, contraindication tags and substitutions of each. Each
   substitution names an exercise of the catalogue with the same movement pattern.
-- Alias matching is on the text normalised: lower case, accents removed, spaces collapsed,
-  so "Sentadilla búlgara" and "sentadilla bulgara" are the same alias. An alias names one
+- Alias matching is on the text normalised: lower case, accents removed, and spaces,
+  hyphens, underscores and slashes collapsed into one space, so "Sentadilla búlgara",
+  "sentadilla bulgara" and "pull-up"/"pull up" match. An alias names one
   exercise only: two exercises sharing an alias is a catalogue error.
 - The athlete's own aliases (`coach strength alias`) are stored per athlete and map a text
-  to a catalogue ID. One that equals a catalogue alias of another exercise is refused; it
-  can never rename an exercise. Unknown text resolves to nothing: it is never guessed.
+  to a catalogue ID. One that equals a catalogue name or alias is refused (checked on the
+  text as stored, after cleaning); it can never rename an exercise. An alias cannot look like
+  an exercise ID (`ex.`), and its text is screened for disclosed secrets before it is stored
+  (SEC-SEC-005): one that looks like a credential is refused, never stored. Unknown text
+  resolves to nothing: it is never guessed.
 - A new catalogue version may add exercises and aliases; it never reuses or removes an ID,
   since recorded sets refer to it.
 
@@ -98,7 +102,8 @@ Reconciliation (P10, precision of this section):
   catalogue exercises (an ID, a catalogue name or an own alias; never guessed).
 - `StrengthSetResult`s are a pure function of the SETS stream and the session. The watch
   numbers its ACTIVE sets per exercise in time order (REST sets are the rests between sets
-  and are not results); an entry matches the watch set of the same exercise and set number.
+  and are not results; a set the file gives no type is taken as active); an entry matches the
+  watch set of the same exercise and set number.
 - A field the athlete states wins: the entry corrects that set, as a DataOverride corrects
   an activity field (FR-ACT-006). RPE, RIR and targets come only from the athlete; duration
   and time only from the watch. `source` says who recorded the set (FIT when the watch did);
@@ -109,7 +114,13 @@ Reconciliation (P10, precision of this section):
 - The watch may name an exercise wrongly or not at all (its own code without a catalogue
   equivalent: the exercise is UNKNOWN). A relabel names it for the whole session (only names
   the watch used in that session); the athlete can also ignore the watch's sets for a session,
-  and then only the entries count.
+  and then only the entries count. A relabel (or forgetting one) that would change which
+  watch set an existing entry corrects is refused: the athlete removes those entries first, so
+  an entry never silently moves to another set nor turns into an extra one.
+- An entry without completed repetitions describes a set already done, so it names its set
+  number (`--set`); with repetitions and no set number it is the exercise's next set.
+- A session belongs to its activity: after a deduplication split moves the watch's file to
+  another activity, the entries stay with the original one and the athlete reviews them.
 - `workoutId` is UNKNOWN until planned workouts exist (P12). Commands: `coach strength sets`,
   `log`, `relabel` and `watch-sets`. Changes are audited (`strength.session_changed`) with
   identifiers only.
@@ -151,3 +162,28 @@ planner avoids HIGH and VERY_HIGH combinations unless the evidence justifies the
 
 Weekly hard sets per muscle group (`str.weekly_sets_by_muscle`) and volume load
 (`str.volume_load`) are computed from execution data and reported weekly.
+
+Rules (P10, version 1.0.0 of both metrics):
+
+- Both read the executed sets (`StrengthSetResult`, section 5), never the plan.
+- Volume load (`str.volume_load`, per activity, STANDARD_CALCULATION: McBride et al. 2009,
+  J Strength Cond Res 23(1):106-110) is the sum of repetitions x external load (kg) over the
+  sets whose repetitions and load are both known. A bodyweight set adds 0 kg. Sets with an
+  unknown value are left out, counted in the value's inputs and flagged MISSING_DATA; with no
+  such set, the value is UNKNOWN (MISSING_INPUT). It is recomputed whenever the session or the
+  activity changes. Volume load does not compare protocols of different intensities (the
+  reference's own caution). The week's volume load of STRENGTH is `str.volume_load_total`,
+  shown with the other period totals (`coach load week`).
+- A hard set is a set taken close to failure: at most 4 repetitions in reserve when the RIR
+  is known, else RPE 6 or more (the RIR-based RPE scale, RPE 10 = 0 RIR: Zourdos et al. 2016,
+  J Strength Cond Res 30(1):267-275). A set without RIR and RPE has an unknown effort: it is
+  never assumed hard or easy.
+- `str.weekly_sets_by_muscle` (WEEK subject, MUSCLE dimension, APPLICATION_DERIVED) adds up,
+  per muscle group, one contribution per set of a known exercise: the muscle's share (primary
+  1, secondary 0.5) when the set was hard, 0 when it was not, UNKNOWN when its effort is. Like
+  every total (metrics spec 4), one UNKNOWN contribution makes the value UNKNOWN; the report
+  still shows the known part and the number of sets of unknown effort. Sets of an exercise the
+  watch did not name have no muscle group: they are counted apart. A muscle group no set worked
+  in the week has no value (a former one is retired).
+- `coach strength week [--week]` shows the week's sessions, sets, volume load, hard sets per
+  muscle group and the unattributed sets.

@@ -34,10 +34,8 @@ _BY_EXERCISE: Final[Mapping[str, tuple[str, ...]]] = {
     "ex.deadlift": ("deadlift/barbell_deadlift",),
     "ex.romanian_deadlift": ("deadlift/romanian_deadlift",),
     "ex.single_leg_romanian_deadlift": ("deadlift/single_leg_romanian_deadlift_with_dumbbell",),
-    "ex.hip_thrust": (
-        "hip_raise/barbell_hip_thrust_on_floor",
-        "hip_raise/barbell_hip_thrust_with_bench",
-    ),
+    # on the floor it is a loaded glute bridge, not a hip thrust: not listed
+    "ex.hip_thrust": ("hip_raise/barbell_hip_thrust_with_bench",),
     "ex.kettlebell_swing": ("hip_raise/kettlebell_swing",),
     "ex.back_extension": ("core/ghd_back_extensions",),
     # lunge
@@ -113,10 +111,7 @@ _BY_EXERCISE: Final[Mapping[str, tuple[str, ...]]] = {
     "ex.farmers_carry": ("carry/farmers_walk", "carry/farmers_carry"),
     "ex.band_pull_apart": ("banded_exercises/pull_apart",),
     "ex.face_pull": ("row/face_pull",),
-    "ex.external_rotation": (
-        "shoulder_stability/band_external_rotation",
-        "shoulder_stability/cable_external_rotation",
-    ),
+    "ex.external_rotation": ("shoulder_stability/band_external_rotation",),
 }
 
 FIT_EXERCISES: Final[Mapping[str, str]] = {

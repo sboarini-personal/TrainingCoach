@@ -24,14 +24,15 @@ MAX_NAME_LENGTH: Final = 100
 
 
 def normalise_alias(text: str) -> str:
-    """Lower case, accents removed, separators collapsed: the form aliases are matched in."""
+    """Lower case, accents removed, spaces, hyphens, underscores and slashes collapsed to one
+    space: the form aliases are matched in."""
     decomposed = unicodedata.normalize("NFKD", text)
     plain = "".join(char for char in decomposed if not unicodedata.combining(char))
     return _SEPARATORS.sub(" ", plain.casefold()).strip()
 
 
 def check_exercise_id(exercise_id: str) -> str:
-    if not EXERCISE_ID.match(exercise_id):
+    if not EXERCISE_ID.fullmatch(exercise_id):
         raise DomainValidationError(f"invalid exercise id: {exercise_id!r}")
     return exercise_id
 
@@ -42,7 +43,7 @@ class Alias:
     text: str
 
     def __post_init__(self) -> None:
-        if not _LANGUAGE.match(self.language):
+        if not _LANGUAGE.fullmatch(self.language):
             raise DomainValidationError(f"invalid alias language: {self.language!r}")
         object.__setattr__(
             self, "text", clean_text(self.text, max_length=MAX_NAME_LENGTH, field="alias")
@@ -63,6 +64,8 @@ class ExerciseAlias:
         check_exercise_id(self.exercise_id)
         if not normalise_alias(self.text):
             raise DomainValidationError("an alias needs letters or digits")
+        if normalise_alias(self.text).startswith("ex."):
+            raise DomainValidationError("an alias cannot look like an exercise ID")
 
     @property
     def key(self) -> str:
@@ -165,6 +168,16 @@ class ExerciseCatalogue:
     def owner_of(self, text: str) -> str | None:
         """The exercise a catalogue name or alias belongs to, if any."""
         return self._names.get(normalise_alias(text))
+
+    def check_own_alias(self, alias: ExerciseAlias) -> ExerciseAlias:
+        """An athlete's alias names a catalogue exercise and never a catalogue name (strength
+        spec 3): it can never rename an exercise. Checked on the text as stored."""
+        if alias.exercise_id not in self._by_id:
+            raise DomainValidationError(f"unknown exercise: {alias.exercise_id}")
+        owner = self._names.get(alias.key)
+        if owner is not None:
+            raise DomainValidationError(f"{alias.text!r} is already a catalogue name of {owner}")
+        return alias
 
     def resolve(self, text: str, own: Mapping[str, str] | None = None) -> Exercise | None:
         """An exercise ID, a catalogue name or alias, or one of the athlete's own aliases

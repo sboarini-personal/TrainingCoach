@@ -3,7 +3,9 @@
 Recomputes, from the EFFECTIVE view of a live activity, every per-activity metric that
 applies to its sport, the time in heart-rate zones when a zone model applies (an
 age-predicted model is applied to the training day and labelled as an estimate), and the
-sport analyses read from its streams (P9); each stream is read at most once. It also
+sport analyses read from its streams (P9) and the volume load of the executed strength sets
+(P10, reconciled from the SETS stream and the athlete's session); each stream is read at
+most once. It also
 supplies the EFFECTIVE view with the fields filled from current values
 (``training.load.internal.sessionRpeLoad``, ``cardiovascular.hrZones``). Values are stored
 through ``DerivedMetricService``: unchanged snapshots store nothing.
@@ -14,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Final
+from uuid import UUID
 
 from coach.application.derived_metrics import DerivedMetricService
 from coach.application.ownership import OwnerScope
@@ -35,12 +38,15 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
-from coach.metrics import swimming
+from coach.domain.strength.session import StrengthSession, reconcile
+from coach.domain.strength.sets import WatchSets
+from coach.metrics import strength, swimming
 from coach.metrics.analyses import Analysis, StreamAnalysis
 from coach.metrics.catalog import (
     ACTIVITY_BINDINGS,
     CYC_POWER_ZONE_TIME,
     HR_ZONE_TIME,
+    STR_VOLUME_LOAD,
     STREAM_ANALYSES,
     SWIM_PER_SESSION,
     SWIM_PER_STROKE,
@@ -64,10 +70,13 @@ type AthleteSettings = Callable[[OwnerScope], AnalysisSettings]
 type SeriesReader = Callable[[OwnerScope, str], TimeSeries | None]
 # A stream by kind and blob digest; None when it cannot be read (its analyses are UNKNOWN).
 type StreamReader = Callable[[OwnerScope, StreamKind, str], object | None]
+# The athlete's strength session of an activity, None when there is none (P10).
+type SessionReader = Callable[[OwnerScope, UUID], StrengthSession | None]
 _CONTENT: Final[dict[StreamKind, type]] = {
     StreamKind.TIME_SERIES: TimeSeries,
     StreamKind.LAPS: Laps,
     StreamKind.LENGTHS: Lengths,
+    StreamKind.SETS: WatchSets,
 }
 
 
@@ -133,8 +142,10 @@ class ActivityMetricsEngine:
         time_series: SeriesReader | None = None,
         streams: StreamReader | None = None,
         analyses: Sequence[StreamAnalysis] = STREAM_ANALYSES,
+        strength_sessions: SessionReader | None = None,
     ) -> None:
         self._metrics = metrics
+        self._strength_sessions = strength_sessions
         self._bindings = tuple(bindings)
         self._athlete = athlete
         self._analyses = tuple(analyses)
@@ -179,6 +190,11 @@ class ActivityMetricsEngine:
             self._metrics.retire(scope, TEN_NEUROMUSCULAR_LOAD.metric_id, subject)
         else:
             stored.append(tennis)
+        volume = self._compute_volume_load(scope, view, streams)
+        if volume is None:
+            self._metrics.retire(scope, STR_VOLUME_LOAD.metric_id, subject)
+        else:
+            stored.append(volume)
         for analysis in self._analyses:
             value = None
             if analysis.qualifies(view):
@@ -288,6 +304,44 @@ class ActivityMetricsEngine:
             TEN_NEUROMUSCULAR_LOAD.metric_id,
             MetricSubject.activity(view.activity_id),
             inputs,
+        )
+
+    def _compute_volume_load(
+        self, scope: OwnerScope, view: Activity, streams: _Streams
+    ) -> DerivedMetricValue | None:
+        """Volume load of a strength session's executed sets (strength spec 8): UNKNOWN when
+        no set has known repetitions and load; the sets left out are recorded."""
+        if view.sport is not Sport.STRENGTH:
+            return None
+        content = streams.content(StreamKind.SETS)
+        watch = content if isinstance(content, WatchSets) else None
+        session = (
+            None
+            if self._strength_sessions is None
+            else self._strength_sessions(scope, view.activity_id)
+        )
+        reasons: set[UncertaintyReason] = set()
+        if streams.ref(StreamKind.SETS) is not None and watch is None:
+            reasons.add(UncertaintyReason.MISSING_DATA)  # the watch's sets could not be read
+        volume = strength.volume_load(reconcile(watch, session))
+        if volume.left_out:
+            reasons.add(UncertaintyReason.MISSING_DATA)
+        evidence = EvidenceRef(
+            EvidenceKind.STRENGTH_SET_RESULT, view.activity_id, field="strength.sets"
+        )
+        confidence = view.quality.confidence
+        known = volume.counted > 0
+        inputs = {
+            "volume_load_kg": MetricInput(
+                volume.kilograms if known else None, evidence, confidence, frozenset(reasons)
+            ),
+            "sets_counted": MetricInput(
+                float(volume.counted) if known else None, evidence, confidence
+            ),
+            "sets_left_out": MetricInput(float(volume.left_out), evidence, confidence),
+        }
+        return self._metrics.compute(
+            scope, STR_VOLUME_LOAD.metric_id, MetricSubject.activity(view.activity_id), inputs
         )
 
     def _compute_swimming(
@@ -634,6 +688,10 @@ class ActivityMetricsEngine:
                     found.append(current)
         if activity.sport is Sport.TENNIS:
             current = self._metrics.current(scope, TEN_NEUROMUSCULAR_LOAD.metric_id, subject)
+            if current is not None:
+                found.append(current)
+        if activity.sport is Sport.STRENGTH:
+            current = self._metrics.current(scope, STR_VOLUME_LOAD.metric_id, subject)
             if current is not None:
                 found.append(current)
         for analysis in self._analyses:

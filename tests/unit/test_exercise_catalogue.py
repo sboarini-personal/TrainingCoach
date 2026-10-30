@@ -152,3 +152,42 @@ def test_body_regions_extend_muscle_groups_with_joint_regions() -> None:
         "ELBOWS",
     }
     assert BodyRegion.of(MuscleGroup.CALVES) is BodyRegion.CALVES
+
+
+@pytest.mark.req("FR-STR-003")
+@pytest.mark.parametrize(
+    ("text", "exercise_id", "message"),
+    [
+        ("Sentadilla\x07 búlgara", "ex.back_squat", "already a catalogue name"),  # cleaned first
+        ("Dominadas", "ex.chin_up", "already a catalogue name of ex.pull_up"),
+        ("Mis remos", "ex.not_there", "unknown exercise"),
+    ],
+)
+def test_own_aliases_are_checked_on_the_text_as_stored(
+    text: str, exercise_id: str, message: str
+) -> None:
+    with pytest.raises(DomainValidationError, match=message):
+        CATALOGUE.check_own_alias(ExerciseAlias(text, exercise_id))
+    assert (
+        CATALOGUE.check_own_alias(ExerciseAlias("Mis remos", "ex.barbell_row")).text == "Mis remos"
+    )
+
+
+@pytest.mark.req("FR-STR-003")
+@pytest.mark.parametrize("text", ["ex.deadlift", "EX.DEADLIFT", " ex.deadlift_ "])
+def test_an_alias_cannot_look_like_an_exercise_id(text: str) -> None:
+    with pytest.raises(DomainValidationError, match="exercise ID"):
+        ExerciseAlias(text, "ex.back_squat")
+    with pytest.raises(DomainValidationError):
+        Exercise(**{**_base(), "exercise_id": "ex.back_squat\n"})
+
+
+def _base() -> dict[str, Any]:
+    return {
+        "exercise_id": "ex.test",
+        "canonical_name": "Test",
+        "movement_pattern": MovementPattern.SQUAT,
+        "primary_muscles": (MuscleGroup.QUADRICEPS,),
+        "equipment": (Equipment.BODYWEIGHT_ONLY,),
+        "technical_difficulty": 1,
+    }

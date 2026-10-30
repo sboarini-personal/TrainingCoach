@@ -51,8 +51,12 @@ _LABELS: Final = {
     "any.elevation_gain_total": "elevation",
     "any.srpe_load_total": "sRPE",
     "cyc.work_total": "work",
+    "str.volume_load_total": "volume load",
 }
-_LEFT_OUT: Final = {"cyc.work_total": "without measured power"}
+_LEFT_OUT: Final = {
+    "cyc.work_total": "without measured power",
+    "str.volume_load_total": "without sets of known load",
+}
 
 
 # ------------------------------------------------------------------ formatting
@@ -85,6 +89,8 @@ def amount(value: float, unit: str) -> str:
             return f"{value:.0f} AU"
         case "kJ":
             return f"{value:.0f} kJ"
+        case "kg":
+            return f"{value:.0f} kg"
         case "%":
             return f"{value:.1f} %"
         case "m/beat":
@@ -146,7 +152,8 @@ def _today(runtime: Runtime, scope: OwnerScope) -> date:
     return runtime.clock().astimezone(zone).date()
 
 
-def _week(text: str | None, runtime: Runtime, scope: OwnerScope) -> str:
+def week_argument(text: str | None, runtime: Runtime, scope: OwnerScope) -> str:
+    """The ISO week of ``--week``, this week (athlete's timezone) by default."""
     if text is None:
         return week_key(_today(runtime, scope))
     try:
@@ -175,7 +182,7 @@ def _print_week(report: PeriodReport, out: TextIO) -> None:
 
 
 def load_week(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
-    week = _week(args.week, runtime, scope)
+    week = week_argument(args.week, runtime, scope)
     try:
         report = runtime.analytics.week(scope, week)
     except ConsentRequiredError:
