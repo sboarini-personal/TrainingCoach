@@ -56,6 +56,8 @@ uv run coach load week --week 2026-W44              # a given ISO week
 uv run coach load weeks --count 12                  # one line per week
 uv run coach activity show <activity-id>            # an activity with speed, pace and zones
 uv run coach profile hr-zones 100 130 150 165 180 --valid-from 2020-01-01
+uv run coach profile birth-date 1980-01-31          # synthetic example date
+uv run coach profile hr-zones 51 59 71 81 90 100 --age-predicted --valid-from 2020-01-01
 uv run coach metrics recompute                      # after upgrading, or a zone change
 ```
 
@@ -67,7 +69,10 @@ Metrics are calculated in code (`spec/functional/metrics.spec.md` section 9). A 
 total with activities that lack the value is shown as `>= known (n unknown)`, never as
 the total. Distances are never added across sports. Time in heart-rate zones needs a zone
 model (`coach profile hr-zones`, which recomputes the metrics); activities imported before
-a metric existed get it with `coach metrics recompute`.
+a metric existed get it with `coach metrics recompute`. With `--age-predicted` the zones
+are percentages of 220 minus your age on each activity's day (from `coach profile
+birth-date`): an estimate, shown as such, and never used to prescribe intensity
+(ADR-028).
 
 `coach garmin sync` uses the Garmin Personal API key stored with `coach secret set
 garmin-api-key` (create it in Garmin Connect, under Personal API key). It pulls the last 8

@@ -82,12 +82,22 @@ def _parser() -> argparse.ArgumentParser:
         help="show heart-rate zone models, or add one (same start date: replaced)",
     )
     zones.add_argument(
-        "boundaries", nargs="*", type=int, help="2 to 11 ascending bpm, for example 100 130 150 170"
+        "boundaries",
+        nargs="*",
+        type=int,
+        help="2 to 11 ascending bpm, e.g. 100 130 150 170; percentages with --age-predicted",
     )
     zones.add_argument("--valid-from", type=date.fromisoformat, help="YYYY-MM-DD; default today")
     zones.add_argument(
-        "--method", choices=sorted(analytics_commands.ZONE_METHODS), default="custom"
+        "--method", choices=sorted(analytics_commands.ZONE_METHODS), help="default custom"
     )
+    zones.add_argument(
+        "--age-predicted",
+        action="store_true",
+        help="boundaries are %% of 220 - age on each training day: an estimate (ADR-028)",
+    )
+    birth = profile.add_parser("birth-date", help="show or set the birth date")
+    birth.add_argument("date", nargs="?", type=date.fromisoformat, help="YYYY-MM-DD")
     upload = commands.add_parser("import", help="import FIT, TCX, GPX, CSV or ZIP files")
     upload.add_argument("paths", nargs="+", type=Path)
     activity = commands.add_parser("activity", help="activities").add_subparsers(
@@ -262,6 +272,8 @@ def main(
                 return activity_commands.import_files(runtime, _session(runtime), args, stream)
             case ("profile", "hr-zones"):
                 return analytics_commands.hr_zones(runtime, _session(runtime), args, stream)
+            case ("profile", "birth-date"):
+                return analytics_commands.birth_date(runtime, _session(runtime), args, stream)
             case ("activity", "show"):
                 return analytics_commands.show_activity(runtime, _session(runtime), args, stream)
             case ("metrics", "recompute"):

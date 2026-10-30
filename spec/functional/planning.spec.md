@@ -53,7 +53,7 @@ Intensity dimensions are used only when supported by reliable athlete data:
 | Dimension | Allowed when |
 |---|---|
 | RPE | always (every step carries an RPE target) |
-| Heart rate | a valid zone model from measured or declared anchors exists |
+| Heart rate | a valid zone model from measured or declared anchors exists (an AGE_PREDICTED model does not count, profile spec 1.1) |
 | Pace | reliable pace data for the sport and subtype exists (not pool/open-water mixed) |
 | Power | MEASURED power capability for the sport (FR-CYC-002) |
 

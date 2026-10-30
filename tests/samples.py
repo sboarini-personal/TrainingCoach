@@ -120,6 +120,17 @@ def declared(value: Any) -> FieldValue[Any]:
     return FieldValue.declared(value, at=NOW)
 
 
+def age_predicted_zones(valid_from: date = date(2026, 10, 1)) -> HeartRateZoneModel:
+    """Percentages of 220 minus age (profile spec 1.1, ADR-028); needs a birth date."""
+    return HeartRateZoneModel(
+        zone_model_id=UUID("0193b2a0-0000-7000-8000-000000000302"),
+        method=ZoneMethod.PERCENT_MAX_HR,
+        source=ZoneSource.AGE_PREDICTED,
+        boundaries_percent_max_hr=(51, 59, 71, 81, 90, 100),
+        valid_from=valid_from,
+    )
+
+
 def full_profile(athlete_id: UUID = ATHLETE) -> AthleteProfile:
     return AthleteProfile.new(athlete_id).apply(
         ProfileUpdate(

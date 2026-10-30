@@ -39,12 +39,24 @@ General rules:
 - A zone model is `{zoneModelId, method, source, boundariesBpm[], validFrom}`.
   `boundariesBpm` holds 2 to 11 strictly ascending values between 30 and 230; zone *i* spans
   `[boundariesBpm[i], boundariesBpm[i+1])`.
-- Zones come only from the athlete, the provider, or a standard calculation over **measured
-  or declared** anchors (maxHR, restingHR, LTHR). The zone `source` values are
-  ATHLETE_DECLARED, PROVIDER and CALCULATED_FROM_MEASURED_ANCHORS; there is deliberately no
-  value for age-predicted anchors.
-- Age-predicted maximum heart rate MUST NOT be used to prescribe intensity. Without reliable
-  anchors, intensity is prescribed by RPE (FR-PLN-005).
+- Reliable zones come only from the athlete, the provider, or a standard calculation over
+  **measured or declared** anchors (maxHR, restingHR, LTHR): sources ATHLETE_DECLARED,
+  PROVIDER and CALCULATED_FROM_MEASURED_ANCHORS.
+- **Age-predicted zones (ADR-028).** At the athlete's explicit choice, a model may have
+  source AGE_PREDICTED. It is a labelled estimate:
+  - method PERCENT_MAX_HR; it holds `boundariesPercentMaxHr` (2 to 11 strictly ascending
+    integers between 30 and 100) instead of `boundariesBpm`;
+  - the maximum heart rate is predicted as 220 minus the athlete's age on the activity's
+    training day, so the zones follow the athlete's age; the age comes from `birthDate`
+    (a declared age alone is not enough), and a profile with an AGE_PREDICTED model must
+    have a birth date;
+  - on a training day the boundary for *p* % is the smallest whole bpm at or above
+    *p* % of that maximum (`ceil(p * maxHR / 100)`); for ages outside 18 to 100 (A-17)
+    the model gives no zones;
+  - metrics computed from it carry the uncertainty ESTIMATED_VALUE (metrics spec 9.2).
+- Age-predicted maximum heart rate MUST NOT be used to prescribe intensity: an
+  AGE_PREDICTED model is never a reliable intensity anchor (FR-PLN-005, onboarding
+  section 3). Without reliable anchors, intensity is prescribed by RPE.
 - When both are known, restingHR MUST be lower than maxHR.
 
 ## 2. Sport experience (FR-PRF-003)

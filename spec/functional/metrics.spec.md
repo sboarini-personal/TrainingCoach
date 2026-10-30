@@ -229,21 +229,22 @@ and the computed values stay in its history.
 | Origin | STANDARD_CALCULATION |
 | Subject | ACTIVITY, dimension HR_ZONE (`Z1` is the lowest zone) |
 | Unit | s |
-| Zone model | the athlete's zone model (profile spec 1.1) with the latest `validFrom` on or before the activity's training day; without one, nothing is computed |
+| Zone model | the athlete's zone model (profile spec 1.1) with the latest `validFrom` on or before the activity's training day; without one, nothing is computed. An AGE_PREDICTED model is applied to the training day: its bpm boundaries come from 220 minus the athlete's age on that day; when it gives no zones (age outside 18 to 100), nothing is computed |
 | Series | the activity's resolved TIME_SERIES stream, heart-rate column |
 | Method | each interval between consecutive samples counts toward the zone of the heart rate at its start, when that heart rate is known and the interval is longer than 0 and at most 20 s (longer gaps are pauses or recording gaps and count nowhere). Zone *k* is `[boundary k, boundary k+1)`; a heart rate at or above the last boundary counts in the top zone; below the first boundary it counts in no zone |
-| Inputs | `seconds_in_zone` (the interval sum; evidence: the RAW source that supplied the stream, field `streams.timeSeries`, note the stream's SHA-256; confidence: the activity's), `zone_lower_bpm` and `zone_upper_bpm` (evidence: the zone model, kind `HR_ZONE_MODEL`, field `boundariesBpm[i]`; confidence HIGH) |
+| Inputs | `seconds_in_zone` (the interval sum; evidence: the RAW source that supplied the stream, field `streams.timeSeries`, note the stream's SHA-256; confidence: the activity's), `zone_lower_bpm` and `zone_upper_bpm` (evidence: the zone model, kind `HR_ZONE_MODEL`, field `boundariesBpm[i]`; confidence HIGH). From an AGE_PREDICTED model the boundaries are the applied bpm, with evidence field `boundariesPercentMaxHr[i]` and a note naming the percentage, the age and the predicted maximum; confidence MEDIUM (an estimate the athlete chose, still at the minimum quality) and uncertainty ESTIMATED_VALUE, which every zone value from it carries (ADR-028) |
 | Without a heart-rate series | every zone of the model is MISSING_INPUT (`seconds_in_zone`); so is a series whose stored blob is missing or damaged |
 | Coverage | intervals of at most 20 s without a heart rate are unknown time (pauses are not); when the known time is below 90 % of known plus unknown time, every zone carries MISSING_DATA (its value is still the measured time) |
 | Out of range | more than 86,400 s in one zone: that zone is MISSING_INPUT with SENSOR_QUALITY |
 | Zones beyond the model | values of zones the applicable model lacks (or of every zone without a model) are retired (NOT_APPLICABLE) |
 | Minimum data quality | MEDIUM |
-| Reference | Seiler KS, Kjerland GØ. Quantifying training intensity distribution in elite endurance athletes: is there evidence for an "optimal" distribution? Scand J Med Sci Sports. 2006;16(1):49-56 (time-in-zone method) |
+| Reference | Seiler KS, Kjerland GØ. Quantifying training intensity distribution in elite endurance athletes: is there evidence for an "optimal" distribution? Scand J Med Sci Sports. 2006;16(1):49-56 (time-in-zone method). Age-predicted maximum: Fox SM, Naughton JP, Haskell WL. Physical activity and the prevention of coronary heart disease. Ann Clin Res. 1971;3(6):404-432 (220 minus age; its limits in ADR-028) |
 
 The EFFECTIVE view fills `cardiovascular.hrZones` (model ID and seconds per zone) when every
 zone of the model has a current COMPUTED value from that model. A zone change applies when
 the metrics are recomputed (`coach metrics recompute`, run automatically after
-`coach profile hr-zones`).
+`coach profile hr-zones`, and after `coach profile birth-date` when an AGE_PREDICTED model
+exists).
 
 ### 9.3 Period totals (version 1.0.0)
 

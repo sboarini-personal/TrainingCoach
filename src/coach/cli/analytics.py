@@ -1,13 +1,14 @@
 """``coach`` commands for metrics, load and heart-rate zones (P8; metrics spec section 9).
 
 Numbers come from the metrics engine; this module only formats them. A total with unknown
-contributions is shown as a lower bound with the count of unknown ones, never as the total.
+contributions is shown as a lower bound with the count of unknown ones, never as the total,
+and an estimated value (for example from age-predicted zones, ADR-028) says so.
 """
 
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from datetime import date, timedelta
 from typing import Final, TextIO
 
@@ -18,9 +19,17 @@ from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError, athlete_timezone
-from coach.domain.athlete.physiology import HeartRateZoneModel, ZoneMethod, ZoneSource
+from coach.domain.athlete.physiology import (
+    PREDICTION_AGES,
+    HeartRateZoneModel,
+    ZoneMethod,
+    ZoneSource,
+    age_on,
+)
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.provenance import FieldValue
+from coach.domain.common.quality import UncertaintyReason
 from coach.metrics.derived import DerivedMetricValue, DerivedStatus, MetricSubject, SubjectKind
 from coach.metrics.subjects import week_key
 
@@ -84,7 +93,8 @@ def total_text(report: TotalReport) -> str:
 
 def value_text(value: DerivedMetricValue) -> str:
     if value.status is DerivedStatus.COMPUTED and value.value is not None:
-        return amount(value.value, value.unit)
+        estimated = UncertaintyReason.ESTIMATED_VALUE in value.uncertainty_reasons
+        return amount(value.value, value.unit) + (" (estimated)" if estimated else "")
     if value.status is DerivedStatus.MISSING_INPUT:
         return "unknown (missing " + ", ".join(value.missing_inputs) + ")"
     return "unknown (data quality below the minimum)"
@@ -216,47 +226,105 @@ def show_activity(
     return 0
 
 
-def _models_text(models: Iterable[HeartRateZoneModel]) -> list[str]:
-    return [
-        f"from {model.valid_from}  {model.method.value:<20} "
-        + " ".join(str(bpm) for bpm in model.boundaries_bpm)
-        for model in sorted(models, key=lambda item: item.valid_from)
-    ]
+def _model_text(model: HeartRateZoneModel) -> str:
+    if model.estimated:
+        values = " ".join(str(percent) for percent in model.boundaries_percent_max_hr)
+        values += " % of 220 - age (estimate)"
+    else:
+        values = " ".join(str(bpm) for bpm in model.boundaries_bpm)
+    return f"from {model.valid_from}  {model.method.value:<20} {values}"
 
 
-def hr_zones(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
-    stored: AthleteProfile | None
+def _stored_profile(runtime: Runtime, scope: OwnerScope) -> AthleteProfile | None:
     try:
-        stored = runtime.profiles.get(scope, scope.athlete_id)
+        return runtime.profiles.get(scope, scope.athlete_id)
     except NotFoundError:
-        stored = None
-    profile = stored or AthleteProfile.new(scope.athlete_id)
-    if not args.boundaries:
-        lines = _models_text(profile.zone_models)
-        for line in lines or ["no heart-rate zone models"]:
-            print(line, file=out)
-        return 0
-    valid_from = args.valid_from or _today(runtime, scope)
-    try:
-        model = HeartRateZoneModel(
-            zone_model_id=new_id(),
-            method=ZONE_METHODS[args.method],
-            source=ZoneSource.ATHLETE_DECLARED,
-            boundaries_bpm=tuple(args.boundaries),
-            valid_from=valid_from,
-        )
-    except DomainValidationError as error:
-        raise CommandError(str(error)) from None
-    kept = tuple(item for item in profile.zone_models if item.valid_from != valid_from)
-    updated = profile.apply(ProfileUpdate(zone_models=(*kept, model)))
+        return None
+
+
+def _save(
+    runtime: Runtime, scope: OwnerScope, stored: AthleteProfile | None, updated: AthleteProfile
+) -> None:
     if stored is None:
         runtime.profiles.add(scope, updated)
     else:
         runtime.profiles.update(scope, updated, expected_version=stored.version)
+
+
+def _zone_model(
+    args: argparse.Namespace, profile: AthleteProfile, valid_from: date
+) -> HeartRateZoneModel:
+    if not args.age_predicted:
+        return HeartRateZoneModel(
+            zone_model_id=new_id(),
+            method=ZONE_METHODS[args.method or "custom"],
+            source=ZoneSource.ATHLETE_DECLARED,
+            boundaries_bpm=tuple(args.boundaries),
+            valid_from=valid_from,
+        )
+    if args.method not in {None, "percent-max-hr"}:
+        raise CommandError("age-predicted zones use --method percent-max-hr")
+    if profile.heart_rate_zones.birth_date is None:
+        raise CommandError("set the birth date first: coach profile birth-date YYYY-MM-DD")
+    return HeartRateZoneModel(
+        zone_model_id=new_id(),
+        method=ZoneMethod.PERCENT_MAX_HR,
+        source=ZoneSource.AGE_PREDICTED,
+        boundaries_percent_max_hr=tuple(args.boundaries),
+        valid_from=valid_from,
+    )
+
+
+def hr_zones(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    stored = _stored_profile(runtime, scope)
+    profile = stored or AthleteProfile.new(scope.athlete_id)
+    if not args.boundaries:
+        models = sorted(profile.zone_models, key=lambda item: item.valid_from)
+        for line in [_model_text(model) for model in models] or ["no heart-rate zone models"]:
+            print(line, file=out)
+        return 0
+    today = _today(runtime, scope) if args.age_predicted else None
+    valid_from = args.valid_from or today or _today(runtime, scope)
+    try:
+        model = _zone_model(args, profile, valid_from)
+    except DomainValidationError as error:
+        raise CommandError(str(error)) from None
+    kept = tuple(item for item in profile.zone_models if item.valid_from != valid_from)
+    updated = profile.apply(ProfileUpdate(zone_models=(*kept, model)))
+    _save(runtime, scope, stored, updated)
     replaced = len(kept) < len(profile.zone_models)
+    estimate = ", an estimate (% of 220 - age)" if model.estimated else ""
     print(
         f"zone model {'replaced' if replaced else 'added'}: {model.zone_count} zones "
-        f"from {valid_from}",
+        f"from {valid_from}{estimate}",
         file=out,
     )
+    applied = None
+    if today is not None and model.estimated:
+        applied = model.applied(today, birth_date=updated.heart_rate_zones.birth_date)
+    if applied is not None:
+        print(
+            f"today: 220 - age {applied.age} = {applied.max_hr} bpm, boundaries "
+            + " ".join(str(bpm) for bpm in applied.boundaries_bpm),
+            file=out,
+        )
     return recompute(runtime, scope, out)
+
+
+def birth_date(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Show or set the birth date; age-predicted zones follow it (profile spec 1.1)."""
+    stored = _stored_profile(runtime, scope)
+    profile = stored or AthleteProfile.new(scope.athlete_id)
+    if args.date is None:
+        known = profile.heart_rate_zones.birth_date
+        print("not set" if known is None else known.isoformat(), file=out)
+        return 0
+    now = runtime.clock()
+    if age_on(args.date, now.date()) not in PREDICTION_AGES:
+        raise CommandError("age must be 18 to 100 (assumption A-17)")
+    updated = profile.apply(ProfileUpdate(birth_date=FieldValue.declared(args.date, at=now)))
+    _save(runtime, scope, stored, updated)
+    print(f"birth date set to {args.date}", file=out)
+    if any(model.estimated for model in updated.zone_models):
+        return recompute(runtime, scope, out)
+    return 0

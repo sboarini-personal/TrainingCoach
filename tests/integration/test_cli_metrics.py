@@ -114,3 +114,52 @@ def test_bad_input_and_missing_consent_are_reported(cli: Cli, tmp_path: Path) ->
     assert "coach consent grant activities" in output
     code, output = cli.run("activity", "show", str(activity_id))
     assert (code, "coach consent grant activities" in output) == (2, True)
+
+
+PERCENTAGES = ("51", "59", "71", "81", "90", "100")
+
+
+@pytest.mark.req("FR-PRF-001", "FR-PRF-002", "FR-MET-004")
+@pytest.mark.acceptance("AT-MET-003")
+def test_age_predicted_zones_follow_the_birth_date(cli: Cli, tmp_path: Path) -> None:
+    activity_id = imported(cli, tmp_path, fit_file())  # 150 to 154 bpm for 10 minutes
+    zones = ("profile", "hr-zones", *PERCENTAGES, "--age-predicted", "--valid-from", "2000-01-01")
+    code, output = cli.run(*zones)
+    assert (code, "coach profile birth-date" in output) == (2, True)
+    assert cli.run("profile", "birth-date") == (0, "not set\n")
+    assert cli.run("profile", "birth-date", "1971-03-10") == (0, "birth date set to 1971-03-10\n")
+    code, output = cli.run(*zones)
+    assert code == 0, output
+    assert output.splitlines() == [
+        "zone model added: 5 zones from 2000-01-01, an estimate (% of 220 - age)",
+        "today: 220 - age 55 = 165 bpm, boundaries 85 98 118 134 149 165",
+        "metrics recomputed for 1 activities",
+    ]
+    assert cli.run("profile", "hr-zones")[1] == (
+        "from 2000-01-01  PERCENT_MAX_HR       51 59 71 81 90 100 % of 220 - age (estimate)\n"
+    )
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    zone_five = next(line for line in shown.splitlines() if "any.hr_zone_time Z5" in line)
+    assert zone_five.endswith("0:10:00 (estimated)")  # Z5 starts at 149 bpm at 55
+    code, output = cli.run("profile", "birth-date", "1986-03-10")  # 40: 180 bpm
+    assert output.splitlines() == [
+        "birth date set to 1986-03-10",
+        "metrics recomputed for 1 activities",
+    ]
+    shown = cli.run("activity", "show", str(activity_id))[1]
+    zone_four = next(line for line in shown.splitlines() if "any.hr_zone_time Z4" in line)
+    assert zone_four.endswith("0:10:00 (estimated)")  # Z4 is 146 to 161 bpm at 40
+
+
+@pytest.mark.req("FR-PRF-001")
+def test_bad_birth_dates_and_methods_are_refused(cli: Cli) -> None:
+    for text in ("2026-10-26", "2010-01-01", "1920-01-01"):  # future, under 18, over 100
+        code, output = cli.run("profile", "birth-date", text)
+        assert (code, output.startswith("error:")) == (2, True), text
+    assert cli.run("profile", "birth-date", "1971-03-10")[0] == 0
+    code, output = cli.run(
+        "profile", "hr-zones", *PERCENTAGES, "--age-predicted", "--method", "heart-rate-reserve"
+    )
+    assert (code, "percent-max-hr" in output) == (2, True)
+    code, output = cli.run("profile", "hr-zones", "51", "120", "--age-predicted")
+    assert (code, output.startswith("error:")) == (2, True)  # percentages above 100

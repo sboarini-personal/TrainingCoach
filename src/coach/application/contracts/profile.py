@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, Final
 from uuid import UUID
 
 from coach.application.contracts._json import (
-    SCHEMA_VERSION,
     Document,
     Json,
     instant,
@@ -56,6 +55,10 @@ from coach.domain.athlete.resources import (
 from coach.domain.common.provenance import ValueSource
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import Weekday
+
+# 1.1.0 added age-predicted zone models (profile spec 1.1, ADR-028).
+PROFILE_SCHEMA_VERSION: Final = "1.1.0"
+
 
 # ------------------------------------------------------------------ experience
 
@@ -325,13 +328,17 @@ def _parse_sensors(items: list[Any]) -> tuple[Sensor, ...]:
 
 
 def _zone_model(model: HeartRateZoneModel) -> Json:
-    return {
+    document: Json = {
         "zoneModelId": str(model.zone_model_id),
         "method": model.method.value,
         "source": model.source.value,
-        "boundariesBpm": list(model.boundaries_bpm),
-        "validFrom": model.valid_from.isoformat(),
     }
+    if model.estimated:
+        document["boundariesPercentMaxHr"] = list(model.boundaries_percent_max_hr)
+    else:
+        document["boundariesBpm"] = list(model.boundaries_bpm)
+    document["validFrom"] = model.valid_from.isoformat()
+    return document
 
 
 def _parse_zone_model(document: Document) -> HeartRateZoneModel:
@@ -339,7 +346,8 @@ def _parse_zone_model(document: Document) -> HeartRateZoneModel:
         zone_model_id=UUID(document["zoneModelId"]),
         method=ZoneMethod(document["method"]),
         source=ZoneSource(document["source"]),
-        boundaries_bpm=tuple(document["boundariesBpm"]),
+        boundaries_bpm=tuple(document.get("boundariesBpm", ())),
+        boundaries_percent_max_hr=tuple(document.get("boundariesPercentMaxHr", ())),
         valid_from=date.fromisoformat(document["validFrom"]),
     )
 
@@ -373,7 +381,7 @@ def profile_to_contract(profile: AthleteProfile) -> Json:
     put(experience, "strength", profile.strength_experience, _strength)
     put(experience, "tennis", profile.tennis_experience, _tennis)
     contract: Json = {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": PROFILE_SCHEMA_VERSION,
         "athleteId": str(profile.athlete_id),
         "version": profile.version,
         "identity": identity,

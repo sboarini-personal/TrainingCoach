@@ -93,7 +93,8 @@ assumption A-18):
 
 - fewer than 6 activities of that sport in the last 28 days; or
 - no reliable intensity anchor: no measured/declared max HR or zones, no race result within 12
-  months, and (cycling) no FTP from a measured power source.
+  months, and (cycling) no FTP from a measured power source. Age-predicted zones (profile
+  spec 1.1) are not an anchor.
 
 Then the athlete enters BASELINE_COLLECTION. The system proposes **conservative assessment
 sessions**:

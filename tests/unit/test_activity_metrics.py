@@ -17,7 +17,7 @@ from coach.domain.common.evidence import EvidenceKind
 from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.metrics.derived import DerivedMetricValue, DerivedStatus, MetricSubject
-from samples import START, USER, sample_observation, tennis_values
+from samples import START, USER, age_predicted_zones, sample_observation, tennis_values
 
 PRINCIPAL = Principal(USER)
 SERIES_SHA = "e" * 64
@@ -347,3 +347,59 @@ def test_a_corrected_input_names_its_correction() -> None:
     speed = current(world, "any.speed_avg", activity_id)
     distance = next(record for record in speed.inputs if record.name == "distance_meters")
     assert distance.evidence.note == f"override {override.override_id}"
+
+
+# ---------------------------------------------------------------- age-predicted zones (ADR-028)
+
+BORN = date(1971, 3, 10)  # 55 on the sample's training day (2026-10-20): 220 - 55 = 165 bpm
+
+
+def estimated_world() -> tuple[World, UUID]:
+    world = World()
+    world.birth_date = BORN
+    world.zone_models.append(age_predicted_zones(valid_from=date(2026, 1, 1)))
+    return world, run_with_series(world)
+
+
+@pytest.mark.req("FR-PRF-002", "FR-MET-004")
+@pytest.mark.acceptance("AT-MET-003")
+def test_age_predicted_zones_are_estimates_naming_the_age() -> None:
+    world, activity_id = estimated_world()
+    # boundaries 85 98 118 134 149 165: 120 bpm is Z3, 140 is Z4, 180 is Z5
+    seconds = [current(world, "any.hr_zone_time", activity_id, zone).value for zone in range(1, 6)]
+    assert seconds == [0.0, 0.0, 10.0, 20.0, 10.0]
+    zone_four = current(world, "any.hr_zone_time", activity_id, 4)
+    assert zone_four.status is DerivedStatus.COMPUTED
+    assert UncertaintyReason.ESTIMATED_VALUE in zone_four.uncertainty_reasons
+    assert zone_four.input_confidence is Confidence.MEDIUM
+    by_name = {record.name: record for record in zone_four.inputs}
+    lower, upper = by_name["zone_lower_bpm"], by_name["zone_upper_bpm"]
+    assert (lower.value, lower.confidence) == (134.0, Confidence.MEDIUM)
+    assert (lower.evidence.kind, lower.evidence.field, lower.evidence.note) == (
+        EvidenceKind.HR_ZONE_MODEL,
+        "boundariesPercentMaxHr[3]",
+        "81% of 220 - age 55 = 165 bpm",
+    )
+    assert (upper.value, upper.evidence.field) == (149.0, "boundariesPercentMaxHr[4]")
+    view = world.service.effective(SCOPE, activity_id).activity
+    model_id = world.zone_models[0].zone_model_id
+    assert view.values["cardiovascular.hrZones"] == HrZones(model_id, (0.0, 0.0, 10.0, 20.0, 10.0))
+
+
+@pytest.mark.req("FR-PRF-002", "FR-MET-004")
+@pytest.mark.acceptance("AT-MET-003")
+def test_a_birth_date_change_moves_the_age_predicted_zones() -> None:
+    world, activity_id = estimated_world()
+    world.birth_date = date(1956, 6, 15)  # 70 years: 150 bpm, boundaries 77 89 107 122 135 150
+    view = world.service.effective(SCOPE, activity_id).activity
+    assert view.values["cardiovascular.hrZones"] is None  # stored values used other boundaries
+    world.engine.recompute(SCOPE, view)
+    seconds = [current(world, "any.hr_zone_time", activity_id, zone).value for zone in range(1, 6)]
+    assert seconds == [0.0, 0.0, 10.0, 0.0, 30.0]
+    world.birth_date = None  # no age: the model gives no zones and the values are retired
+    world.engine.recompute(SCOPE, world.service.effective(SCOPE, activity_id).activity)
+    for zone in range(1, 6):
+        subject = MetricSubject.activity(activity_id, zone=zone)
+        retired = world.derived.current(SCOPE, "any.hr_zone_time", subject)
+        assert retired is not None
+        assert retired.status is DerivedStatus.NOT_APPLICABLE

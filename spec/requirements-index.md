@@ -16,7 +16,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | FR-ONB-005 | Insufficient history enters BASELINE_COLLECTION with conservative assessments | functional/onboarding.spec.md | AT-ONB-004 | ACCEPTED |
 | FR-ONB-006 | Coaching state machine with testable transitions | functional/onboarding.spec.md | AT-STM-001 | ACCEPTED |
 | FR-PRF-001 | AthleteProfile with identity, physiology, heart rate, preferences, devices, sensors | functional/profile.spec.md | - | ACCEPTED |
-| FR-PRF-002 | Unknown athlete values stay UNKNOWN and are never invented | functional/profile.spec.md | - | ACCEPTED |
+| FR-PRF-002 | Unknown athlete values stay UNKNOWN and are never invented | functional/profile.spec.md | AT-MET-003 | ACCEPTED |
 | FR-PRF-003 | Experience stored independently per sport | functional/profile.spec.md | - | ACCEPTED |
 | FR-PRF-004 | Recurring availability and resources | functional/profile.spec.md | - | ACCEPTED |
 | FR-PRF-005 | AvailabilityException with precedence exception over recurring over default | functional/profile.spec.md | AT-AVL-001 | ACCEPTED |
@@ -41,7 +41,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | FR-MET-001 | Deterministic sport calculations run in application code | functional/metrics.spec.md | AT-MET-001 | ACCEPTED |
 | FR-MET-002 | MetricDefinition registry | functional/metrics.spec.md | AT-MET-001 | ACCEPTED |
 | FR-MET-003 | Metric origin classification never mislabelled | functional/metrics.spec.md | AT-MET-002 | ACCEPTED |
-| FR-MET-004 | Derived values keep method, version, inputs and minimum quality | functional/metrics.spec.md | AT-MET-001 | ACCEPTED |
+| FR-MET-004 | Derived values keep method, version, inputs and minimum quality | functional/metrics.spec.md | AT-MET-001, AT-MET-003 | ACCEPTED |
 | FR-MET-005 | External and internal load modelled separately | functional/metrics.spec.md | - | ACCEPTED |
 | FR-MET-006 | Cross-sport load preserves sport context | functional/metrics.spec.md | AT-TEN-001 | ACCEPTED |
 | FR-MET-007 | Proprietary metrics of different providers are not assumed equivalent | functional/metrics.spec.md | AT-MET-002 | ACCEPTED |

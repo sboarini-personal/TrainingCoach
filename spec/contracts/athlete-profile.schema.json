@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:athlete-profile:1",
   "title": "AthleteProfile",
-  "description": "Athlete profile (FR-PRF-001 to FR-PRF-007). A tracked field that was never recorded is absent; a field recorded as UNKNOWN is {\"value\": null, \"provenance\": ...}. Owner spec: spec/functional/profile.spec.md.",
+  "description": "Athlete profile (FR-PRF-001 to FR-PRF-007). Version 1.1.0: age-predicted heart-rate zone models (ADR-028). A tracked field that was never recorded is absent; a field recorded as UNKNOWN is {\"value\": null, \"provenance\": ...}. Owner spec: spec/functional/profile.spec.md.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -229,15 +229,16 @@
     },
     "nonNegativeOrUnknown": { "$ref": "urn:coach:schema:common:1#/$defs/nonNegativeOrUnknown" },
     "zoneModel": {
+      "description": "Version 1.1.0: an AGE_PREDICTED model (a labelled estimate, ADR-028) holds boundariesPercentMaxHr instead of boundariesBpm.",
       "type": "object",
-      "required": ["zoneModelId", "method", "source", "boundariesBpm", "validFrom"],
+      "required": ["zoneModelId", "method", "source", "validFrom"],
       "additionalProperties": false,
       "properties": {
         "zoneModelId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
         "method": {
           "enum": ["PROVIDER", "PERCENT_MAX_HR", "HEART_RATE_RESERVE", "LACTATE_THRESHOLD_HR", "CUSTOM", "UNKNOWN"]
         },
-        "source": { "enum": ["ATHLETE_DECLARED", "PROVIDER", "CALCULATED_FROM_MEASURED_ANCHORS"] },
+        "source": { "enum": ["ATHLETE_DECLARED", "PROVIDER", "CALCULATED_FROM_MEASURED_ANCHORS", "AGE_PREDICTED"] },
         "boundariesBpm": {
           "description": "Strictly ascending; zone i spans [boundariesBpm[i], boundariesBpm[i+1]).",
           "type": "array",
@@ -245,7 +246,24 @@
           "maxItems": 11,
           "items": { "type": "integer", "minimum": 30, "maximum": 230 }
         },
+        "boundariesPercentMaxHr": {
+          "description": "AGE_PREDICTED only. Strictly ascending percentages of 220 minus the athlete's age on the training day; boundary bpm = ceil(p * maxHR / 100).",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 11,
+          "items": { "type": "integer", "minimum": 30, "maximum": 100 }
+        },
         "validFrom": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+      },
+      "if": { "properties": { "source": { "const": "AGE_PREDICTED" } } },
+      "then": {
+        "required": ["boundariesPercentMaxHr"],
+        "not": { "required": ["boundariesBpm"] },
+        "properties": { "method": { "const": "PERCENT_MAX_HR" } }
+      },
+      "else": {
+        "required": ["boundariesBpm"],
+        "not": { "required": ["boundariesPercentMaxHr"] }
       }
     },
     "sensor": {

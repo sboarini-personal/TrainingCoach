@@ -14,7 +14,7 @@ from coach.application.contracts import (
 from coach.domain.athlete.experience import TennisProfile
 from coach.domain.athlete.health import ConstraintSource, RestrictionKind
 from coach.domain.athlete.physiology import SensorType, ZoneMethod, ZoneSource
-from coach.domain.athlete.profile import AthleteProfile
+from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.athlete.resources import Equipment, TennisSessionType
 from coach.domain.coaching.state import Condition, LifecycleState
 from coach.domain.common.evidence import EvidenceKind
@@ -28,6 +28,7 @@ from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
 from coach.metrics.derived import DerivedStatus, SubjectKind
 from samples import (
     ATHLETE,
+    age_predicted_zones,
     full_profile,
     sample_availability,
     sample_consent_ledger,
@@ -94,6 +95,30 @@ def test_nested_enums_match_contract() -> None:
 @pytest.mark.req("FR-PRF-001", "FR-PRF-003", "FR-PRF-006")
 def test_full_profile_conforms_to_contract() -> None:
     assert validation_errors("athlete-profile", profile_to_contract(full_profile())) == []
+
+
+@pytest.mark.req("FR-PRF-001", "FR-PRF-002", "NFR-REL-004")
+def test_age_predicted_zone_model_conforms_to_contract_1_1() -> None:
+    profile = full_profile()
+    profile = profile.apply(
+        ProfileUpdate(zone_models=(*profile.zone_models, age_predicted_zones()))
+    )
+    contract = profile_to_contract(profile)
+    assert contract["schemaVersion"] == "1.1.0"
+    assert validation_errors("athlete-profile", contract) == []
+    declared_model, estimate = contract["heartRate"]["zoneModels"]
+    assert "boundariesPercentMaxHr" not in declared_model
+    assert estimate["source"] == "AGE_PREDICTED"
+    assert estimate["boundariesPercentMaxHr"] == [51, 59, 71, 81, 90, 100]
+    assert "boundariesBpm" not in estimate
+    for broken in (
+        {**estimate, "boundariesBpm": [100, 140]},  # an estimate never holds bpm
+        {**estimate, "method": "HEART_RATE_RESERVE"},
+        {**declared_model, "boundariesPercentMaxHr": [51, 59]},
+        {key: value for key, value in estimate.items() if key != "boundariesPercentMaxHr"},
+    ):
+        contract["heartRate"]["zoneModels"] = [broken]
+        assert validation_errors("athlete-profile", contract) != []
 
 
 @pytest.mark.req("FR-PRF-002")

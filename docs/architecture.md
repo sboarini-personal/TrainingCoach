@@ -183,7 +183,8 @@ local features.
 
 **Metrics (P8, ADR-027):** every activity change recomputes the per-activity metrics of
 its EFFECTIVE view (session RPE load, speed and pace, time in heart-rate zones from the
-time series and the athlete's zone model); reading a day or a week materialises its
+time series and the athlete's zone model, an age-predicted one applied to the
+training day as a labelled estimate, ADR-028); reading a day or a week materialises its
 totals (per sport, and across sports for time and session RPE load only); the week report
 shows external and internal load separately. Values carry their input snapshot down to
 activities, derived values and RAW sources.
@@ -250,7 +251,7 @@ Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md
 | P5 | Canonical Activity and field catalogue, source observations and field-level resolution (ADR-024), time model, data quality rules and issues, deduplication tiers with merge, keep separate and split, DataOverride corrections and the effective view, weekly volume, activity storage (migration 3) | Done |
 | P6 | File ingestion (FIT, TCX, GPX, CSV, ZIP): detection, archives, sandboxed parsers (ADR-025), normalisation rules 1.0.0, time series, ingestion records and failure issues, CSV export, CLI import | Done |
 | P7 | FitnessProvider port and fake provider, capability model and POL-CAPABILITY, IntegrationStatus, LocalWorkoutPublisher, Garmin Personal adapter (token broker, thin transport, request budget, `garmin_activity` normaliser 1.0.0), SyncService with windows, cursor, retries and degradation (ADR-026), provider payloads through the ingestion pipeline, CLI `garmin sync` and `garmin status` | Done |
-| P8 | Deterministic metrics engine: subject dimensions, aggregations, speed and pace, time in heart-rate zones, period totals materialised on read, week report with external and internal load, recomputation, SQLite units of work (ADR-027), CLI `load`, `metrics`, `activity show`, `profile hr-zones` | Done |
+| P8 | Deterministic metrics engine: subject dimensions, aggregations, speed and pace, time in heart-rate zones, period totals materialised on read, week report with external and internal load, recomputation, SQLite units of work (ADR-027), age-predicted zones as a labelled estimate (ADR-028), CLI `load`, `metrics`, `activity show`, `profile hr-zones`, `profile birth-date` | Done |
 | P9 | Running, cycling, swimming analytics; tennis load | Next |
 | P10 | Exercise catalogue, strength prescription and execution, interference | |
 | P11 | Check-in, recovery, patterns, insights, report data | |

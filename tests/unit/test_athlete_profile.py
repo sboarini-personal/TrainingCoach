@@ -150,13 +150,97 @@ def test_zone_boundaries_must_ascend_within_range() -> None:
             model(bad)
 
 
+# Age-predicted zones (profile spec 1.1, ADR-028): the athlete's choice, a labelled estimate.
+# Until 2026-10-29 the spec made them unrepresentable; this replaces the test that said so.
+BORN = date(1971, 3, 10)
+PERCENTAGES = (51, 59, 71, 81, 90, 100)
+
+
+def age_predicted(
+    percentages: tuple[int, ...] = PERCENTAGES, method: ZoneMethod = ZoneMethod.PERCENT_MAX_HR
+) -> HeartRateZoneModel:
+    return HeartRateZoneModel(
+        zone_model_id=ZONE_MODEL,
+        method=method,
+        source=ZoneSource.AGE_PREDICTED,
+        boundaries_percent_max_hr=percentages,
+        valid_from=date(2000, 1, 1),
+    )
+
+
+@pytest.mark.req("FR-PRF-001", "FR-PRF-002")
+def test_age_predicted_zones_follow_the_age_on_the_training_day() -> None:
+    zones = updated(birth_date=declared(BORN), zone_models=(age_predicted(),)).heart_rate_zones
+    birthday = zones.on(date(2026, 3, 10))  # 55 years: 220 - 55 = 165 bpm
+    assert birthday is not None
+    assert (birthday.age, birthday.max_hr) == (55, 165)
+    assert birthday.boundaries_bpm == (85, 98, 118, 134, 149, 165)  # ceil(p * 165 / 100)
+    assert birthday.zone_count == 5
+    before = zones.on(date(2026, 3, 9))  # still 54: 166 bpm
+    assert before is not None
+    assert before.boundaries_bpm == (85, 98, 118, 135, 150, 166)
+    assert zones.on(date(1999, 12, 31)) is None  # before the model applies
+
+
 @pytest.mark.req("FR-PRF-002")
-def test_no_age_predicted_zone_source_exists() -> None:
-    assert {source.value for source in ZoneSource} == {
-        "ATHLETE_DECLARED",
-        "PROVIDER",
-        "CALCULATED_FROM_MEASURED_ANCHORS",
-    }
+def test_age_predicted_zones_need_a_birth_date_and_an_adult_age() -> None:
+    model = age_predicted()
+    assert model.applied(date(2026, 6, 15), birth_date=None) is None
+    assert model.applied(date(1989, 3, 9), birth_date=BORN) is None  # 17 years (A-17)
+    assert model.applied(date(2072, 3, 10), birth_date=BORN) is None  # 101 years
+    assert model.applied(date(1989, 3, 10), birth_date=BORN) is not None  # 18 years
+    with pytest.raises(DomainValidationError, match="birth date"):
+        updated(zone_models=(model,))
+    with pytest.raises(DomainValidationError, match="birth date"):
+        updated(declared_age=declared(45), zone_models=(model,))  # a declared age is not enough
+
+
+@pytest.mark.req("FR-PRF-001")
+def test_age_predicted_models_hold_ascending_percentages_of_max_hr() -> None:
+    assert age_predicted().zone_count == 5
+    for bad in ((51,), (51, 51, 70), (29, 60), (60, 101)):
+        with pytest.raises(DomainValidationError):
+            age_predicted(bad)
+    with pytest.raises(DomainValidationError):
+        age_predicted(method=ZoneMethod.HEART_RATE_RESERVE)
+    with pytest.raises(DomainValidationError):  # percentages and bpm never mix
+        HeartRateZoneModel(
+            zone_model_id=ZONE_MODEL,
+            method=ZoneMethod.PERCENT_MAX_HR,
+            source=ZoneSource.AGE_PREDICTED,
+            boundaries_bpm=(100, 140),
+            boundaries_percent_max_hr=PERCENTAGES,
+            valid_from=TODAY,
+        )
+    with pytest.raises(DomainValidationError):  # only an age-predicted model holds percentages
+        HeartRateZoneModel(
+            zone_model_id=ZONE_MODEL,
+            method=ZoneMethod.PERCENT_MAX_HR,
+            source=ZoneSource.ATHLETE_DECLARED,
+            boundaries_percent_max_hr=PERCENTAGES,
+            valid_from=TODAY,
+        )
+
+
+@pytest.mark.req("FR-PRF-002")
+def test_an_age_predicted_model_is_an_estimate_never_an_anchor() -> None:
+    model = age_predicted()
+    assert (model.estimated, model.reliable_anchor) == (True, False)
+    declared_model = HeartRateZoneModel(
+        zone_model_id=ZONE_MODEL,
+        method=ZoneMethod.PERCENT_MAX_HR,
+        source=ZoneSource.ATHLETE_DECLARED,
+        boundaries_bpm=(85, 98, 118, 134, 149, 165),
+        valid_from=TODAY,
+    )
+    assert (declared_model.estimated, declared_model.reliable_anchor) == (False, True)
+    applied = declared_model.applied(TODAY, birth_date=None)
+    assert applied is not None
+    assert (applied.boundaries_bpm, applied.age, applied.max_hr) == (
+        declared_model.boundaries_bpm,
+        None,
+        None,
+    )
 
 
 # ------------------------------------------------------------------ sport experience

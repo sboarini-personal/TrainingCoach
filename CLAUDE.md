@@ -143,6 +143,9 @@ calculation or aggregation, reference for STANDARD_CALCULATION); per-activity me
 an `ActivityBinding` (fields in order of preference, sports) run by
 `ActivityMetricsEngine`; period totals are a `PeriodTotal` read through
 `AnalyticsService`. Multi-step commands take the `Batch` port (`SqliteDatabase.batch`):
-one connection and one transaction, a savepoint per write. Tests: `World` in
-`tests/activity_world.py` has `zone_models` and `series` for the engine. Shell heredocs
+one connection and one transaction, a savepoint per write. Zones reach the engine as
+`HeartRateZones` (models plus birth date); `on(day)` gives the `AppliedZones` of a
+training day, so age-predicted models (ADR-028, estimates, never `reliable_anchor`)
+follow the athlete's age. Tests: `World` in `tests/activity_world.py` has
+`zone_models`, `birth_date` and `series` for the engine. Shell heredocs
 break on apostrophes in this environment: put edit scripts in `reports/` as files.

@@ -34,13 +34,14 @@ from coach.domain.activity.activity import ActivityStatus
 from coach.domain.activity.issues import DataQualityIssue, IssueResolution
 from coach.domain.activity.observation import SourceKind
 from coach.domain.activity.streams import TimeSeries
-from coach.domain.athlete.profile import AthleteProfile
+from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.coaching.state import CoachingState
 from coach.domain.consent.ledger import ConsentLedger
 from samples import (
     ACTIVITY,
     ATHLETE,
     NOW,
+    age_predicted_zones,
     full_profile,
     rich_activity,
     rich_observation,
@@ -66,6 +67,10 @@ CODECS: list[DocumentCodec[Any]] = list(ALL_CODECS)
 ROUND_TRIPS: list[tuple[DocumentCodec[Any], Any]] = [
     (PROFILE_CODEC, full_profile()),
     (PROFILE_CODEC, AthleteProfile.new(ATHLETE)),
+    (
+        PROFILE_CODEC,
+        full_profile().apply(ProfileUpdate(zone_models=(age_predicted_zones(),))),
+    ),
     (AVAILABILITY_CODEC, sample_availability()),
     (GOAL_CODEC, sample_goal()),
     (SPORT_EVENT_CODEC, sample_event()),

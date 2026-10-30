@@ -21,7 +21,13 @@ from coach.domain.athlete.experience import (
     TennisExperience,
 )
 from coach.domain.athlete.health import HealthDeclaration
-from coach.domain.athlete.physiology import HeartRateZoneModel, Sensor, ZoneMethod
+from coach.domain.athlete.physiology import (
+    HeartRateZoneModel,
+    HeartRateZones,
+    Sensor,
+    ZoneMethod,
+    age_on,
+)
 from coach.domain.athlete.resources import Resources
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import FieldValue
@@ -96,6 +102,8 @@ class AthleteProfile:
         resting, maximum = _known(self.resting_hr), _known(self.max_hr)
         if resting is not None and maximum is not None and resting >= maximum:
             raise DomainValidationError("resting heart rate must be below maximum heart rate")
+        if _known(self.birth_date) is None and any(m.estimated for m in self.zone_models):
+            raise DomainValidationError("an age-predicted zone model needs the birth date")
         timezone = _known(self.timezone)
         if timezone is not None:
             parse_timezone(timezone)
@@ -125,6 +133,11 @@ class AthleteProfile:
         return replace(self, **changes)
 
     @property
+    def heart_rate_zones(self) -> HeartRateZones:
+        """Zone models with the birth date that age-predicted ones are applied with."""
+        return HeartRateZones(self.zone_models, _known(self.birth_date))
+
+    @property
     def effective_language(self) -> str:
         return _known(self.language) or DEFAULT_LANGUAGE
 
@@ -142,8 +155,7 @@ class AthleteProfile:
         """Adult status on a date (assumption A-17); ``None`` when age is unknown."""
         birth = _known(self.birth_date)
         if birth is not None:
-            had_birthday = (on.month, on.day) >= (birth.month, birth.day)
-            return on.year - birth.year - (0 if had_birthday else 1) >= ADULT_AGE
+            return age_on(birth, on) >= ADULT_AGE
         age = _known(self.declared_age)
         return None if age is None else age >= ADULT_AGE
 

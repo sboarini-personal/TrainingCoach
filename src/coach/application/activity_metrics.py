@@ -1,7 +1,8 @@
 """Per-activity metrics engine (FR-MET-001, FR-MET-004; metrics spec sections 8, 9.1, 9.2).
 
 Recomputes, from the EFFECTIVE view of a live activity, every per-activity metric that
-applies to its sport, and the time in heart-rate zones when a zone model applies. It also
+applies to its sport, and the time in heart-rate zones when a zone model applies (an
+age-predicted model is applied to the training day and labelled as an estimate). It also
 supplies the EFFECTIVE view with the fields filled from current values
 (``training.load.internal.sessionRpeLoad``, ``cardiovascular.hrZones``). Values are stored
 through ``DerivedMetricService``: unchanged snapshots store nothing.
@@ -18,7 +19,7 @@ from coach.application.ownership import OwnerScope
 from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import STREAM_KEYS, HrZones, StreamKind
 from coach.domain.activity.streams import TimeSeries
-from coach.domain.athlete.physiology import HeartRateZoneModel
+from coach.domain.athlete.physiology import AppliedZones, HeartRateZones
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import Confidence, UncertaintyReason
@@ -31,7 +32,7 @@ HR_ZONES_FIELD: Final = "cardiovascular.hrZones"
 _SERIES_KEY: Final = STREAM_KEYS[StreamKind.TIME_SERIES]
 _HEART_RATE_PREFIX: Final = "cardiovascular."
 
-type ZoneModels = Callable[[OwnerScope], Sequence[HeartRateZoneModel]]
+type ZoneSettings = Callable[[OwnerScope], HeartRateZones]
 # None when the stored series cannot be read (missing or damaged blob): its zones are UNKNOWN.
 type SeriesReader = Callable[[OwnerScope, str], TimeSeries | None]
 
@@ -51,27 +52,18 @@ def field_evidence(view: Activity, path: str) -> EvidenceRef:
     return EvidenceRef(EvidenceKind.ACTIVITY, view.activity_id, field=path, note=note)
 
 
-def zone_model_for(
-    models: Sequence[HeartRateZoneModel], activity: Activity
-) -> HeartRateZoneModel | None:
-    """The model with the latest ``valid_from`` on or before the activity's training day."""
-    day = activity.training_day
-    valid = [model for model in models if model.valid_from <= day]
-    return max(valid, key=lambda model: (model.valid_from, str(model.zone_model_id)), default=None)
-
-
 class ActivityMetricsEngine:
     def __init__(
         self,
         metrics: DerivedMetricService,
         *,
         bindings: Sequence[ActivityBinding] = ACTIVITY_BINDINGS,
-        zone_models: ZoneModels | None = None,
+        zones: ZoneSettings | None = None,
         time_series: SeriesReader | None = None,
     ) -> None:
         self._metrics = metrics
         self._bindings = tuple(bindings)
-        self._zone_models = zone_models
+        self._zone_settings = zones
         self._time_series = time_series
 
     # ------------------------------------------------------------------ writes
@@ -89,10 +81,10 @@ class ActivityMetricsEngine:
                 stored.append(self._compute_binding(scope, binding, view))
             else:
                 self._metrics.retire(scope, binding.definition.metric_id, subject)
-        model = self._model(scope, view)
-        if model is not None:
-            stored.extend(self._compute_zones(scope, view, model))
-        first_unused = 1 if model is None else model.zone_count + 1
+        zones = self._applied(scope, view)
+        if zones is not None:
+            stored.extend(self._compute_zones(scope, view, zones))
+        first_unused = 1 if zones is None else zones.zone_count + 1
         for zone in range(first_unused, MAX_ZONES + 1):
             self._metrics.retire(
                 scope, HR_ZONE_TIME.metric_id, MetricSubject.activity(view.activity_id, zone=zone)
@@ -130,19 +122,18 @@ class ActivityMetricsEngine:
         )
 
     def _compute_zones(
-        self, scope: OwnerScope, view: Activity, model: HeartRateZoneModel
+        self, scope: OwnerScope, view: Activity, zones: AppliedZones
     ) -> list[DerivedMetricValue]:
         heart_rate_anomaly = any(
             anomaly.field.startswith(_HEART_RATE_PREFIX) for anomaly in view.quality.anomalies
         )
         base = {UncertaintyReason.SENSOR_QUALITY} if heart_rate_anomaly else set()
-        series = self._zone_seconds(scope, view, model)
+        series = self._zone_seconds(scope, view, zones)
         (seconds_spec,) = [
             spec for spec in HR_ZONE_TIME.required_inputs if spec.name == "seconds_in_zone"
         ]
         stored = []
-        boundaries = model.boundaries_bpm
-        for index in range(model.zone_count):
+        for index in range(zones.zone_count):
             reasons = set(base)
             seconds = None if series.seconds is None else series.seconds[index]
             if series.low_coverage:
@@ -150,21 +141,12 @@ class ActivityMetricsEngine:
             if seconds is not None and seconds > seconds_spec.maximum:
                 seconds = None  # more than a day in one zone: not a credible series
                 reasons.add(UncertaintyReason.SENSOR_QUALITY)
-            zone_evidence = EvidenceRef(EvidenceKind.HR_ZONE_MODEL, model.zone_model_id)
             inputs = {
                 "seconds_in_zone": MetricInput(
                     seconds, series.evidence, view.quality.confidence, frozenset(reasons)
                 ),
-                "zone_lower_bpm": MetricInput(
-                    float(boundaries[index]),
-                    _field(zone_evidence, f"boundariesBpm[{index}]"),
-                    Confidence.HIGH,
-                ),
-                "zone_upper_bpm": MetricInput(
-                    float(boundaries[index + 1]),
-                    _field(zone_evidence, f"boundariesBpm[{index + 1}]"),
-                    Confidence.HIGH,
-                ),
+                "zone_lower_bpm": _boundary(zones, index),
+                "zone_upper_bpm": _boundary(zones, index + 1),
             }
             stored.append(
                 self._metrics.compute(
@@ -176,9 +158,7 @@ class ActivityMetricsEngine:
             )
         return stored
 
-    def _zone_seconds(
-        self, scope: OwnerScope, view: Activity, model: HeartRateZoneModel
-    ) -> _SeriesZones:
+    def _zone_seconds(self, scope: OwnerScope, view: Activity, zones: AppliedZones) -> _SeriesZones:
         stream = next((item for item in view.streams if item.kind is StreamKind.TIME_SERIES), None)
         origin = view.provenance.get(_SERIES_KEY)
         if stream is None or origin is None or self._time_series is None:
@@ -190,27 +170,27 @@ class ActivityMetricsEngine:
             field=_SERIES_KEY,
             note=f"sha256 {stream.blob_sha256}",
         )
-        stored = self._stored_zones(scope, view, model, evidence)
+        stored = self._stored_zones(scope, view, zones, evidence)
         if stored is not None:
             return stored  # the series and the model are unchanged: no need to read it again
         series = self._time_series(scope, stream.blob_sha256)
         if series is None or series.heart_rate_bpm is None:
             return _SeriesZones(None, evidence, low_coverage=False)
-        zones = time_in_zones(series.offset_seconds, series.heart_rate_bpm, model.boundaries_bpm)
-        coverage = zones.coverage
+        times = time_in_zones(series.offset_seconds, series.heart_rate_bpm, zones.boundaries_bpm)
+        coverage = times.coverage
         low = coverage is not None and coverage < MINIMUM_COVERAGE
-        return _SeriesZones(zones.seconds, evidence, low_coverage=low)
+        return _SeriesZones(times.seconds, evidence, low_coverage=low)
 
     def _stored_zones(
-        self, scope: OwnerScope, view: Activity, model: HeartRateZoneModel, evidence: EvidenceRef
+        self, scope: OwnerScope, view: Activity, zones: AppliedZones, evidence: EvidenceRef
     ) -> _SeriesZones | None:
         """The series-derived part of the current zone values, when they used this series."""
         seconds: list[float] = []
         low_coverage = False
-        for zone in range(1, model.zone_count + 1):
+        for zone in range(1, zones.zone_count + 1):
             subject = MetricSubject.activity(view.activity_id, zone=zone)
             current = self._metrics.current(scope, HR_ZONE_TIME.metric_id, subject)
-            if current is None or not _from_model(current, model, zone):
+            if current is None or not _from_model(current, zones, zone):
                 return None
             record = next((item for item in current.inputs if item.name == "seconds_in_zone"), None)
             if record is None or record.evidence != evidence:
@@ -231,16 +211,14 @@ class ActivityMetricsEngine:
                 continue
             current = self._metrics.current(scope, binding.definition.metric_id, subject)
             filled[binding.target] = None if current is None else current.value
-        model = self._model(scope, activity)
-        if model is not None:
-            filled[HR_ZONES_FIELD] = self._zones(scope, activity, model)
+        zones = self._applied(scope, activity)
+        if zones is not None:
+            filled[HR_ZONES_FIELD] = self._zones(scope, activity, zones)
         return filled
 
-    def _zones(
-        self, scope: OwnerScope, activity: Activity, model: HeartRateZoneModel
-    ) -> HrZones | None:
+    def _zones(self, scope: OwnerScope, activity: Activity, zones: AppliedZones) -> HrZones | None:
         seconds = []
-        for zone in range(1, model.zone_count + 1):
+        for zone in range(1, zones.zone_count + 1):
             current = self._metrics.current(
                 scope,
                 HR_ZONE_TIME.metric_id,
@@ -248,10 +226,10 @@ class ActivityMetricsEngine:
             )
             if current is None or current.status is not DerivedStatus.COMPUTED:
                 return None
-            if not _from_model(current, model, zone) or current.value is None:
+            if not _from_model(current, zones, zone) or current.value is None:
                 return None
             seconds.append(current.value)
-        return HrZones(model.zone_model_id, tuple(seconds))
+        return HrZones(zones.model.zone_model_id, tuple(seconds))
 
     def current(self, scope: OwnerScope, activity: Activity) -> list[DerivedMetricValue]:
         """Current values of the per-activity metrics that apply to the activity now."""
@@ -262,38 +240,55 @@ class ActivityMetricsEngine:
                 current = self._metrics.current(scope, binding.definition.metric_id, subject)
                 if current is not None:
                     found.append(current)
-        model = self._model(scope, activity)
-        if model is not None:
-            for zone in range(1, model.zone_count + 1):
+        zones = self._applied(scope, activity)
+        if zones is not None:
+            for zone in range(1, zones.zone_count + 1):
                 current = self._metrics.current(
                     scope,
                     HR_ZONE_TIME.metric_id,
                     MetricSubject.activity(activity.activity_id, zone=zone),
                 )
-                if current is not None and _from_model(current, model, zone):
+                if current is not None and _from_model(current, zones, zone):
                     found.append(current)
         return found
 
-    def _model(self, scope: OwnerScope, activity: Activity) -> HeartRateZoneModel | None:
-        if self._zone_models is None:
+    def _applied(self, scope: OwnerScope, activity: Activity) -> AppliedZones | None:
+        """The zone model of the activity's training day, applied to it (profile spec 1.1)."""
+        if self._zone_settings is None:
             return None
-        return zone_model_for(self._zone_models(scope), activity)
+        return self._zone_settings(scope).on(activity.training_day)
 
 
-def _field(reference: EvidenceRef, field: str) -> EvidenceRef:
-    return EvidenceRef(reference.kind, reference.ref_id, field=field)
+def _boundary(zones: AppliedZones, index: int) -> MetricInput:
+    """A zone boundary input; an age-predicted one is an estimate naming its age (ADR-028)."""
+    model = zones.model
+    bpm = float(zones.boundaries_bpm[index])
+    if zones.age is None:
+        evidence = EvidenceRef(
+            EvidenceKind.HR_ZONE_MODEL, model.zone_model_id, field=f"boundariesBpm[{index}]"
+        )
+        return MetricInput(bpm, evidence, Confidence.HIGH)
+    percent = model.boundaries_percent_max_hr[index]
+    evidence = EvidenceRef(
+        EvidenceKind.HR_ZONE_MODEL,
+        model.zone_model_id,
+        field=f"boundariesPercentMaxHr[{index}]",
+        note=f"{percent}% of 220 - age {zones.age} = {zones.max_hr} bpm",
+    )
+    estimated = frozenset({UncertaintyReason.ESTIMATED_VALUE})
+    return MetricInput(bpm, evidence, Confidence.MEDIUM, estimated)
 
 
-def _from_model(value: DerivedMetricValue, model: HeartRateZoneModel, zone: int) -> bool:
+def _from_model(value: DerivedMetricValue, zones: AppliedZones, zone: int) -> bool:
     """A zone value belongs to the model, and the zone, whose boundaries it used."""
     expected = {
-        "zone_lower_bpm": float(model.boundaries_bpm[zone - 1]),
-        "zone_upper_bpm": float(model.boundaries_bpm[zone]),
+        "zone_lower_bpm": float(zones.boundaries_bpm[zone - 1]),
+        "zone_upper_bpm": float(zones.boundaries_bpm[zone]),
     }
     used = {
         record.name: record.value
         for record in value.inputs
         if record.evidence.kind is EvidenceKind.HR_ZONE_MODEL
-        and record.evidence.ref_id == model.zone_model_id
+        and record.evidence.ref_id == zones.model.zone_model_id
     }
     return used == expected
