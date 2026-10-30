@@ -19,6 +19,11 @@ TREADMILL) and none of these differ materially: terrain/elevation profile, tempe
 workout type. Otherwise the comparison carries `NON_COMPARABLE_SESSION` or `ENVIRONMENT`.
 Treadmill pace and outdoor pace are never compared without that flag.
 
+P9: trends group sessions by subtype and terrain from elevation gain per kilometre (metrics
+spec 11). Temperature is rarely known and workout types arrive with plans (P12), so V1
+groups do not use them; a trend over sessions of unknown temperature or workout type is
+read with that limit.
+
 ## 3. Detections
 
 | Detection | Requirement | Inputs | Output |

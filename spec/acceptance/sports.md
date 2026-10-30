@@ -14,6 +14,9 @@
 - Requirements: FR-SWM-001, FR-SWM-004
 - Level: unit. First executable: P9.
 
+Implementation status (P9): executed by `tests/unit/test_trends.py` (pool and open-water
+sessions in separate groups, NON_COMPARABLE_SESSION across them).
+
 **Given** a 25 m pool session and an open-water session
 **When** a pace trend is computed
 **Then** the sessions are not combined in one comparable series

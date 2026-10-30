@@ -13,7 +13,7 @@ import math
 from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Final
 from uuid import UUID
 
@@ -25,6 +25,7 @@ from coach.application.errors import NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.application.ports import ActivityRepository, Batch, OverrideRepository
 from coach.domain.activity.activity import Activity
+from coach.domain.activity.fields import Cadence, CadenceUnit, StrokeType
 from coach.domain.activity.overrides import TRAINING_DAY_FIELD, EntityType
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
@@ -32,7 +33,7 @@ from coach.domain.common.quality import UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange, TrainingDayBasis
 from coach.domain.consent.ledger import ConsentType
-from coach.metrics.catalog import PERIOD_TOTALS, PeriodTotal
+from coach.metrics.catalog import CATALOG, PERIOD_TOTALS, PeriodTotal
 from coach.metrics.derived import (
     DerivedMetricValue,
     DerivedStatus,
@@ -41,11 +42,41 @@ from coach.metrics.derived import (
     SubjectKind,
 )
 from coach.metrics.registry import MetricDefinition
+from coach.metrics.subjects import DimensionKind
+from coach.metrics.trends import Point, Trend, group_of
+from coach.metrics.trends import trend as trend_of
 
 # A training day is a local date: the activity starts at most 14 h away from it in UTC.
 _START_MARGIN: Final = timedelta(days=2)
 _BASIS_FIELD: Final = "timing.trainingDayBasis"
 RECOMPUTE_CHUNK: Final = 50  # activities per unit of work: short write locks (ADR-027)
+CADENCE_FIELD: Final = "performance.cadence"  # the average running cadence (metrics spec 11)
+MAX_TREND_WEEKS: Final = 104
+
+
+@dataclass(frozen=True, slots=True)
+class TrendGroup:
+    label: str
+    points: tuple[Point, ...]
+    trend: Trend | None  # None: fewer than 5 sessions
+
+
+@dataclass(frozen=True, slots=True)
+class TrendReport:
+    """Comparable groups of one metric over a window, never combined (metrics spec 11)."""
+
+    metric_id: str
+    unit: str
+    period: DateRange
+    groups: tuple[TrendGroup, ...]
+    without_value: int
+
+    @property
+    def across_groups(self) -> frozenset[UncertaintyReason]:
+        """What a statement comparing the groups must carry."""
+        if len(self.groups) > 1:
+            return frozenset({UncertaintyReason.NON_COMPARABLE_SESSION})
+        return frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +298,71 @@ class AnalyticsService:
             current.input_confidence or activity.quality.confidence,
             frozenset(reasons | current.uncertainty_reasons),
         )
+
+    # ------------------------------------------------------------------ trends
+
+    def trend(
+        self,
+        scope: OwnerScope,
+        metric_id: str,
+        *,
+        until: date,
+        weeks: int,
+        stroke: StrokeType | None = None,
+    ) -> TrendReport:
+        """Comparable groups and their trends over the weeks ending ``until`` (metrics spec 11)."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        if not 1 <= weeks <= MAX_TREND_WEEKS:
+            raise DomainValidationError(f"weeks must be 1 to {MAX_TREND_WEEKS}")
+        unit = self._trend_unit(metric_id, stroke)
+        period = DateRange(until - timedelta(days=weeks * 7 - 1), until)
+        with self._batch():
+            members = self._members(scope, period)
+        grouped: dict[str, list[Point]] = {}
+        without = 0
+        for view in members:
+            value = self._trend_value(scope, metric_id, view, stroke)
+            if value is None:
+                without += 1
+                continue
+            point = Point(view.training_day, value, view.activity_id)
+            grouped.setdefault(group_of(view, stroke), []).append(point)
+        groups = tuple(
+            TrendGroup(label, tuple(points), trend_of(points, weeks * 7))
+            for label, points in sorted(grouped.items())
+        )
+        return TrendReport(metric_id, unit, period, groups, without)
+
+    def _trend_unit(self, metric_id: str, stroke: StrokeType | None) -> str:
+        if metric_id == CADENCE_FIELD:
+            if stroke is not None:
+                raise DomainValidationError("cadence has no stroke")
+            return "steps/min"
+        if metric_id not in CATALOG:
+            raise DomainValidationError(f"unknown metric: {metric_id}")
+        definition = CATALOG.get(metric_id)
+        if SubjectKind.ACTIVITY not in definition.subject_kinds:
+            raise DomainValidationError(f"{metric_id} is not a per-activity metric")
+        if definition.dimension is DimensionKind.ZONE:
+            raise DomainValidationError(f"{metric_id} is per zone: no trend in V1")
+        if (definition.dimension is DimensionKind.STROKE) != (stroke is not None):
+            raise DomainValidationError(f"{metric_id} needs a stroke exactly when it is per stroke")
+        return definition.unit
+
+    def _trend_value(
+        self, scope: OwnerScope, metric_id: str, view: Activity, stroke: StrokeType | None
+    ) -> float | None:
+        if metric_id == CADENCE_FIELD:
+            cadence = view.values.get(CADENCE_FIELD)
+            if view.sport is not Sport.RUNNING or not isinstance(cadence, Cadence):
+                return None
+            return cadence.average if cadence.unit is CadenceUnit.STEPS_PER_MIN else None
+        current = self._metrics.current(
+            scope, metric_id, MetricSubject.activity(view.activity_id, stroke=stroke)
+        )
+        if current is None or current.status is not DerivedStatus.COMPUTED:
+            return None
+        return current.value
 
     # ------------------------------------------------------------------ activities
 

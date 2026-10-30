@@ -152,6 +152,17 @@ def _parser() -> argparse.ArgumentParser:
     week.add_argument("--week", help="ISO week, for example 2026-W44; default this week")
     weeks = load.add_parser("weeks", help="the last weeks, one line each")
     weeks.add_argument("--count", type=int, default=8)
+    analysis = commands.add_parser("analysis", help="sport analytics").add_subparsers(
+        dest="action", required=True
+    )
+    trending = analysis.add_parser(
+        "trend", help="comparable groups of a per-activity metric and their trends"
+    )
+    trending.add_argument("metric", help="for example run.efficiency_hr or performance.cadence")
+    trending.add_argument("--weeks", type=int, default=8, help="1 to 104; default 8")
+    trending.add_argument(
+        "--stroke", choices=["BACKSTROKE", "BREASTSTROKE", "BUTTERFLY", "FREESTYLE"]
+    )
     garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
         dest="action", required=True
     )
@@ -311,6 +322,8 @@ def main(
                 return analytics_commands.show_activity(runtime, _session(runtime), args, stream)
             case ("metrics", "recompute"):
                 return analytics_commands.recompute(runtime, _session(runtime), stream)
+            case ("analysis", "trend"):
+                return analytics_commands.trend(runtime, _session(runtime), args, stream)
             case ("load", "week"):
                 return analytics_commands.load_week(runtime, _session(runtime), args, stream)
             case ("load", "weeks"):

@@ -31,7 +31,8 @@ fatigue (stroke count or rate increase at equal pace late in a set).
 
 Pool and open-water sessions are not compared directly. Pool sessions are compared only for
 the same pool length and stroke type. A comparison across contexts requires an explicit
-context statement and carries `NON_COMPARABLE_SESSION` (AT-SWM-001).
+context statement and carries `NON_COMPARABLE_SESSION` (AT-SWM-001). P9: trends follow
+metrics spec 11 (groups by subtype, pool length and stroke type).
 
 ## 5. Session metrics (P9, version 1.0.0)
 

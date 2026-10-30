@@ -13,13 +13,14 @@ from dataclasses import replace
 from datetime import date, timedelta
 from typing import Final, TextIO
 
-from coach.application.analytics import PeriodReport, TotalReport
+from coach.application.analytics import PeriodReport, TotalReport, TrendGroup
 from coach.application.consent import ConsentRequiredError
 from coach.application.errors import NotFoundError
 from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError, athlete_timezone
+from coach.domain.activity.fields import StrokeType
 from coach.domain.athlete.experience import CyclingExperience, FtpValue
 from coach.domain.athlete.physiology import (
     PREDICTION_AGES,
@@ -214,6 +215,50 @@ def recompute(runtime: Runtime, scope: OwnerScope, out: TextIO) -> int:
         raise CommandError(CONSENT_HINT) from None
     print(f"metrics recomputed for {count} activities", file=out)
     return 0
+
+
+def trend(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Comparable groups of a metric and their trends (metrics spec 11)."""
+    stroke = None if args.stroke is None else StrokeType(args.stroke)
+    try:
+        report = runtime.analytics.trend(
+            scope, args.metric, until=_today(runtime, scope), weeks=args.weeks, stroke=stroke
+        )
+    except ConsentRequiredError:
+        raise CommandError(CONSENT_HINT) from None
+    except DomainValidationError as error:
+        raise CommandError(str(error)) from None
+    sessions = sum(len(group.points) for group in report.groups)
+    print(
+        f"{report.metric_id} from {report.period.start} to {report.period.end}: "
+        f"{sessions} sessions in {len(report.groups)} comparable groups",
+        file=out,
+    )
+    for group in report.groups:
+        print(f"  {group.label}: {_group_text(group, report.unit)}", file=out)
+    if report.without_value:
+        print(f"  {report.without_value} other sessions in the window have no value", file=out)
+    if report.across_groups:
+        reasons = ", ".join(sorted(reason.value for reason in report.across_groups))
+        print(f"comparing groups: {reasons}", file=out)
+    return 0
+
+
+def _group_text(group: TrendGroup, unit: str) -> str:
+    values = [point.value for point in group.points]
+    mean = amount(sum(values) / len(values), unit)
+    found = group.trend
+    if found is None:
+        return f"{len(values)} sessions, mean {mean}, too few for a trend"
+    change = (
+        amount(found.change, unit)
+        if found.relative_change_percent is None
+        else f"{found.relative_change_percent:+.1f} %"
+    )
+    return (
+        f"{len(values)} sessions, mean {mean}, change {change} over the window "
+        f"(t {found.t_value:.1f}, confidence {found.confidence.value})"
+    )
 
 
 def show_activity(

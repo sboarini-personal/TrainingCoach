@@ -285,3 +285,19 @@ def test_corrections_are_validated(cli: Cli, tmp_path: Path) -> None:
         "activity", "correct", str(activity_id), "environment.surface", "unknown", "--reason", "x"
     )
     assert code == 0  # unknown marks a field UNKNOWN
+
+
+@pytest.mark.req("FR-RUN-004", "FR-SWM-004")
+def test_the_trend_command_lists_comparable_groups(cli: Cli, tmp_path: Path) -> None:
+    imported(cli, tmp_path, fit_file())
+    code, output = cli.run("analysis", "trend", "run.efficiency_hr", "--weeks", "4")
+    assert code == 0, output
+    lines = output.splitlines()
+    assert (
+        lines[0]
+        == "run.efficiency_hr from 2026-09-28 to 2026-10-25: 1 sessions in 1 comparable groups"
+    )
+    assert lines[1].startswith("  RUNNING ROAD ROLLING: 1 sessions, mean ")  # 40 m over 1.8 km
+    assert lines[1].endswith("too few for a trend")
+    code, output = cli.run("analysis", "trend", "run.nothing")
+    assert (code, output) == (2, "error: unknown metric: run.nothing\n")

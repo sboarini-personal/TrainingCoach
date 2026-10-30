@@ -322,3 +322,32 @@ activity and by `coach metrics recompute`.
 - Parameters are versioned with each metric (calculationVersion) and are initial values
   to review with real data (A-18).
 
+
+## 11. Comparable series and trends (P9, version 1.0.0)
+
+A trend is a read model, not a stored value: for one per-activity metric (or the average
+cadence field) over a window of weeks ending today, the COMPUTED current values of the live
+activities, split into comparable groups, each with its own trend. Groups are never
+combined (FR-RUN-002, FR-RUN-004, FR-SWM-004, AT-SWM-001). Parameters are initial values
+(A-18).
+
+- **Comparable group** (sport specs: running 2, cycling 2, swimming 4):
+  - RUNNING: the subtype (ROAD, TRAIL, TRACK, TREADMILL; unknown is its own group) and the
+    terrain from elevation gain per kilometre: FLAT up to 10 m/km, ROLLING up to 25 m/km,
+    HILLY above, UNKNOWN without gain or distance (TREADMILL is always FLAT);
+  - CYCLING: the subtype (INDOOR_TRAINER apart from outdoor rides); power metrics exist for
+    measured power only (cycling spec 6), so estimated power is never in a series;
+  - SWIMMING: the subtype (POOL, OPEN_WATER, unknown), and for pool metrics the pool length
+    (an input of the value) and the stroke type (its dimension);
+  - other sports: one group per subtype.
+- **Trend of a group** with at least 5 sessions: the ordinary least-squares slope of the
+  value against the training day, the change it implies over the window (slope x window
+  days), that change relative to the group mean (%), and the slope's t statistic. Confidence:
+  HIGH with at least 10 sessions and |t| >= 2.5, MEDIUM with at least 5 and |t| >= 2, LOW
+  otherwise (a LOW trend is not a change). Fewer than 5 sessions: the group is listed with
+  its sessions and no trend.
+- **Across groups**: a statement that compares groups (for example pool with open water, or
+  treadmill with road) carries NON_COMPARABLE_SESSION; the report names the reason whenever
+  the window holds more than one group. Interpretation belongs to insights (P11) and the
+  AI coach, never to this read model.
+- Command: `coach analysis trend <metric> [--weeks N] [--stroke STROKE]`.
