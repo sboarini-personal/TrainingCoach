@@ -21,9 +21,10 @@ from coach.metrics.zones import ZoneTimes, time_in_zones
 MAX_SAMPLE_GAP_SECONDS: Final = 20.0
 MIN_POWER_SECONDS: Final = 1200.0
 JOULES_PER_KILOJOULE: Final = 1000.0
-# Allen and Coggan (2010) zones as fractions of FTP; the top zone is open.
-POWER_ZONE_FRACTIONS: Final = (0.0, 0.55, 0.75, 0.90, 1.05, 1.20, 1.50)
-POWER_ZONES: Final = len(POWER_ZONE_FRACTIONS)
+# Allen and Coggan (2010) zones in percent of FTP; the top zone is open. Whole percents
+# keep the bounds exact (0.55 x 200 is 110.00000000000001 in floating point).
+POWER_ZONE_PERCENTS: Final = (0, 55, 75, 90, 105, 120, 150)
+POWER_ZONES: Final = len(POWER_ZONE_PERCENTS)
 MIN_REPETITIONS: Final = 3
 REPETITION_TIME_TOLERANCE: Final = 0.15
 _WORK: Final = frozenset({LapIntensity.ACTIVE, LapIntensity.INTERVAL})
@@ -94,7 +95,7 @@ def power_zone_times(series: TimeSeries, ftp_watts: float) -> ZoneTimes | None:
     """Time in the 7 power zones (cycling spec 6.1); ``None`` without a power column."""
     if series.power_watts is None:
         return None
-    boundaries = [fraction * ftp_watts for fraction in POWER_ZONE_FRACTIONS]
+    boundaries = [ftp_watts * percent / 100 for percent in POWER_ZONE_PERCENTS]
     return time_in_zones(
         series.offset_seconds,
         series.power_watts,

@@ -51,8 +51,8 @@ class Thirds:
 
 def _valid(length: SwimLength) -> ValidLength | None:
     seconds = length.timer_seconds or length.elapsed_seconds
-    if length.type is not LengthType.ACTIVE or seconds is None or length.strokes is None:
-        return None
+    if length.type is not LengthType.ACTIVE or seconds is None or not length.strokes:
+        return None  # a length without strokes (a kick length) says nothing of a stroke
     stroke = length.stroke_type
     if stroke is None or stroke not in STROKES:
         return None

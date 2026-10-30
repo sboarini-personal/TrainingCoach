@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -410,3 +411,24 @@ def test_a_birth_date_change_moves_the_age_predicted_zones() -> None:
         retired = world.derived.current(SCOPE, "any.hr_zone_time", subject)
         assert retired is not None
         assert retired.status is DerivedStatus.NOT_APPLICABLE
+
+
+@pytest.mark.req("FR-MET-004")
+def test_zone_values_of_another_calculation_version_are_recomputed() -> None:
+    world = World()
+    world.zone_models.append(MODEL)
+    world.series[SERIES_SHA] = series()
+    ride = sample_observation(  # a ride: no running analysis reads the series
+        streams=(StreamRef(StreamKind.TIME_SERIES, SERIES_SHA),),
+        updates={"classification.sport": Sport.CYCLING},
+    )
+    activity_id = world.ingest(ride).activity.activity_id
+    for zone in (1, 2, 3):
+        subject = MetricSubject.activity(activity_id, zone=zone)
+        stored = world.derived.current(SCOPE, "any.hr_zone_time", subject)
+        assert stored is not None
+        older = replace(stored, value_id=UUID(int=900 + zone), calculation_version="0.9.0")
+        world.derived.supersede(SCOPE, stored.value_id, older)
+    world.engine.recompute(SCOPE, world.service.effective(SCOPE, activity_id).activity)
+    assert world.series_reads == [SERIES_SHA, SERIES_SHA]  # read again, not reused
+    assert current(world, "any.hr_zone_time", activity_id, 2).calculation_version == "1.0.0"

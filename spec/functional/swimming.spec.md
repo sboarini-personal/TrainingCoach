@@ -43,11 +43,13 @@ values (assumption A-18).
 - **Pool length**: `environment.poolLengthMeters`, else the pool of the athlete's resources
   (ESTIMATED_VALUE); without either, none of these metrics is computed (section 1).
 - **Valid length**: an ACTIVE length with a known duration (timer time, else elapsed time), a
-  known stroke count and a stroke type FREESTYLE, BACKSTROKE, BREASTSTROKE or BUTTERFLY
+  stroke count above 0 (a length without strokes is a kick length) and a stroke type
+  FREESTYLE, BACKSTROKE, BREASTSTROKE or BUTTERFLY
   (MIXED and DRILL lengths are left out: section 2). Strokes are counted as the device
   records them (a watch counts the cycles of the arm that wears it).
 - **Set**: consecutive valid lengths of one stroke type, ended by an IDLE length (a rest) or
-  a change of stroke. A set qualifies with at least 6 lengths; k = its length count // 3.
+  a change of stroke. A value outside an input's range (for example a length of more than
+  600 s) is UNKNOWN with SENSOR_QUALITY, as for every metric. A set qualifies with at least 6 lengths; k = its length count // 3.
 
 Per stroke type (subject dimension STROKE: `FREESTYLE`, `BACKSTROKE`, `BREASTSTROKE`,
 `BUTTERFLY`), for a stroke with at least 4 valid lengths:

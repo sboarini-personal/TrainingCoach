@@ -327,8 +327,9 @@ class ActivityMetricsEngine:
                     },
                 }
                 for definition, inputs in per_stroke.items():
+                    checked = _checked(definition, inputs)
                     stored.append(
-                        self._metrics.compute(scope, definition.metric_id, subject, inputs)
+                        self._metrics.compute(scope, definition.metric_id, subject, checked)
                     )
                     produced.add((definition.metric_id, stroke.value))
             session = MetricSubject.activity(view.activity_id)
@@ -347,7 +348,8 @@ class ActivityMetricsEngine:
                 if thirds is None:
                     continue
                 inputs = {names[0]: stream(thirds.first), names[1]: stream(thirds.last)}
-                stored.append(self._metrics.compute(scope, definition.metric_id, session, inputs))
+                checked = _checked(definition, inputs)
+                stored.append(self._metrics.compute(scope, definition.metric_id, session, checked))
                 produced.add((definition.metric_id, None))
         for definition in SWIM_PER_STROKE:
             for stroke in STROKES:
@@ -374,6 +376,8 @@ class ActivityMetricsEngine:
             subject = MetricSubject.activity(view.activity_id, zone=zone)
             current = self._metrics.current(scope, CYC_POWER_ZONE_TIME.metric_id, subject)
             if current is None or current.missing_inputs:
+                return None
+            if current.calculation_version != CYC_POWER_ZONE_TIME.calculation_version:
                 return None
             records = {record.name: record for record in current.inputs}
             record, used = records.get("seconds_in_zone"), records.get("ftp_watts")
@@ -536,6 +540,8 @@ class ActivityMetricsEngine:
             current = self._metrics.current(scope, HR_ZONE_TIME.metric_id, subject)
             if current is None or not _from_model(current, zones, zone):
                 return None
+            if current.calculation_version != HR_ZONE_TIME.calculation_version:
+                return None
             record = next((item for item in current.inputs if item.name == "seconds_in_zone"), None)
             if record is None or record.evidence != evidence:
                 return None
@@ -636,6 +642,24 @@ class ActivityMetricsEngine:
                 if current is not None:
                     found.append(current)
         return found
+
+
+def _checked(
+    definition: MetricDefinition, inputs: dict[str, MetricInput]
+) -> dict[str, MetricInput]:
+    """Inputs outside their metric's range become UNKNOWN with SENSOR_QUALITY (metrics spec
+    9.1, 10): not credible session values, and never a failed recomputation."""
+    specs = {spec.name: spec for spec in definition.required_inputs}
+    checked = {}
+    for name, offered in inputs.items():
+        checked[name] = offered
+        if offered.value is not None:
+            try:
+                specs[name].check(offered.value)
+            except DomainValidationError:
+                reasons = offered.uncertainty_reasons | {UncertaintyReason.SENSOR_QUALITY}
+                checked[name] = replace(offered, value=None, uncertainty_reasons=reasons)
+    return checked
 
 
 def _pool_swim(view: Activity) -> bool:

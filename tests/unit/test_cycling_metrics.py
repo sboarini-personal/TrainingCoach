@@ -57,6 +57,10 @@ def test_power_zones_relative_to_ftp() -> None:
     edges = power_zone_times(ride(200, lambda second: 137.5 if second < 100 else 375.0), 250.0)
     assert edges is not None
     assert (edges.seconds[1], edges.seconds[6]) == pytest.approx((100.0, 100.0))  # lower bounds
+    # whole watts exactly on a bound: 55 % of 200 W is 110 W, in Z2 (not 110.00000000000001)
+    exact = power_zone_times(ride(10, lambda _: 110.0), 200.0)
+    assert exact is not None
+    assert exact.seconds[1] == pytest.approx(10.0)
 
 
 def laps(*items: tuple[float | None, float | None, LapIntensity]) -> Laps:

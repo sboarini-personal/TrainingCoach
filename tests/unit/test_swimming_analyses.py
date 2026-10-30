@@ -133,3 +133,52 @@ def test_a_corrected_pool_length_recomputes_and_another_sport_retires() -> None:
     )
     assert retired is not None
     assert retired.status is DerivedStatus.NOT_APPLICABLE
+
+
+def odd(*rows: tuple[float, int]) -> Lengths:
+    offset, built = 0.0, []
+    for seconds, strokes in rows:
+        built.append(
+            SwimLength(
+                start_offset_seconds=offset,
+                timer_seconds=seconds,
+                type=LengthType.ACTIVE,
+                strokes=strokes,
+                stroke_type=FREE,
+            )
+        )
+        offset += seconds
+    return Lengths(start_time_utc=START, lengths=tuple(built))
+
+
+@pytest.mark.req("FR-SWM-002", "NFR-REL-001")
+@pytest.mark.parametrize(
+    ("rows", "computed"),
+    [
+        (((25.0, 0),) * 4, False),  # a kick set the watch labels freestyle: no stroke lengths
+        (((25.0, 16), (25.0, 16), (25.0, 16), (2600.0, 16)), True),  # mean above 600 s
+        (((25.0, 16), (25.0, 16), (25.0, 16), (25.0, 900)), True),  # mean above 200 strokes
+    ],
+)
+def test_odd_lengths_never_break_the_import(
+    rows: tuple[tuple[float, int], ...], computed: bool
+) -> None:
+    world = World()
+    world.segments[LENGTHS_SHA] = odd(*rows)
+    observation = sample_observation(
+        streams=(StreamRef(StreamKind.LENGTHS, LENGTHS_SHA),),
+        updates={
+            "classification.sport": Sport.SWIMMING,
+            "classification.subtype": "POOL",
+            "environment.poolLengthMeters": 25.0,
+        },
+        without=("performance.cadence",),
+    )
+    activity_id = world.ingest(observation).activity.activity_id  # no exception
+    swolf = value(world, "swim.swolf_avg", activity_id, FREE)
+    if not computed:
+        assert swolf is None
+        return
+    assert swolf is not None
+    assert swolf.status is DerivedStatus.MISSING_INPUT
+    assert UncertaintyReason.SENSOR_QUALITY in swolf.uncertainty_reasons
