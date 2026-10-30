@@ -9,6 +9,8 @@ analyses (P9, metrics spec 10) read a metric's inputs from a session's streams.
 
 from __future__ import annotations
 
+import math
+import statistics
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final
@@ -62,6 +64,11 @@ MCBRIDE_2009: Final = (
     "McBride JM, McCaulley GO, Cormie P, Nuzzo JL, Cavill MJ, Triplett NT. Comparison of "
     "methods to quantify volume during resistance exercise. J Strength Cond Res. "
     "2009;23(1):106-110 (volume load: repetitions x load)"
+)
+FOSTER_1998: Final = (
+    "Foster C. Monitoring training in athletes with reference to overtraining syndrome. "
+    "Med Sci Sports Exerc. 1998;30(7):1164-1168 (PMID 9662690): monotony is the daily mean "
+    "divided by the standard deviation over a week, strain the weekly load times monotony"
 )
 PERIODS: Final = frozenset({SubjectKind.DAY, SubjectKind.WEEK})
 DISTANCE_SPORTS: Final = frozenset({Sport.RUNNING, Sport.CYCLING, Sport.SWIMMING})
@@ -731,6 +738,66 @@ SRPE_LOAD_TOTAL: Final = _total(
     reference=FOSTER_2001 + " (weekly load as the sum of session loads)",
 )
 
+WEEK_DAYS: Final = 7
+MAX_DAY_LOAD: Final = 10 * MAX_SESSION_SECONDS / SECONDS_PER_MINUTE  # CR-10 all day long
+DAY_LOADS: Final = tuple(
+    InputSpec(
+        f"day{number}_load",
+        "AU",
+        0,
+        MAX_DAY_LOAD,
+        description=f"Session RPE load of day {number} of the ISO week (Monday is 1); 0 at rest",
+    )
+    for number in range(1, WEEK_DAYS + 1)
+)
+
+
+def daily_loads(inputs: Mapping[str, float]) -> list[float]:
+    return [inputs[spec.name] for spec in DAY_LOADS]
+
+
+def _monotony(inputs: Mapping[str, float]) -> float:
+    loads = daily_loads(inputs)
+    return statistics.fmean(loads) / statistics.pstdev(loads)
+
+
+def _strain(inputs: Mapping[str, float]) -> float:
+    return math.fsum(daily_loads(inputs)) * _monotony(inputs)
+
+
+TRAINING_MONOTONY: Final = MetricDefinition(
+    metric_id="any.training_monotony",
+    name="Training monotony",
+    sport=None,
+    unit="ratio",
+    method=(
+        "Mean daily session RPE load of the ISO week divided by the standard deviation of the "
+        "seven daily loads (population; a day without activity is 0); only for an ended week "
+        "whose loads vary"
+    ),
+    required_inputs=DAY_LOADS,
+    minimum_data_quality=Confidence.LOW,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=FOSTER_1998,
+    calculate=_monotony,
+    subject_kinds=frozenset({SubjectKind.WEEK}),
+)
+TRAINING_STRAIN: Final = MetricDefinition(
+    metric_id="any.training_strain",
+    name="Training strain",
+    sport=None,
+    unit="AU",
+    method="Weekly session RPE load (the seven daily loads) multiplied by the week's monotony",
+    required_inputs=DAY_LOADS,
+    minimum_data_quality=Confidence.LOW,
+    calculation_version="1.0.0",
+    origin=MetricOrigin.STANDARD_CALCULATION,
+    reference=FOSTER_1998,
+    calculate=_strain,
+    subject_kinds=frozenset({SubjectKind.WEEK}),
+)
+
 CATALOG: Final = MetricRegistry(
     (
         SRPE_LOAD,
@@ -743,6 +810,8 @@ CATALOG: Final = MetricRegistry(
         DISTANCE_TOTAL,
         ELEVATION_GAIN_TOTAL,
         SRPE_LOAD_TOTAL,
+        TRAINING_MONOTONY,
+        TRAINING_STRAIN,
         RUN_HR_DRIFT,
         RUN_PACE_VARIABILITY,
         RUN_INTERVAL_DEGRADATION,

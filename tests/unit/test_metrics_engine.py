@@ -270,6 +270,8 @@ def test_the_catalogue_is_registered_with_origins_and_references() -> None:
         "any.distance_total": MetricOrigin.APPLICATION_DERIVED,
         "any.elevation_gain_total": MetricOrigin.APPLICATION_DERIVED,
         "any.srpe_load_total": MetricOrigin.STANDARD_CALCULATION,
+        "any.training_monotony": MetricOrigin.STANDARD_CALCULATION,  # Foster 1998 (P11)
+        "any.training_strain": MetricOrigin.STANDARD_CALCULATION,
         # P9 (running spec 4): this application's methods, so APPLICATION_DERIVED
         "run.hr_drift": MetricOrigin.APPLICATION_DERIVED,
         "run.pace_variability": MetricOrigin.APPLICATION_DERIVED,

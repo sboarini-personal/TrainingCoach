@@ -13,7 +13,13 @@ from dataclasses import replace
 from datetime import date, timedelta
 from typing import Final, TextIO
 
-from coach.application.analytics import PeriodReport, TotalReport, TrendGroup
+from coach.application.analytics import (
+    NoMonotony,
+    PeriodReport,
+    TotalReport,
+    TrendGroup,
+    WeekMonotony,
+)
 from coach.application.consent import ConsentRequiredError
 from coach.application.errors import NotFoundError
 from coach.application.ids import new_id
@@ -99,6 +105,8 @@ def amount(value: float, unit: str) -> str:
             return f"{value:.2f} m/stroke"
         case "score":
             return f"{value:.1f}"
+        case "ratio":
+            return f"{value:.2f}"
         case "level":
             return LoadLevel(round(value)).name
         case _:
@@ -186,10 +194,38 @@ def load_week(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out
     week = week_argument(args.week, runtime, scope)
     try:
         report = runtime.analytics.week(scope, week)
+        _print_week(report, out)
+        zone = athlete_timezone(runtime.profiles, scope)
+        today = runtime.clock().astimezone(zone).date()
+        if report.activities:
+            print(_monotony_text(runtime.analytics.monotony(scope, week, today=today)), file=out)
     except ConsentRequiredError:
         raise CommandError(CONSENT_HINT) from None
-    _print_week(report, out)
+    except TimezoneRequiredError:
+        pass  # monotony needs to know whether the week is over
     return 0
+
+
+def _monotony_text(found: WeekMonotony) -> str:
+    """Training monotony and strain (Foster 1998), or why there are none."""
+    if found.without is NoMonotony.WEEK_NOT_OVER:
+        return "monotony: once the week is over"
+    if found.without is NoMonotony.NO_VARIATION:
+        return "monotony: not defined (the seven daily loads are equal)"
+    if found.monotony is None or found.strain is None:
+        return "monotony: no activity"
+    loads = " ".join("?" if value is None else f"{value:.0f}" for value in found.daily_loads)
+    if found.monotony.status is DerivedStatus.MISSING_INPUT:
+        unknown = [
+            str(found.period.start + timedelta(days=index))
+            for index, value in enumerate(found.daily_loads)
+            if value is None
+        ]
+        return f"monotony: unknown (no session RPE load on {', '.join(unknown)}; daily {loads})"
+    return (
+        f"monotony {value_text(found.monotony)}, strain {value_text(found.strain)} "
+        f"(daily sRPE Monday to Sunday: {loads} AU; Foster 1998)"
+    )
 
 
 def load_weeks(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:

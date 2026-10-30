@@ -56,6 +56,7 @@ def test_the_week_report_of_an_imported_run(cli: Cli, tmp_path: Path) -> None:
     assert "elapsed 0:20:00" in everything
     assert "distance" not in everything  # never summed across sports
     assert "sRPE unknown" in everything  # no RPE in the FIT files
+    assert lines[-1] == "monotony: once the week is over"  # the clock is in 2026-W43
 
 
 @pytest.mark.req("FR-MET-001", "FR-MET-004", "FR-PRF-001")

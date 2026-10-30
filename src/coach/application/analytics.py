@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+from enum import StrEnum
 from typing import Final
 from uuid import UUID
 
@@ -41,7 +42,7 @@ from coach.domain.activity.overrides import TRAINING_DAY_FIELD, EntityType
 from coach.domain.activity.segments import Laps
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
-from coach.domain.common.quality import UncertaintyReason
+from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange, TrainingDayBasis
 from coach.domain.consent.ledger import ConsentType
@@ -55,9 +56,14 @@ from coach.domain.strength.session import StrengthSetResult
 from coach.domain.strength.vocabulary import BodyRegion, MuscleGroup
 from coach.metrics.catalog import (
     CATALOG,
+    DAY_LOADS,
+    MAX_DAY_LOAD,
     PERIOD_TOTALS,
+    SRPE_LOAD_TOTAL,
     STR_VOLUME_LOAD_TOTAL,
     STR_WEEKLY_SETS_BY_MUSCLE,
+    TRAINING_MONOTONY,
+    TRAINING_STRAIN,
     PeriodTotal,
 )
 from coach.metrics.derived import (
@@ -191,6 +197,24 @@ class StrengthWeek:
     muscles: tuple[MuscleSets, ...]  # only the muscle groups the week's sets worked
     volume_load: TotalReport | None
     unread: int = 0  # sessions whose watch sets could not be read
+
+
+class NoMonotony(StrEnum):
+    WEEK_NOT_OVER = "WEEK_NOT_OVER"  # the week's last day is today or later
+    NO_ACTIVITY = "NO_ACTIVITY"
+    NO_VARIATION = "NO_VARIATION"  # the seven loads are equal: the ratio is not defined
+
+
+@dataclass(frozen=True, slots=True)
+class WeekMonotony:
+    """Training monotony and strain of an ISO week (Foster 1998; metrics spec 9.5)."""
+
+    subject: MetricSubject
+    period: DateRange
+    daily_loads: tuple[float | None, ...]  # Monday to Sunday; None: unknown
+    monotony: DerivedMetricValue | None
+    strain: DerivedMetricValue | None
+    without: NoMonotony | None  # why there is no value
 
 
 class AnalyticsService:
@@ -383,6 +407,69 @@ class AnalyticsService:
             current.input_confidence or activity.quality.confidence,
             frozenset(reasons | current.uncertainty_reasons),
         )
+
+    # ------------------------------------------------------------------ monotony
+
+    def monotony(self, scope: OwnerScope, week: str, *, today: date) -> WeekMonotony:
+        """Training monotony and strain of an ended ISO week from its seven daily session
+        RPE loads (a day without activity is 0; metrics spec 9.5)."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        subject = MetricSubject(SubjectKind.WEEK, week)
+        period = subject.period()
+        with self._batch():
+            if period.end >= today:
+                return WeekMonotony(subject, period, (), None, None, NoMonotony.WEEK_NOT_OVER)
+            report = self._period(scope, subject)
+            total = report.cross_sport.get(SRPE_LOAD_TOTAL.metric_id)
+            if total is None:
+                return self._no_monotony(scope, subject, (), NoMonotony.NO_ACTIVITY)
+            inputs = {
+                spec.name: self._day_load(scope, period.start + timedelta(days=index), total)
+                for index, spec in enumerate(DAY_LOADS)
+            }
+            loads = tuple(item.value for item in inputs.values())
+            known = [value for value in loads if value is not None]
+            if len(known) == len(loads) and len(set(known)) == 1:
+                return self._no_monotony(scope, subject, loads, NoMonotony.NO_VARIATION)
+            monotony = self._metrics.compute(scope, TRAINING_MONOTONY.metric_id, subject, inputs)
+            strain = self._metrics.compute(scope, TRAINING_STRAIN.metric_id, subject, inputs)
+            return WeekMonotony(subject, period, loads, monotony, strain, None)
+
+    def _no_monotony(
+        self,
+        scope: OwnerScope,
+        subject: MetricSubject,
+        loads: tuple[float | None, ...],
+        without: NoMonotony,
+    ) -> WeekMonotony:
+        for metric in (TRAINING_MONOTONY, TRAINING_STRAIN):
+            self._metrics.retire(scope, metric.metric_id, subject)
+        return WeekMonotony(subject, subject.period(), loads, None, None, without)
+
+    def _day_load(self, scope: OwnerScope, day: date, week_total: TotalReport) -> MetricInput:
+        """A day's session RPE load: its cross-sport total, or 0 without activity (evidence:
+        the week's total, which lists every contribution of the week)."""
+        report = self._period(scope, MetricSubject(SubjectKind.DAY, day.isoformat()))
+        total = report.cross_sport.get(SRPE_LOAD_TOTAL.metric_id)
+        if total is None:
+            evidence = EvidenceRef(
+                EvidenceKind.DERIVED_METRIC,
+                week_total.value.value_id,
+                field=day.isoformat(),
+                note="no activity: load 0",
+            )
+            return MetricInput(0.0, evidence, Confidence.HIGH)
+        value = total.value
+        evidence = EvidenceRef(EvidenceKind.DERIVED_METRIC, value.value_id)
+        confidence = value.input_confidence or Confidence.LOW
+        reasons = frozenset(value.uncertainty_reasons)
+        if value.status is not DerivedStatus.COMPUTED or value.value is None:
+            return MetricInput(None, evidence, confidence, reasons)
+        if value.value > MAX_DAY_LOAD:
+            return MetricInput(
+                None, evidence, confidence, reasons | {UncertaintyReason.SENSOR_QUALITY}
+            )
+        return MetricInput(value.value, evidence, confidence, reasons)
 
     # ------------------------------------------------------------------ strength
 

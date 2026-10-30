@@ -153,7 +153,7 @@ until a reference is recorded.
 | `any.srpe_load` | STANDARD_CALCULATION | P3 | defined in section 8 |
 | `any.hr_zone_time` | STANDARD_CALCULATION | P8 | requires a valid zone model; section 9.2 |
 | `any.weekly_volume_by_sport` | APPLICATION_DERIVED | P8 | the week report of section 9.4, not a stored value |
-| `any.training_monotony`, `any.training_strain` | STANDARD_CALCULATION | P11 | reference to confirm (Foster) |
+| `any.training_monotony`, `any.training_strain` | STANDARD_CALCULATION | P11 | Foster 1998 (reference confirmed in P11); section 12 |
 | `run.hr_drift` | APPLICATION_DERIVED (P9 decision, running spec 4) | P9 | first-half vs second-half speed:HR of a steady run |
 | `run.interval_degradation` | APPLICATION_DERIVED | P9 | running spec 4.3 |
 | `run.pace_variability`, `run.efficiency_hr` | APPLICATION_DERIVED | P9 | added in P9: pacing stability and efficiency inputs (FR-RUN-003, FR-RUN-004); running spec 4 |
@@ -354,3 +354,33 @@ combined (FR-RUN-002, FR-RUN-004, FR-SWM-004, AT-SWM-001). Parameters are initia
   the window holds more than one group. Interpretation belongs to insights (P11) and the
   AI coach, never to this read model.
 - Command: `coach analysis trend <metric> [--weeks N] [--stroke STROKE]`.
+
+## 12. Training monotony and strain (P11, version 1.0.0)
+
+| Field | Value |
+|---|---|
+| Metrics | `any.training_monotony` (ratio), `any.training_strain` (AU) |
+| Origin | STANDARD_CALCULATION |
+| Subject | WEEK (ISO week, Monday to Sunday), across sports; no dimension |
+| Inputs | `day1_load` to `day7_load`: the cross-sport `any.srpe_load_total` of each day of the week (Monday is day 1), 0 to 14,400 AU |
+| Method | monotony = mean of the seven daily loads / their standard deviation; strain = sum of the seven daily loads x monotony |
+| Minimum data quality | LOW (as the period totals) |
+| Reference | Foster C. Monitoring training in athletes with reference to overtraining syndrome. Med Sci Sports Exerc. 1998;30(7):1164-1168 (PMID 9662690) |
+
+Precisions (P11; parameters under A-18):
+
+- A day without activity has load 0 (a rest day), as in Foster's method. Its evidence is the
+  week's `any.srpe_load_total`, whose inputs list every contribution of the week. A day with
+  activities uses its day total. A day whose total is unknown (a session without RPE) makes
+  both metrics MISSING_INPUT, naming the day's input.
+- The standard deviation is the population one over the seven days: the week is the whole
+  set, not a sample. Foster does not state which. A sample deviation gives a monotony lower
+  by a factor of about 0.93, so thresholds from other sources must be compared with care.
+- Only an ended week is computed, one whose Sunday is before today in the athlete's
+  timezone: future days would count as rest.
+- Seven equal loads have no standard deviation, so the ratio is not defined. There is no
+  value (NO_VARIATION), never an infinite or invented one. A week without activities has
+  none either (NO_ACTIVITY), and a stored value that no longer applies is retired.
+- Both are read with the week (`coach load week`), materialised when requested like the
+  period totals.
+
