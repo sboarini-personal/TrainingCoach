@@ -2,8 +2,9 @@
 
 Spec-driven, data-driven coaching for running, cycling, swimming, strength and tennis.
 
-> Status: P6 complete (domain core, storage, security, canonical activities, file import).
-> No training features yet. See [docs/architecture.md](docs/architecture.md#8-delivery-phases).
+> Status: P11 complete (activities, metrics, sport analytics, strength, recovery, insights and
+> report data). Planning and the AI coach come next. See
+> [docs/architecture.md](docs/architecture.md#8-delivery-phases).
 
 ## What it is
 
@@ -113,6 +114,33 @@ or more, so sets without either show as unknown effort in `coach strength week`.
 `coach strength interference` flags combinations such as heavy legs the day before hard
 intervals. Pain counts for a region only when its location is the region's name (for
 example "rodilla"). These are load-management rules, not medical advice.
+
+Recovery (P11):
+
+- **Check-in.** `coach checkin add` records the day's check-in on a 1 to 5 scale (`--sleep`,
+  `--fatigue`, `--soreness`, `--stress`, `--motivation`), pain 0 to 10 with
+  `--pain-location` and `--pain-onset`, and `--red-flag` warning signs.
+  - A red flag pauses intensive training (SAFETY_HOLD). So do a warning sign written in the
+    notes, a pain in the chest, and a pain of 7 or more that is not gradual.
+  - Only you release it, once a professional cleared you:
+    `coach safety release --cleared-by-professional`.
+- **Daily data.** With the consents `recovery`, `hrv`, `sleep` and
+  `provider-recovery-metrics`, `coach garmin sync` also brings resting heart rate, overnight
+  HRV, sleep and Body Battery. Garmin's responses are never stored: they carry other data,
+  so only the values read are kept.
+- **Assessment.** `coach recovery status` compares today with your own previous 28 days and
+  with your check-in. One low reading is only an observation. Two independent signals, or
+  one signal on three days, reduce the load, and three call for rest.
+- **Insights.** `coach insights detect` looks for patterns:
+  - monotony, load spikes, fatigue, recovery;
+  - worsening trends;
+  - interference;
+  - intensity distribution;
+  - sleep and running efficiency, reported as an association, never a cause.
+- **Reports.** `coach report activity|week|month` prints the data part of the reports. Every
+  number has its evidence; what needs plans or the AI coach says so.
+
+These are training-load decisions, not medical advice.
 
 `coach garmin sync` uses the Garmin Personal API key stored with `coach secret set
 garmin-api-key` (create it in Garmin Connect, under Personal API key). It pulls the last 8

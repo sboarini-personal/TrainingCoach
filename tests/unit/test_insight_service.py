@@ -12,7 +12,9 @@ from activity_world import SCOPE, World
 from coach.application.analytics import AnalyticsService
 from coach.application.coaching import CoachingConditions
 from coach.application.events import EventName
+from coach.application.identity import Principal
 from coach.application.insights import InsightService
+from coach.application.lineage import LineageService
 from coach.application.recovery import RecoveryService
 from coach.application.recovery_assessment import RecoveryAssessmentService
 from coach.application.screening import SecretScreen
@@ -20,11 +22,12 @@ from coach.domain.activity.observation import Observation, SourceKind
 from coach.domain.coaching.state import CoachingState
 from coach.domain.common.evidence import EvidenceKind
 from coach.domain.insights import Insight, Pattern, Relationship
+from coach.domain.raw.source import RawSource
 from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription
 from coach.domain.recovery.checkin import DailyCheckIn
 from coach.domain.recovery.daily import RecoveryObservation
 from coach.infrastructure.memory import InMemoryRepository
-from samples import BUENOS_AIRES, START, sample_observation, tennis_values
+from samples import BUENOS_AIRES, START, USER, sample_observation, tennis_values
 
 IMPORTED = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)  # Tuesday of 2026-W44
 
@@ -42,7 +45,7 @@ def session(day_offset: int, rpe: float, number: int) -> Observation:
     )
 
 
-def service(world: World) -> InsightService:
+def service(world: World, stored: InMemoryRepository[Insight] | None = None) -> InsightService:
     conditions = CoachingConditions(
         InMemoryRepository[CoachingState](),
         audit=world.audit,
@@ -81,7 +84,7 @@ def service(world: World) -> InsightService:
         analytics,
         recovery,
         assessments,
-        InMemoryRepository[Insight](),
+        InMemoryRepository[Insight]() if stored is None else stored,
         consents=world.consents_gate,
         events=world.events,
         clock=world.clock,
@@ -123,3 +126,44 @@ def test_a_monotonous_week_after_lighter_ones_is_found_from_stored_sessions() ->
         0,
         {item.insight_id for item in found.insights},
     )
+
+
+def trained() -> World:
+    world = World()
+    world.clock.now = IMPORTED
+    number = 500
+    for week in range(1, 5):
+        world.ingest(session(-7 * week, 5.0, number := number + 1))
+    for day in range(-1, 5):
+        world.ingest(session(day, 5.0, number := number + 1))
+    return world
+
+
+def unresolved(node: object) -> int:
+    resolved = getattr(node, "resolved", None)
+    children = getattr(node, "children", ())
+    return (resolved is None) + sum(unresolved(child) for child in children)
+
+
+@pytest.mark.req("NFR-TRC-001", "FR-INS-001")
+@pytest.mark.acceptance("AT-LIN-001")
+def test_an_insight_traces_down_to_its_raw_sources_even_after_a_correction() -> None:
+    world = trained()
+    stored = InMemoryRepository[Insight]()
+    found = service(world, stored).detect(SCOPE)
+    monotony = next(item for item in found.insights if item.kind is Pattern.MONOTONY)
+    lineage = LineageService(world.derived, world.raw, world.activities, insights=stored)
+    node = lineage.trace_insight(SCOPE, monotony.insight_id)
+    assert node.resolved == monotony
+    assert unresolved(node) == 0  # insight, derived values, activities and RAW sources
+    sources = lineage.raw_sources(node)
+    week = [item for item in world.live() if item.training_day.isocalendar()[1] == 43]
+    expected = {link.source_id for item in week for link in item.sources}
+    assert {item.raw_source_id for item in sources} == expected
+    assert all(isinstance(item, RawSource) for item in sources)
+    corrected = week[0]
+    world.service.correct(
+        SCOPE, Principal(USER), corrected.activity_id, "subjective.rpe", 6.0, "felt harder"
+    )
+    again = lineage.trace_insight(SCOPE, monotony.insight_id)
+    assert unresolved(again) == 0  # values keep their snapshot: the chain still resolves

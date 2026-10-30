@@ -65,6 +65,17 @@ Domain packages (P2): `common` (errors, time, units, quality, provenance, sport,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
 `onboarding`; `raw` (P3); `activity` (P5); `ingestion` (P6).
 
+P11 additions:
+
+| Package | Content |
+|---|---|
+| `coach.domain` | `recovery.checkin` (DailyCheckIn, red flags, detected flags), `recovery.warning_phrases` (red-flag phrases 1.0.0), `recovery.daily` (RecoveryObservation, metrics and consents), `recovery.assessment` (assessment and prescription rules 1.0.0), `insights` (Insight, patterns, associations), `reports` (report data part) |
+| `coach.metrics` | `any.training_monotony`, `any.training_strain` (Foster 1998); trend points carry their derived value IDs |
+| `coach.planning` | `patterns` (pattern rules 1.0.0: pure detectors producing findings) |
+| `coach.application` | `RecoveryService` (fail-safe check-ins, daily data by consent), `safety` (fixed notices), `RecoverySyncService` (minimised RAW, daily cursors, failures in the integration status), `RecoveryAssessmentService` (RECOVERY_BLOCK), `InsightService`, `ReportService`; `AnalyticsService.monotony`, `zone_sessions`, `activities`; shared `current_status` and `postponement` of `sync` |
+| `coach.integrations.garmin` | `recovery` (daily endpoints and normaliser `garmin_daily` 1.0.0), `get_daily` on the adapter, one adapter per run |
+| `coach.cli` | `checkin add/list`, `safety status/release`, `recovery data/status`, `insights detect/list`, `report activity/week/month`; `garmin sync` brings the recovery metrics |
+
 P10 additions:
 
 | Package | Content |
@@ -229,6 +240,19 @@ the activity's volume load. `coach strength week` materialises hard sets per mus
 and the volume load; `progress` and `interference` are read models of rules 1.0.0, with
 reason codes and evidence.
 
+**Recovery and insights (P11, ADR-032, ADR-033):**
+
+1. `coach checkin add` activates SAFETY_HOLD before anything else when a red flag is
+   answered, written or rated.
+2. `coach garmin sync` fetches each consented daily metric through its documented endpoint
+   and keeps only a minimised document of the values read.
+3. `coach recovery status` compares the day's signals with the athlete's own baseline,
+   decides NORMAL, MONITOR, REDUCE or REST, and drives RECOVERY_BLOCK through its
+   prescription.
+4. `coach insights detect` runs pattern rules 1.0.0 over the derived values, assessments
+   and check-ins.
+5. `coach report` assembles the evidence-backed data part of the reports.
+
 **Adaptive loop:** activity ingested -> workout execution matching -> metrics -> recovery
 assessment -> insights -> decision (code thresholds plus AI interpretation) -> policy engine
 -> new PROPOSED plan version (if not MAINTAIN) -> athlete activation.
@@ -274,8 +298,11 @@ engine for proposals -> AgentDecision audit.
 | A-17 | V1 is for adults (18 or older) | Proposed |
 | A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability, the metric input ranges and the 20 s sample gap of time in zones from P8, and the P9 sport analytics parameters: warm-up, steadiness, splits, repetition tolerances, power zone fractions and FTP window, set sizes, tennis load levels, terrain bands and trend thresholds, and the P10 strength parameters: hard-set thresholds, heavy session
 size, calf-intensive size, long-run duration, hard run and swim RPE, region tables, FIT
-exercise mapping, progression RPE overshoot) are initial, versioned values to be reviewed with
-real data | Proposed |
+exercise mapping, progression RPE overshoot, and the P11 parameters: the 28-day baseline and its
+7 readings, standard-deviation floors, check-in anchors, decision groups and 3-day persistence,
+prescription durations, red-flag phrase lists 1.0.0, monotony computation, and the pattern rule
+thresholds of the insights spec section 5) are initial, versioned values to be reviewed with real
+data | Proposed |
 | A-19 | At most one ACTIVE priority-A goal | Proposed |
 | A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
 
@@ -297,8 +324,8 @@ Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md
 | P8 | Deterministic metrics engine: subject dimensions, aggregations, speed and pace, time in heart-rate zones, period totals materialised on read, week report with external and internal load, recomputation, SQLite units of work (ADR-027), age-predicted zones as a labelled estimate (ADR-028), CLI `load`, `metrics`, `activity show`, `profile hr-zones`, `profile birth-date` | Done |
 | P9 | Laps, pool lengths and power sensors from files with re-normalisation (ADR-029); running, cycling, swimming analytics and tennis load as stream analyses (ADR-030); measured power attribution; per-stroke dimension; qualifying-only work total; comparable groups and trends; CLI `activity reprocess`, `activity correct`, `profile sensor`, `profile ftp`, `analysis trend` | Done |
 | P10 | Exercise catalogue 1.0.0 and athlete aliases; FIT strength sets (SETS stream, normalisation rules 1.2.0) and StrengthSession reconciliation; volume load and weekly hard sets per muscle group (MUSCLE dimension); progression rules 1.0.0; strength prescription rules 1.0.0 (workout contract 1.1.0); interference engine rules 1.0.0 (ADR-031); CLI `strength` | Done |
-| P11 | Check-in, recovery, patterns, insights, report data | Next |
-| P12 | Policy engine (full), planning, versioning, execution, adaptive loop | |
+| P11 | Daily check-in with fail-safe red flags and phrase detection; daily recovery metrics from Garmin by consent with minimised RAW (ADR-032); recovery assessment and prescription rules 1.0.0 with RECOVERY_BLOCK; training monotony and strain; pattern rules 1.0.0 into insights; report data parts (ADR-033); CLI `checkin`, `safety`, `recovery`, `insights`, `report` | Done |
+| P12 | Policy engine (full), planning, versioning, execution, adaptive loop | Next |
 | P13 | AI coach: tools, prompts, LLM adapter, agent evaluations, UI | |
 | P14 | Garmin workout publication | Deferred: needs a tier with `trainingPublish` |
 | P15 | Hardening, deletion workflow, observability, end-to-end verification | |

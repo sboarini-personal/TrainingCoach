@@ -6,7 +6,8 @@ Implementation status (P8): AT-MET-001 is executed by the metrics engine over ac
 code from the EFFECTIVE view, store their input snapshot and recompute idempotently, and
 an activity below the minimum quality gets an UNKNOWN value with its reason. AT-LIN-001
 is executed for a weekly load total down to session values, activities and RAW sources
-(`tests/unit/test_analytics.py`); insights and recommendations arrive in P11. AT-MET-003 is
+(`tests/unit/test_analytics.py`) and, from P11, for an insight
+(`tests/unit/test_insight_service.py`); recommendations arrive in P13. AT-MET-003 is
 executed by `tests/unit/test_athlete_profile.py`, `tests/unit/test_activity_metrics.py` and
 `tests/integration/test_cli_metrics.py`; the planner that must ignore the model arrives in
 P12 and reads the rule from the domain model (`HeartRateZoneModel.reliable_anchor`).
@@ -50,6 +51,7 @@ references resolve once the canonical Activity exists (P5).
 ### AT-LIN-001 — Recommendation traces to the source
 - Requirements: NFR-TRC-001
 - Level: integration. First executable: P11.
+- P11 (executed): an insight traces through its derived values and activities to the RAW sources, and still does after a correction (`LineageService.trace_insight`). The recommendation itself is produced from P13.
 
 **Given** a recommendation produced from an insight
 **When** its lineage is requested

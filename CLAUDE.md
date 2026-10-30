@@ -103,8 +103,8 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P10 are done. Next: P11 (check-in, recovery, patterns, insights, report data). See
-`docs/architecture.md` section 8.
+P0 to P11 are done. Next: P12 (full policy engine, planning, plan versions, execution, the
+adaptive loop). See `docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 `AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
@@ -174,4 +174,21 @@ assumed. Regions an exercise loads and pain-location names are in
 `coach.domain.strength.regions`. Tests: `World.strength` and `World.strength_sessions`, SETS
 blobs in `World.segments`; synthetic FIT sets from `file_samples.fit_set` and
 `strength_session`.
+
+Recovery, insights and reports (P11, ADR-032, ADR-033): check-ins go through
+`RecoveryService.record_checkin`, which activates SAFETY_HOLD before validating (red flags
+also from phrases in `coach.domain.recovery.warning_phrases`, a chest location or severe pain
+not known to be gradual). Daily provider metrics are `RecoveryObservation`s read by consent
+through `RecoveryService.daily`; `RecoverySyncService` never stores a provider payload, only
+a minimised `recovery-payload` document, and keeps per-metric cursors in the integration
+status. `RecoveryAssessmentService.assess` applies assessment rules 1.0.0 and drives
+RECOVERY_BLOCK through prescriptions; planning reads the prescriptions in force with
+`prescriptions(scope, day)` (POL-RECOVERY-BLOCK). Pattern detectors are pure functions in
+`coach.planning.patterns`, run by `InsightService.detect`; observations are written in code
+from evidence, interpretation, hypothesis and recommendation stay null until P13, and
+relationships are ASSOCIATION only. `ReportService` builds report data parts: a number without
+evidence is refused by `ReportItem`, and a section the data cannot fill is
+`Section.not_available` with its reason. Tests: `tests/unit/test_recovery_assessment.py`
+(series and check-in builders), `tests/unit/test_insight_service.py` and
+`tests/unit/test_reports.py` (World plus in-memory recovery services).
 

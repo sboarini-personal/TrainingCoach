@@ -1,5 +1,10 @@
 # Acceptance: recovery
 
+P11: AT-REC-001 and AT-REC-002 are executed by `tests/unit/test_recovery_assessment.py`
+(assessment rules 1.0.0); recent performance is not a recovery signal in rules 1.0.0, so the
+"normal recent performance" of AT-REC-001 holds by construction. AT-CON-001 is executed for
+the recovery metrics by the same file and by `tests/unit/test_recovery_sync.py`.
+
 ### AT-REC-001 — One low reading is not a major decision
 - Requirements: FR-REC-003
 - Level: unit. First executable: P11.
