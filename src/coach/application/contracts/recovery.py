@@ -14,6 +14,7 @@ from coach.application.contracts._json import (
     parse_instant,
     parse_optional_uuid,
 )
+from coach.domain.common.errors import DomainValidationError
 from coach.domain.recovery.checkin import CheckInPain, DailyCheckIn, PainOnset, RedFlag
 from coach.domain.recovery.daily import METRICS, RecoveryMetric, RecoveryObservation
 
@@ -41,6 +42,7 @@ def checkin_to_contract(checkin: DailyCheckIn) -> Json:
             "onset": None if pain.onset is None else pain.onset.value,
         },
         "redFlags": [flag.value for flag in checkin.red_flags],
+        "detectedFlags": [flag.value for flag in checkin.detected_flags],
         "notes": checkin.notes,
         "supersedes": None if checkin.supersedes is None else str(checkin.supersedes),
     }
@@ -68,6 +70,7 @@ def checkin_from_contract(document: Document) -> DailyCheckIn:
             onset=None if pain["onset"] is None else PainOnset(pain["onset"]),
         ),
         red_flags=tuple(RedFlag(flag) for flag in document["redFlags"]),
+        detected_flags=tuple(RedFlag(flag) for flag in document.get("detectedFlags", [])),
         notes=document["notes"],
         supersedes=parse_optional_uuid(document["supersedes"]),
     )
@@ -91,12 +94,15 @@ def recovery_observation_to_contract(observation: RecoveryObservation) -> Json:
 
 
 def recovery_observation_from_contract(document: Document) -> RecoveryObservation:
+    metric = RecoveryMetric(document["metric"])
+    if document["unit"] != METRICS[metric].unit:
+        raise DomainValidationError(f"{metric} is measured in {METRICS[metric].unit}")
     return RecoveryObservation(
         observation_id=UUID(document["observationId"]),
         athlete_id=UUID(document["athleteId"]),
         version=document["version"],
         day=date.fromisoformat(document["day"]),
-        metric=RecoveryMetric(document["metric"]),
+        metric=metric,
         value=float(document["value"]),
         provider=document["provider"],
         raw_source_id=UUID(document["rawSourceId"]),

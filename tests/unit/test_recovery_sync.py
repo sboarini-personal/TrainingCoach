@@ -22,6 +22,7 @@ from coach.domain.recovery.daily import RecoveryMetric, in_force
 from coach.integrations.garmin.recovery import CATEGORIES, GarminDailyRecords
 from garmin_samples import body_battery_payload, hrv_payload, resting_hr_payload, sleep_payload
 from garmin_world import GarminWorld, response
+from schemas import validation_errors
 from sync_world import SyncWorld
 
 DAY = date(2026, 10, 20)
@@ -72,6 +73,8 @@ def test_each_payload_yields_its_metric_per_calendar_day() -> None:
         (RecoveryMetric.HRV_NIGHTLY, b'{"hrvSummaries": [1, 2]}'),
         (RecoveryMetric.RESTING_HR, resting_hr_payload(DAY + timedelta(days=1), 50)),  # another day
         (RecoveryMetric.RESTING_HR, b'{"restingHeartRate": NaN}'),
+        (RecoveryMetric.RESTING_HR, b'{"calendarDate": "2026-10-19", "restingHeartRate": 50}'),
+        (RecoveryMetric.RESTING_HR, b'{"calendarDate": {"date": "x"}, "restingHeartRate": 50}'),
     ],
 )
 def test_a_payload_unlike_the_document_is_a_protocol_error(
@@ -98,6 +101,8 @@ def test_values_out_of_range_or_stated_twice_differently_are_left_out() -> None:
         RecoveryMetric.SLEEP_DURATION, payload(RecoveryMetric.SLEEP_DURATION, body, week)
     )
     assert [(item.day, item.value) for item in found] == [(DAY + timedelta(3), 24_000.0)]
+    huge = b'{"restingHeartRate": 1' + b"0" * 400 + b"}"  # an integer no float holds
+    assert RECORDS.decode(RecoveryMetric.RESTING_HR, payload(RecoveryMetric.RESTING_HR, huge)) == []
     with pytest.raises(ProviderError):  # a payload of another category
         RECORDS.decode(RecoveryMetric.HRV_NIGHTLY, payload(RecoveryMetric.SLEEP_DURATION, body))
 
@@ -123,6 +128,8 @@ def test_the_adapter_calls_one_documented_endpoint_per_metric() -> None:
     world.provider.get_daily(RecoveryMetric.SLEEP_DURATION, month)
     (sleep,) = world.requests_to("/sleep-service/")
     assert sleep.query == {"startDate": ["2026-10-20"], "endDate": ["2026-11-16"]}
+    world.transport.script("/hrv-service/", response(204, b""))  # documented: no data
+    assert world.provider.get_daily(RecoveryMetric.HRV_NIGHTLY, month) is None
     with pytest.raises(ValueError, match="at most 1 days"):
         world.provider.get_daily(RecoveryMetric.RESTING_HR, DateRange(DAY, DAY + timedelta(1)))
     data_calls = [item for item in world.transport.sent if "personal-api-key" not in item.path]
@@ -191,3 +198,99 @@ def test_a_provider_failure_keeps_what_was_stored_and_marks_the_integration(tmp_
     assert (report.outcome, report.error) == (SyncOutcome.PENDING, "PROVIDER_AUTH_FAILED")
     assert Condition.INTEGRATION_ERROR in world.conditions_now()
     assert world.recovery_observations.list_all(SCOPE) == []
+
+
+@pytest.mark.req("FR-REC-005", "PRIV-CON-002", "PRIV-CON-004")
+def test_only_the_values_read_are_stored_never_the_provider_payload(tmp_path: Path) -> None:
+    world = SyncWorld(tmp_path)
+    today = date(2026, 10, 26)
+    days: dict[date, int | None] = {today - timedelta(n): 25_000 + n for n in range(3)}
+    world.fake.daily[RecoveryMetric.SLEEP_DURATION] = days
+    world.fake.daily[RecoveryMetric.BODY_BATTERY_CHARGED] = dict.fromkeys(days, 60)
+    grant(world, ConsentType.SLEEP, ConsentType.PROVIDER_RECOVERY_METRICS)
+    world.recovery_sync.sync(SCOPE)
+    sources = world.raw.list_all(SCOPE)
+    assert {item.category for item in sources} == {
+        "GARMIN_SLEEP_MINIMISED",
+        "GARMIN_BODY_BATTERY_MINIMISED",
+    }
+    for source in sources:
+        stored = world.blobs.get(SCOPE, source.sha256)
+        for word in (b"avgSleepStress", b"avgHeartRate", b"SpO2", b"userNote", b"STRESS"):
+            assert word not in stored, (source.category, word)
+        document = json.loads(stored)
+        assert validation_errors("recovery-payload", document) == []
+        assert stored == json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    sleep = next(item for item in sources if item.category == "GARMIN_SLEEP_MINIMISED")
+    document = json.loads(world.blobs.get(SCOPE, sleep.sha256))
+    assert [item["value"] for item in document["values"]] == [25_002.0, 25_001.0, 25_000.0]
+
+
+@pytest.mark.req("FR-REC-005", "INT-GAR-009")
+def test_the_latest_value_received_is_in_force_even_when_it_returns(tmp_path: Path) -> None:
+    world = SyncWorld(tmp_path)
+    night = date(2026, 10, 25)
+    grant(world, ConsentType.HRV)
+    for value in (50, 52, 50):
+        world.fake.daily[RecoveryMetric.HRV_NIGHTLY] = {night: value}
+        world.recovery_sync.sync(SCOPE)
+        world.clock.advance(minutes=10)
+    stored = world.recovery_observations.list_all(SCOPE)
+    assert len(stored) == 3  # one per change, none for an unchanged value
+    world.recovery_sync.sync(SCOPE)
+    assert len(world.recovery_observations.list_all(SCOPE)) == 3
+    current = in_force(stored, allowed=world.consents_gate.granted(SCOPE))
+    assert current[night][RecoveryMetric.HRV_NIGHTLY].value == 50.0
+
+
+@pytest.mark.req("FR-REC-005", "INT-GAR-010")
+def test_days_without_data_are_not_asked_again(tmp_path: Path) -> None:
+    world = SyncWorld(tmp_path)
+    grant(world, ConsentType.RECOVERY)  # resting heart rate, one day per request, no data
+    first = world.recovery_sync.sync(SCOPE).metrics[0]
+    assert (first.metric, first.requests) == (RecoveryMetric.RESTING_HR, BACKFILL_DAYS)
+    assert world.recovery_sync.sync(SCOPE).metrics[0].requests == 3  # the settling days
+    world.clock.advance(days=1)
+    assert world.recovery_sync.sync(SCOPE).metrics[0].requests == 4
+    status = world.sync.status(SCOPE, "garmin")
+    assert status is not None
+    assert status.daily(RecoveryMetric.RESTING_HR.value) == date(2026, 10, 27)
+
+
+@pytest.mark.req("INT-GAR-008", "INT-GAR-010")
+def test_a_rate_limit_postpones_the_next_sync(tmp_path: Path) -> None:
+    world = SyncWorld(tmp_path)
+    grant(world, ConsentType.HRV)
+    limited = ProviderError(IntegrationReason.PROVIDER_RATE_LIMITED, "HTTP_429", retry_after=3600)
+    world.fake.fail("daily:HRV_NIGHTLY", *[limited] * 10)
+    report = world.recovery_sync.sync(SCOPE)
+    assert (report.outcome, report.error) == (SyncOutcome.PENDING, "PROVIDER_RATE_LIMITED")
+    assert report.not_before == world.clock() + timedelta(seconds=3600)
+    status = world.sync.status(SCOPE, "garmin")
+    assert status is not None
+    assert (status.not_before, status.detail) == (report.not_before, "HTTP_429")
+    calls = world.fake.count("daily:HRV_NIGHTLY")
+    again = world.recovery_sync.sync(SCOPE)  # before notBefore: nothing is sent
+    assert again.outcome is SyncOutcome.PENDING
+    assert world.fake.count("daily:HRV_NIGHTLY") == calls
+    assert world.run().outcome is SyncOutcome.PENDING  # the activity sync waits too
+
+
+@pytest.mark.req("INT-GAR-008", "FR-REC-005")
+def test_an_unreadable_response_is_skipped_and_the_other_metrics_go_on(tmp_path: Path) -> None:
+    world = SyncWorld(tmp_path)
+    today = date(2026, 10, 26)
+    grant(world, ConsentType.HRV, ConsentType.SLEEP)
+    world.fake.daily[RecoveryMetric.HRV_NIGHTLY] = {today: 55}
+    world.fake.daily[RecoveryMetric.SLEEP_DURATION] = {today: 25_000}
+    too_large = ProviderError(IntegrationReason.PROVIDER_PROTOCOL_ERROR, "RESPONSE_TOO_LARGE")
+    world.fake.fail("daily:HRV_NIGHTLY", too_large)
+    report = world.recovery_sync.sync(SCOPE)
+    assert report.outcome is SyncOutcome.SYNCED
+    by_metric = {item.metric: item for item in report.metrics}
+    assert (
+        by_metric[RecoveryMetric.HRV_NIGHTLY].rejected,
+        by_metric[RecoveryMetric.HRV_NIGHTLY].stored,
+    ) == (1, 0)
+    assert by_metric[RecoveryMetric.SLEEP_DURATION].stored == 1
+    assert Condition.INTEGRATION_ERROR not in world.conditions_now()

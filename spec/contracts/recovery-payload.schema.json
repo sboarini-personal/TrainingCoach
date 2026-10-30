@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:recovery-payload:1",
+  "title": "MinimisedRecoveryPayload",
+  "description": "What is stored as RAW for a provider's daily recovery response (recovery spec 5, garmin spec 12, ADR-032): the values the normaliser read for one metric, with the request, and nothing else. The provider's response carries data of other consent categories, so it is minimised in memory and never persisted; the RAW category is the endpoint category with the suffix _MINIMISED. Canonical JSON (sorted keys, no whitespace), so the same values for the same request are the same content-addressed RAW. Owner spec: spec/functional/recovery.spec.md section 5.",
+  "type": "object",
+  "required": ["schemaVersion", "minimisation", "provider", "category", "metric", "window", "values"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "minimisation": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "provider": { "type": "string", "pattern": "^[a-z0-9_]{1,40}$" },
+    "category": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,53}$" },
+    "metric": { "enum": ["RESTING_HR", "HRV_NIGHTLY", "SLEEP_DURATION", "BODY_BATTERY_CHARGED"] },
+    "window": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["start", "end"],
+          "additionalProperties": false,
+          "properties": {
+            "start": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+            "end": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["day", "value", "sourcePath"],
+        "additionalProperties": false,
+        "properties": {
+          "day": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+          "value": { "type": "number", "minimum": 0, "maximum": 86400 },
+          "sourcePath": { "type": "string", "pattern": "^[A-Za-z0-9_.\\[\\]]{1,200}$" }
+        }
+      }
+    }
+  }
+}

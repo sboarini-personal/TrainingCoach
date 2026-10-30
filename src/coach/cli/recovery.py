@@ -98,12 +98,19 @@ def add(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Text
         result = runtime.recovery.record_checkin(scope, answers)
     except (DomainValidationError, ValueError) as error:
         raise CommandError(str(error)) from None
-    print(f"check-in recorded for {result.checkin.training_day}", file=out)
+    if result.not_recorded is None:
+        print(f"check-in recorded for {result.checkin.training_day}", file=out)
+    else:
+        print(
+            f"warning signs recorded for {result.checkin.training_day}; the other answers were "
+            f"not recorded ({result.not_recorded}): correct them and add the check-in again",
+            file=out,
+        )
     if result.secret_notice is not None:
         print(result.secret_notice, file=out)
     if result.safety_notice is not None:
         print(result.safety_notice, file=out)
-    return 0
+    return 0 if result.not_recorded is None else 1
 
 
 def _line(item: DailyCheckIn) -> str:

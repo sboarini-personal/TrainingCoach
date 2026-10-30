@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:recovery-observation:1",
   "title": "RecoveryObservation",
-  "description": "One daily recovery metric a provider reported for the athlete's calendar day (recovery spec 3 and 5), with its provenance. Immutable; the latest received for a day and metric is in force. Each metric belongs to one consent type: RESTING_HR to RECOVERY, HRV_NIGHTLY to HRV, SLEEP_DURATION to SLEEP, BODY_BATTERY_CHARGED (proprietary, PROVIDER_DERIVED) to PROVIDER_RECOVERY_METRICS. observationId derives from athlete, day, metric and RAW source (UUID v5). Owner spec: spec/functional/recovery.spec.md.",
+  "description": "One daily recovery metric a provider reported for the athlete's calendar day (recovery spec 3 and 5), with its provenance. Immutable; the latest received for a day and metric is in force. Each metric belongs to one consent type: RESTING_HR to RECOVERY, HRV_NIGHTLY to HRV, SLEEP_DURATION to SLEEP, BODY_BATTERY_CHARGED (proprietary, PROVIDER_DERIVED) to PROVIDER_RECOVERY_METRICS. A new observation is stored only when the value for a day and metric differs from the one in force; observationId derives from athlete, day, metric, RAW source and receivedAt (UUID v5). Owner spec: spec/functional/recovery.spec.md.",
   "type": "object",
   "required": [
     "schemaVersion",

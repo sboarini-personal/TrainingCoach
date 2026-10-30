@@ -71,6 +71,7 @@ class SyncWorld(IngestionWorld):
             providers=lambda _scope: self.provider,
             records={"garmin": GarminDailyRecords()},
             observations=self.recovery_observations,
+            statuses=self.statuses,
             blobs=self.blobs,
             raw_sources=self.raw,
             consents=self.consents_gate,

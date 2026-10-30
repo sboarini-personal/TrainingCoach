@@ -67,5 +67,6 @@
     "completedThrough": "2026-10-24",
     "window": { "start": "2026-10-25", "end": "2026-10-28" },
     "processed": ["21004587311", "21004587312"]
-  }
+  },
+  "dailyThrough": { "HRV_NIGHTLY": "2026-10-26", "RESTING_HR": "2026-10-26" }
 }

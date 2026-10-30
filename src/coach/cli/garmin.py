@@ -105,11 +105,24 @@ def sync(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
     if key is None:
         raise CommandError(KEY_HINT)
     try:
-        report = runtime.sync.sync(scope, since=args.since)
+        report: SyncReport | None = runtime.sync.sync(scope, since=args.since)
     except ConsentRequiredError:
-        raise CommandError(CONSENT_HINT) from None
+        report = None  # no activities consent: the recovery metrics may still have theirs
     except CapabilityUnavailableError as error:
         raise CommandError(str(error)) from None
+    if report is None:
+        print("activities: needs consent (activities)", file=out)
+    else:
+        _activities(report, out)
+    recovered = True
+    if report is None or report.outcome is SyncOutcome.SYNCED:
+        recovered = _recovery(runtime, scope, out, alone=report is None)
+    _reminder(key, out)
+    activities_done = report is None or report.outcome is SyncOutcome.SYNCED
+    return 0 if activities_done and recovered else 1
+
+
+def _activities(report: SyncReport, out: TextIO) -> None:
     if report.outcome is SyncOutcome.NOT_CONFIGURED:
         raise CommandError(KEY_HINT)
     status = report.status
@@ -124,23 +137,23 @@ def sync(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
         print("local history and file import keep working", file=out)
     if report.counts.rejected:
         print("some payloads were rejected; see: coach issue list", file=out)
-    recovered = True
-    if report.outcome is SyncOutcome.SYNCED:
-        recovered = _recovery(runtime, scope, out)
-    _reminder(key, out)
-    return 0 if report.outcome is SyncOutcome.SYNCED and recovered else 1
 
 
 _CONSENT_NAMES: Final = {value: name for name, value in CONSENT_TYPES.items()}
 
 
-def _recovery(runtime: Runtime, scope: OwnerScope, out: TextIO) -> bool:
-    """Daily recovery metrics after the activities, each only with its consent (P11)."""
+def _recovery(runtime: Runtime, scope: OwnerScope, out: TextIO, *, alone: bool) -> bool:
+    """Daily recovery metrics, each only with its consent (P11); ``alone`` when the
+    activities were not synchronised for want of their consent."""
     try:
         report = runtime.recovery_sync.sync(scope)
     except CapabilityUnavailableError as error:
         print(f"recovery: {error}", file=out)
         return True
+    if report.outcome is SyncOutcome.NOT_CONFIGURED:
+        raise CommandError(KEY_HINT)
+    if alone and all(item.outcome is MetricOutcome.NO_CONSENT for item in report.metrics):
+        raise CommandError(CONSENT_HINT)
     parts = []
     for item in report.metrics:
         if item.outcome is MetricOutcome.NO_CONSENT:
@@ -152,4 +165,6 @@ def _recovery(runtime: Runtime, scope: OwnerScope, out: TextIO) -> bool:
     if report.outcome is SyncOutcome.PENDING:
         parts.append(f"pending ({report.error})")
     print("recovery: " + "; ".join(parts), file=out)
+    if report.not_before is not None:
+        print(f"next attempt not before: {_instant(report.not_before)}", file=out)
     return report.outcome is SyncOutcome.SYNCED

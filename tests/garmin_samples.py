@@ -173,6 +173,12 @@ def sleep_payload(values: Mapping[date, int | None]) -> bytes:
             "sleepTimeSeconds": value,
             "deepSleepSeconds": None if value is None else value // 5,
             "userNote": "free text that is never read",
+            # other consent categories in the same DTO (Swagger DailySleepDTO): never stored
+            "avgSleepStress": 21.0,
+            "avgHeartRate": 52.0,
+            "averageSpO2Value": 95.0,
+            "sleepNeed": {"hrvAdjustment": "NO_CHANGE"},
+            "sleepScores": {"overall": {"value": 80}},
         }
         for day, value in sorted(values.items())
     ]
@@ -181,7 +187,16 @@ def sleep_payload(values: Mapping[date, int | None]) -> bytes:
 
 def body_battery_payload(values: Mapping[date, int | None]) -> bytes:
     items: list[dict[str, Any]] = [
-        {"date": day.isoformat(), "charged": value, "drained": 40, "bodyBatteryValuesArray": []}
+        {
+            "date": day.isoformat(),
+            "charged": value,
+            "drained": 40,
+            "bodyBatteryValuesArray": [],
+            "bodyBatteryActivityEvent": [  # sleep and stress timings: never stored
+                {"eventType": "STRESS", "eventStartTimeGmt": "2026-10-20T12:00:00.0"},
+                {"eventType": "SLEEP", "durationInMilliseconds": 25_000_000},
+            ],
+        }
         for day, value in sorted(values.items())
     ]
     return json.dumps(items).encode()

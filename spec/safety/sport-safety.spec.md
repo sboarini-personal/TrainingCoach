@@ -31,10 +31,15 @@ Detection sources, combined fail-safe (any one activates the hold):
 
 1. Structured inputs: check-in or activity pain intensity of 7 or more with acute onset; an
    explicit red-flag question in onboarding or check-in. (P11: the daily check-in records
-   both, recovery spec section 1; the hold's reason code is the first red flag, and
-   `safety.hold.activated` is emitted.)
+   both, recovery spec section 1; an unknown onset counts as acute, fail-safe; a pain whose
+   location names the chest is RF_CHEST_PAIN; the hold is activated before the check-in is
+   validated, so invalid answers never lose a red flag; the hold's reason code is the first
+   red flag, and `safety.hold.activated` is emitted.)
 2. Deterministic phrase detection in athlete messages and notes (Spanish and English lists,
-   versioned), run before the LLM call.
+   versioned), run before the LLM call. (P11: lists 1.0.0, `coach.domain.recovery.
+   warning_phrases`, run on check-in notes when they are recorded; text normalised without
+   case or accents, phrases matched as whole words, no negation handling: fail-safe; initial
+   values pending review.)
 3. LLM classification flag returned with the response.
 
 ## 3. SAFETY_HOLD effects (SAFE-MED-003, SAFE-MED-004)
@@ -44,7 +49,9 @@ When SAFETY_HOLD activates:
 - the policy engine denies any recommendation, proposal or activation that includes
   intensive training (POL-SAFETY-HOLD). This is code, not a prompt instruction;
 - the coach states the safety reason, recommends appropriate healthcare evaluation, and for
-  acute severe symptoms advises contacting local emergency services;
+  acute severe symptoms advises contacting local emergency services (P11: the fixed notice
+  names the warning signs registered and, for every red flag, palpitations included, says
+  to contact emergency services if the symptom is severe or started suddenly);
 - the coach does not diagnose or speculate about causes;
 - `safety.hold.activated` is emitted and audited.
 

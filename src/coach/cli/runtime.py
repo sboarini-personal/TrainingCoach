@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Final
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from coach.application.activities import ActivityService, ActivityStores
@@ -152,20 +153,26 @@ class Runtime:
 def garmin_providers(
     credentials: CredentialService, transport: HttpTransport, clock: Clock
 ) -> Callable[[OwnerScope], FitnessProvider]:
-    """One Garmin adapter per sync: its token lives in memory for that run only."""
+    """One Garmin adapter per athlete for the run (the activity and the recovery syncs share
+    it): its token lives in memory for that run only and one request budget covers the run."""
     budget = RequestBudget()
+    adapters: dict[UUID, FitnessProvider] = {}
 
     def build(scope: OwnerScope) -> FitnessProvider:
-        broker = TokenBroker(
-            base_url=SERVERS["global"],
-            key_source=credential_key(credentials, scope),
-            transport=transport,
-            clock=clock,
-            budget=budget,
-        )
-        return GarminPersonalProvider(
-            broker=broker, transport=transport, budget=budget, clock=clock
-        )
+        adapter = adapters.get(scope.athlete_id)
+        if adapter is None:
+            broker = TokenBroker(
+                base_url=SERVERS["global"],
+                key_source=credential_key(credentials, scope),
+                transport=transport,
+                clock=clock,
+                budget=budget,
+            )
+            adapter = GarminPersonalProvider(
+                broker=broker, transport=transport, budget=budget, clock=clock
+            )
+            adapters[scope.athlete_id] = adapter
+        return adapter
 
     return build
 
@@ -320,8 +327,10 @@ def build_runtime(
         provider_records={"garmin": GarminActivityRecords()},
     )
     integrations = SqliteAggregateRepository(database, INTEGRATION_STATUS_CODEC)
+    garmin = garmin_providers(credentials, transport or UrllibTransport(), clock)
+    retrier = Retrier(RetryPolicy(), events=events, sleep=sleep)
     sync = SyncService(
-        providers=garmin_providers(credentials, transport or UrllibTransport(), clock),
+        providers=garmin,
         statuses=integrations,
         blobs=blobs,
         raw_sources=raw_sources,
@@ -330,20 +339,21 @@ def build_runtime(
         records=ingestion_records,
         consents=gate,
         conditions=conditions,
-        retrier=Retrier(RetryPolicy(), events=events, sleep=sleep),
+        retrier=retrier,
         events=events,
         clock=clock,
         ids=new_id,
     )
     recovery_sync = RecoverySyncService(
-        providers=garmin_providers(credentials, transport or UrllibTransport(), clock),
+        providers=garmin,
         records={"garmin": GarminDailyRecords()},
         observations=recovery_observations,
+        statuses=integrations,
         blobs=blobs,
         raw_sources=raw_sources,
         consents=gate,
         conditions=conditions,
-        retrier=Retrier(RetryPolicy(), events=events, sleep=sleep),
+        retrier=retrier,
         timezone_of=lambda scope: athlete_timezone(profiles, scope),
         events=events,
         clock=clock,

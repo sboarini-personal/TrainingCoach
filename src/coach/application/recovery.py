@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
+from functools import partial
 from zoneinfo import ZoneInfo
 
 from coach.application.coaching import CoachingConditions
@@ -24,7 +25,9 @@ from coach.application.ports import Clock, EventSink, IdFactory, OwnedRepository
 from coach.application.safety import hold_notice
 from coach.application.screening import SecretScreen
 from coach.domain.coaching.state import Condition
+from coach.domain.common.errors import DomainValidationError
 from coach.domain.recovery.checkin import (
+    SEVERE_PAIN,
     CheckInPain,
     DailyCheckIn,
     PainOnset,
@@ -32,6 +35,7 @@ from coach.domain.recovery.checkin import (
     latest_per_day,
 )
 from coach.domain.recovery.daily import RecoveryMetric, RecoveryObservation, in_force
+from coach.domain.recovery.warning_phrases import detect, names_chest
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -58,6 +62,7 @@ class CheckInResult:
     red_flags: tuple[RedFlag, ...]
     safety_notice: str | None  # fixed text when red flags activated SAFETY_HOLD
     secret_notice: str | None  # fixed text when the free text held a secret (redacted)
+    not_recorded: str | None = None  # why only the red flags were recorded
 
 
 class RecoveryService:
@@ -88,6 +93,9 @@ class RecoveryService:
         return self._clock().astimezone(self._timezone_of(scope)).date()
 
     def record_checkin(self, scope: OwnerScope, answers: CheckInAnswers) -> CheckInResult:
+        """Record the answers. Red flags activate SAFETY_HOLD before anything else can fail:
+        if the other answers are invalid, a check-in with the red flags only is recorded and
+        the result says why the rest was not (fail-safe, safety spec 2)."""
         day = answers.training_day or self.today(scope)
         notice = None
         notes, location = answers.notes, answers.pain_location
@@ -97,36 +105,48 @@ class RecoveryService:
         if location is not None:
             screened = self._screen.screen(location, source="checkin")
             location, notice = screened.text, notice or screened.notice
-        pain = None
-        if answers.pain_intensity is not None:
-            pain = CheckInPain(
-                intensity=answers.pain_intensity, location=location, onset=answers.pain_onset
-            )
+        explicit = tuple(dict.fromkeys(answers.red_flags))
+        detected = _detected(answers, notes, location)
+        raised = tuple(dict.fromkeys((*explicit, *detected)))
+        if raised:
+            self._conditions.activate(scope, Condition.SAFETY_HOLD, reason=raised[0].value)
         previous = latest_per_day(self._checkins.list_all(scope)).get(day)
-        checkin = DailyCheckIn(
+        record = partial(
+            DailyCheckIn,
             checkin_id=self._ids(),
             athlete_id=scope.athlete_id,
             recorded_at=self._clock(),
             training_day=day,
-            sleep_quality=answers.sleep_quality,
-            fatigue=answers.fatigue,
-            soreness=answers.soreness,
-            stress=answers.stress,
-            motivation=answers.motivation,
-            pain_flag=True if pain is not None else answers.pain_flag,
-            pain=pain,
-            red_flags=answers.red_flags,
-            notes=notes,
             supersedes=None if previous is None else previous.checkin_id,
         )
+        not_recorded = None
+        try:
+            pain, pain_flag = _pain(answers, location)
+            checkin = record(
+                sleep_quality=answers.sleep_quality,
+                fatigue=answers.fatigue,
+                soreness=answers.soreness,
+                stress=answers.stress,
+                motivation=answers.motivation,
+                pain_flag=pain_flag,
+                pain=pain,
+                red_flags=explicit,
+                detected_flags=tuple(flag for flag in detected if flag not in explicit),
+                notes=notes,
+            )
+        except DomainValidationError as error:
+            if not raised:
+                raise
+            not_recorded = str(error)
+            checkin = record(
+                red_flags=explicit,
+                detected_flags=tuple(flag for flag in detected if flag not in explicit),
+            )
         stored = self._checkins.add(scope, checkin)
         flags = stored.red_flags_raised()
-        safety = None
-        if flags:
-            self._conditions.activate(scope, Condition.SAFETY_HOLD, reason=flags[0].value)
-            safety = hold_notice(flags)
+        safety = hold_notice(flags) if flags else None
         self._events.emit(EventName.CHECKIN_RECORDED, {"red_flags": str(len(flags))})
-        return CheckInResult(stored, flags, safety, notice)
+        return CheckInResult(stored, flags, safety, notice, not_recorded)
 
     def daily(
         self, scope: OwnerScope, *, until: date, days: int
@@ -146,3 +166,37 @@ class RecoveryService:
         start = until - timedelta(days=days - 1)
         found = latest_per_day(self._checkins.list_all(scope))
         return [found[day] for day in sorted(found) if start <= day <= until]
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _detected(
+    answers: CheckInAnswers, notes: str | None, location: str | None
+) -> tuple[RedFlag, ...]:
+    """Red flags found in what the athlete wrote or rated: severe pain not known to be
+    gradual, a pain located in the chest, warning phrases in the notes (safety spec 2)."""
+    found: list[RedFlag] = []
+    intensity = answers.pain_intensity
+    if _is_int(intensity) and intensity is not None and intensity > 0:
+        if intensity >= SEVERE_PAIN and answers.pain_onset is not PainOnset.GRADUAL:
+            found.append(RedFlag.RF_SEVERE_ACUTE_PAIN)
+        if names_chest(location):
+            found.append(RedFlag.RF_CHEST_PAIN)
+    found.extend(detect(notes))
+    return tuple(flag for flag in RedFlag if flag in found)
+
+
+def _pain(answers: CheckInAnswers, location: str | None) -> tuple[CheckInPain | None, bool | None]:
+    """The pain and its flag; intensity 0 is no pain, and a location or onset needs a pain."""
+    intensity = answers.pain_intensity
+    if intensity is None or (_is_int(intensity) and intensity == 0):
+        if location is not None or answers.pain_onset is not None:
+            raise DomainValidationError("a pain location or onset needs a pain intensity above 0")
+        if intensity == 0 and answers.pain_flag is True:
+            raise DomainValidationError("pain flagged with intensity 0")
+        return None, False if intensity == 0 else answers.pain_flag
+    if answers.pain_flag is False:
+        raise DomainValidationError("pain intensity given with the pain flag set to no")
+    return CheckInPain(intensity=intensity, location=location, onset=answers.pain_onset), True

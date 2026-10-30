@@ -223,24 +223,7 @@ class SyncService:
     # ------------------------------------------------------------------ setup
 
     def _current(self, scope: OwnerScope, provider: FitnessProvider) -> IntegrationStatus:
-        configured = provider.get_capabilities()
-        existing = self.status(scope, provider.provider)
-        if existing is None:
-            return self._statuses.add(
-                scope,
-                IntegrationStatus(
-                    integration_id=self._ids(),
-                    athlete_id=scope.athlete_id,
-                    provider=provider.provider,
-                    capabilities=configured,
-                ),
-            )
-        capabilities = existing.capabilities.reconfigured(configured)
-        if capabilities == existing.capabilities:
-            return existing
-        return self._statuses.update(
-            scope, existing.with_capabilities(capabilities), expected_version=existing.version
-        )
+        return current_status(self._statuses, scope, provider, self._ids)
 
     def _range(
         self, status: IntegrationStatus, since: date | None, now: datetime
@@ -403,11 +386,7 @@ class SyncService:
     def _failed(self, run: _Run, error: ProviderError, requested: DateRange) -> SyncReport:
         now = self._clock()
         longest = self._retrier.policy.max_delay_seconds
-        not_before = None
-        if error.retry_after is not None and error.retry_after > longest:
-            not_before = now + timedelta(seconds=error.retry_after)  # spec 7: never sooner
-        elif error.code is IntegrationReason.PROVIDER_RATE_LIMITED:
-            not_before = now + timedelta(seconds=max(error.retry_after or 0.0, longest))
+        not_before = postponement(error, now=now, longest=longest)
         self._save(run, run.status.failed(now, error.code, error.detail, not_before=not_before))
         self._conditions.activate(run.scope, Condition.INTEGRATION_ERROR, reason=error.code.value)
         fields_ = {"provider": run.provider.provider, "reason": error.code.value}
@@ -415,3 +394,42 @@ class SyncService:
             fields_["detail"] = error.detail
         self._events.emit(EventName.INTEGRATION_SYNC_FAILED, fields_)
         return SyncReport(SyncOutcome.PENDING, run.status, run.counts, requested)
+
+
+def current_status(
+    statuses: OwnedRepository[IntegrationStatus],
+    scope: OwnerScope,
+    provider: FitnessProvider,
+    ids: IdFactory,
+) -> IntegrationStatus:
+    """The athlete's status for the provider, created or reconciled with its configuration."""
+    configured = provider.get_capabilities()
+    existing = next(
+        (item for item in statuses.list_all(scope) if item.provider == provider.provider), None
+    )
+    if existing is None:
+        return statuses.add(
+            scope,
+            IntegrationStatus(
+                integration_id=ids(),
+                athlete_id=scope.athlete_id,
+                provider=provider.provider,
+                capabilities=configured,
+            ),
+        )
+    capabilities = existing.capabilities.reconfigured(configured)
+    if capabilities == existing.capabilities:
+        return existing
+    return statuses.update(
+        scope, existing.with_capabilities(capabilities), expected_version=existing.version
+    )
+
+
+def postponement(error: ProviderError, *, now: datetime, longest: float) -> datetime | None:
+    """When the next sync may start after a failure (garmin spec 7: never sooner than the
+    provider asked; a rate limit waits at least the retry policy's longest delay)."""
+    if error.retry_after is not None and error.retry_after > longest:
+        return now + timedelta(seconds=error.retry_after)
+    if error.code is IntegrationReason.PROVIDER_RATE_LIMITED:
+        return now + timedelta(seconds=max(error.retry_after or 0.0, longest))
+    return None

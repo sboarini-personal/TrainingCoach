@@ -73,6 +73,12 @@
     "lastAttemptAt": { "$ref": "#/$defs/optionalInstant" },
     "lastSuccessAt": { "$ref": "#/$defs/optionalInstant" },
     "notBefore": { "$ref": "#/$defs/optionalInstant" },
+    "dailyThrough": {
+      "description": "Per daily metric, the last day requested (recovery spec 5). Absent in statuses stored before it existed.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+      "additionalProperties": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" }
+    },
     "cursor": {
       "type": "object",
       "required": ["completedThrough", "window", "processed"],

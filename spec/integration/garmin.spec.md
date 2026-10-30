@@ -94,7 +94,8 @@ P11 adds one daily endpoint per recovery metric (section 12).
 - Pull by date windows (configurable, default 7 days) with a persisted cursor (last
   successfully processed window and activity IDs). Interrupted syncs resume from the cursor.
 - Initial backfill is conservative (default 8 weeks) until `historicalData` is observed.
-- Each provider response is stored byte-exact as RAW before normalisation (INT-GAR-009).
+- Each provider response is stored byte-exact as RAW before normalisation (INT-GAR-009),
+  except daily recovery payloads, which are minimised (section 12, ADR-032).
 - Idempotent by `(provider, providerActivityId)` and raw SHA-256 (deduplication spec).
 - Recovery categories are fetched only with matching consent (FR-REC-005). Women's Health
   and nutrition data are not fetched (PRIV-CON-004).
@@ -162,7 +163,8 @@ When Garmin is unavailable, the key is expired or revoked, or authentication fai
 ## 6. RAW persistence (INT-GAR-009)
 
 JSON and ZIP payloads are stored unmodified with endpoint category, request window and
-receive time. ZIP payloads go through the archive controls (SEC-UPL-003) before the FIT
+receive time. Exception (P11, ADR-032): daily recovery payloads carry data of consent
+categories other than their metric's, so they are minimised before storage (section 12). ZIP payloads go through the archive controls (SEC-UPL-003) before the FIT
 inside is parsed.
 
 Precision (P7): every payload is stored as RAW before it is examined, rejected ones too, so
@@ -265,16 +267,30 @@ documented endpoint per recovery metric, each requested only with that metric's 
 | SLEEP_DURATION (SLEEP) | `GET /sleep-service/sleep/dailySleepSummariesByDate?startDate&endDate` (DailySleepDTO[]) | 31 (documented) | `GARMIN_SLEEP` | `sleepTimeSeconds` (naps excluded) by `calendarDate` |
 | BODY_BATTERY_CHARGED (PROVIDER_RECOVERY_METRICS) | `GET /wellness-service/wellness/bodyBattery/reports/daily?startDate&endDate` (BodyBatteryDailyReportDTO[]) | 31 (documented) | `GARMIN_BODY_BATTERY` | `charged` by `date` |
 
-- Dates are the athlete's calendar days as Garmin dates them. A 404 means no data.
+- Dates are the athlete's calendar days as Garmin dates them. HTTP 204 (documented for HRV),
+  an empty body or a 404 (not documented) means no data.
 - The normaliser reads nothing else. A payload that is not valid JSON or not shaped as the
-  document describes is `PROVIDER_PROTOCOL_ERROR` `DAILY_FORMAT`: its RAW stays, it is counted
-  as unreadable and the sync goes on. A value that is absent, not a number or outside the
+  document describes is `PROVIDER_PROTOCOL_ERROR` `DAILY_FORMAT`, a resting heart rate
+  `calendarDate` that is not a `ConnectDate` naming the requested day included. A value that
+  is absent, not a number (an integer too large for a float included) or outside the
   metric's range (resting HR 25 to 150 bpm, HRV 1 to 300 ms, sleep 0 to 86,400 s, Body
   Battery 0 to 100) is left out; a day stated twice with different values is left out.
-- The payloads hold more than the value read, always within their category: the day's heart
-  rate samples (heart rate), SpO2 and respiration during sleep and a free-text note (sleep),
-  Body Battery events (Body Battery). They are kept byte-exact as RAW under that consent
-  (INT-GAR-009) and never read; the note is untrusted text.
+- **Minimised RAW (ADR-032, precision of INT-GAR-009).** The payloads hold more than the
+  value read, and part of it belongs to other consent categories (Swagger, 2026-10-30): the
+  sleep summary carries sleep stress, average heart rate, an HRV adjustment, SpO2, breathing
+  disruption and a free-text note; the daily heart rate carries abnormal heart rate values;
+  the Body Battery report carries sleep and stress events. A payload is therefore decoded in
+  memory and never stored: the RAW kept is a canonical document of the values read with the
+  request window (contract `recovery-payload`; category: the endpoint's plus `_MINIMISED`).
+- A response that is unreadable (`DAILY_FORMAT`), over the size cap (`RESPONSE_TOO_LARGE`) or
+  another HTTP 4xx (`HTTP_4XX`) stores nothing, is counted as unreadable and the sync goes on
+  with the next window and metric. Any other failure ends the sync PENDING and is recorded
+  in the integration status like an activity failure, with the postponement a rate limit
+  asks for (section 7).
+- The integration status keeps, per metric, the last day requested: the next sync starts
+  there less two settling days, so days without data are not asked again. The activity and
+  recovery syncs of one `coach garmin sync` share one adapter (one token, one request
+  budget); the recovery metrics are synchronised even without the ACTIVITIES consent.
 
 ## 11. HTTP transport and error mapping (P7 precision)
 

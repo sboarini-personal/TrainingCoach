@@ -3,7 +3,10 @@
 Items are integers 1 to 5 whose direction is explicit (``HIGHER_IS_BETTER``): sleep quality
 and motivation are better when higher, fatigue, soreness and stress worse. Pain is 0 to 10
 with an untrusted free-text location. Red flags are the explicit answers to the check-in's
-red-flag question (safety spec section 2); severe pain of sudden onset is one by itself.
+red-flag question (safety spec section 2); severe pain (7 or more) is one by itself unless
+its onset is GRADUAL (an unknown onset counts as sudden: fail-safe). Detected flags are
+the ones the system found in the athlete's text (red-flag phrases, a pain located in the
+chest).
 
 A check-in is immutable: a correction is a later check-in of the same training day that
 supersedes it. Every value is optional (UNKNOWN), but a check-in states at least one.
@@ -25,7 +28,7 @@ from coach.domain.common.time import ensure_utc
 SCALE_MIN: Final = 1
 SCALE_MAX: Final = 5
 MAX_PAIN: Final = 10
-SEVERE_PAIN: Final = 7  # with sudden onset: RF_SEVERE_ACUTE_PAIN (safety spec 2)
+SEVERE_PAIN: Final = 7  # unless gradual: RF_SEVERE_ACUTE_PAIN (safety spec 2)
 MAX_LOCATION: Final = 100
 MAX_NOTES: Final = 1000
 
@@ -88,8 +91,9 @@ class CheckInPain:
         )
 
     @property
-    def severe_and_sudden(self) -> bool:
-        return self.intensity >= SEVERE_PAIN and self.onset is PainOnset.SUDDEN
+    def possibly_acute(self) -> bool:
+        """Severe pain whose onset is not known to be gradual (fail-safe)."""
+        return self.intensity >= SEVERE_PAIN and self.onset is not PainOnset.GRADUAL
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -106,6 +110,7 @@ class DailyCheckIn:
     pain: CheckInPain | None = None  # None: no pain flagged (or not answered)
     pain_flag: bool | None = None  # None: the question was not answered
     red_flags: tuple[RedFlag, ...] = ()
+    detected_flags: tuple[RedFlag, ...] = ()  # found by the system in the athlete's text
     notes: str | None = None  # untrusted, screened for secrets before storage
     supersedes: UUID | None = None
     version: int = 0
@@ -116,8 +121,9 @@ class DailyCheckIn:
             _scale(self.item(item), item.value)
         if self.pain is not None and self.pain_flag is not True:
             raise DomainValidationError("pain details need the pain flag")
-        if len(set(self.red_flags)) != len(self.red_flags):
-            raise DomainValidationError("a red flag is listed once")
+        for flags in (self.red_flags, self.detected_flags):
+            if len(set(flags)) != len(flags):
+                raise DomainValidationError("a red flag is listed once")
         object.__setattr__(
             self, "notes", clean_optional_text(self.notes, max_length=MAX_NOTES, field="notes")
         )
@@ -125,7 +131,7 @@ class DailyCheckIn:
         if (
             all(value is None for value in stated)
             and self.pain_flag is None
-            and not (self.red_flags or self.notes)
+            and not (self.red_flags or self.detected_flags or self.notes)
         ):
             raise DomainValidationError("a check-in states at least one answer")
 
@@ -146,18 +152,21 @@ class DailyCheckIn:
         }[item]
 
     def red_flags_raised(self) -> tuple[RedFlag, ...]:
-        """The explicit red flags plus severe pain of sudden onset (safety spec 2)."""
+        """The explicit red flags, severe pain not known to be gradual and the detected
+        flags (safety spec 2)."""
         flags = list(self.red_flags)
-        if self.pain is not None and self.pain.severe_and_sudden:
+        if self.pain is not None and self.pain.possibly_acute:
             flags.append(RedFlag.RF_SEVERE_ACUTE_PAIN)
+        flags.extend(self.detected_flags)
         return tuple(dict.fromkeys(flags))
 
 
 def latest_per_day(checkins: Iterable[DailyCheckIn]) -> dict[date, DailyCheckIn]:
     """The check-in in force for each training day: the latest one not superseded."""
-    superseded = {item.supersedes for item in checkins if item.supersedes is not None}
+    every = list(checkins)
+    superseded = {item.supersedes for item in every if item.supersedes is not None}
     found: dict[date, DailyCheckIn] = {}
-    for item in sorted(checkins, key=lambda entry: (entry.recorded_at, str(entry.checkin_id))):
+    for item in sorted(every, key=lambda entry: (entry.recorded_at, str(entry.checkin_id))):
         if item.checkin_id not in superseded:
             found[item.training_day] = item
     return found

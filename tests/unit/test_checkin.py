@@ -19,11 +19,19 @@ from coach.application.screening import SecretScreen
 from coach.domain.coaching.state import Actor, CoachingState, Condition
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.recovery.checkin import (
+    MAX_LOCATION,
+    MAX_NOTES,
     CheckInPain,
     DailyCheckIn,
     PainOnset,
     RedFlag,
     latest_per_day,
+)
+from coach.domain.recovery.warning_phrases import (
+    PHRASE_RULES_VERSION,
+    PHRASES,
+    detect,
+    normalised,
 )
 from coach.infrastructure.memory import InMemoryAuditLog, InMemoryRepository, RecordingEventSink
 from samples import ATHLETE, BUENOS_AIRES, NOW
@@ -65,13 +73,18 @@ def test_a_checkin_follows_the_documented_scale(changes: dict[str, Any]) -> None
 
 
 @pytest.mark.req("FR-REC-001", "SAFE-MED-002")
-def test_severe_pain_of_sudden_onset_is_a_red_flag_by_itself() -> None:
+def test_severe_pain_not_known_to_be_gradual_is_a_red_flag_by_itself() -> None:
     sudden = CheckInPain(intensity=8, location="calf", onset=PainOnset.SUDDEN)
     assert checkin(pain_flag=True, pain=sudden).red_flags_raised() == (
         RedFlag.RF_SEVERE_ACUTE_PAIN,
     )
+    unknown = CheckInPain(intensity=7)  # onset not stated: fail-safe
+    assert checkin(pain_flag=True, pain=unknown).red_flags_raised() == (
+        RedFlag.RF_SEVERE_ACUTE_PAIN,
+    )
     gradual = CheckInPain(intensity=8, onset=PainOnset.GRADUAL)
     assert checkin(pain_flag=True, pain=gradual).red_flags_raised() == ()
+    assert checkin(pain_flag=True, pain=CheckInPain(intensity=6)).red_flags_raised() == ()
     with pytest.raises(DomainValidationError):
         CheckInPain(intensity=11)
 
@@ -81,7 +94,7 @@ def test_the_latest_checkin_of_a_day_is_in_force() -> None:
     first = checkin()
     later = checkin(checkin_id=UUID(int=2), recorded_at=NOW + timedelta(hours=2), fatigue=4)
     other_day = checkin(checkin_id=UUID(int=3), training_day=NOW.date() - timedelta(days=1))
-    found = latest_per_day([later, first, other_day])
+    found = latest_per_day(iter([later, first, other_day]))  # any iterable, read once
     assert found[NOW.date()] == later
     assert set(found) == {NOW.date(), NOW.date() - timedelta(days=1)}
 
@@ -136,7 +149,7 @@ def test_red_flags_activate_the_safety_hold_with_a_fixed_notice() -> None:
     world = RecoveryWorld()
     result = world.service.record_checkin(
         SCOPE,
-        CheckInAnswers(pain_intensity=8, pain_location="pecho", pain_onset=PainOnset.SUDDEN),
+        CheckInAnswers(pain_intensity=8, pain_location="gemelo", pain_onset=PainOnset.SUDDEN),
     )
     assert result.red_flags == (RedFlag.RF_SEVERE_ACUTE_PAIN,)
     assert Condition.SAFETY_HOLD in world.conditions.current(SCOPE).conditions
@@ -160,12 +173,14 @@ def test_red_flags_activate_the_safety_hold_with_a_fixed_notice() -> None:
 
 
 @pytest.mark.req("SAFE-MED-001", "SAFE-MED-004")
-def test_the_safety_notice_never_names_a_cause() -> None:
-    plain = hold_notice([RedFlag.RF_PALPITATIONS])
-    assert "emergencia" not in plain  # not in the acute list
+def test_the_safety_notice_states_the_sign_and_never_names_a_cause() -> None:
+    plain = hold_notice([RedFlag.RF_PALPITATIONS, RedFlag.RF_PALPITATIONS])
+    assert "(palpitaciones o latidos irregulares)" in plain  # the reason, once
+    assert "emergencia" in plain  # palpitations with dizziness may be acute
     assert "profesional de la salud" in plain
-    english = hold_notice([RedFlag.RF_CHEST_PAIN], language="en-GB")
+    english = hold_notice([RedFlag.RF_CHEST_PAIN, RedFlag.RF_BREATHING], language="en-GB")
     assert english.startswith("If the symptom is severe")
+    assert "(chest pain or pressure; unusual breathing difficulty)" in english
     for text in (plain, english, hold_notice([], "xx")):
         lowered = text.lower()
         assert not any(word in lowered for word in ("normal", "nothing to worry", "diagn"))
@@ -174,7 +189,114 @@ def test_the_safety_notice_never_names_a_cause() -> None:
 @pytest.mark.req("FR-REC-001", "NFR-REL-004")
 def test_the_vocabularies_match_the_contract() -> None:
     schema = load_json(CONTRACTS_DIR / "daily-checkin.schema.json")
-    flags = schema["properties"]["redFlags"]["items"]["enum"]
+    flags = schema["$defs"]["redFlags"]["items"]["enum"]
     assert set(flags) == {flag.value for flag in RedFlag}
+    assert schema["properties"]["detectedFlags"] == {"$ref": "#/$defs/redFlags"}
+    notes = schema["properties"]["notes"]["allOf"][1]["maxLength"]
+    location = schema["properties"]["pain"]["oneOf"][0]["properties"]["location"]
+    assert (notes, location["allOf"][1]["maxLength"]) == (MAX_NOTES, MAX_LOCATION)
     onset = schema["properties"]["pain"]["oneOf"][0]["properties"]["onset"]["enum"]
     assert set(onset) == {item.value for item in PainOnset} | {None}
+
+
+@pytest.mark.req("SAFE-MED-002", "SAFE-MED-003")
+def test_red_flags_are_kept_and_the_hold_activated_whatever_else_is_invalid() -> None:
+    world = RecoveryWorld()
+    answers = CheckInAnswers(
+        sleep_quality=6,  # off the scale
+        red_flags=(RedFlag.RF_FAINTING, RedFlag.RF_FAINTING),  # repeated: listed once
+        notes="x" * 2000,  # too long
+    )
+    result = world.service.record_checkin(SCOPE, answers)
+    assert Condition.SAFETY_HOLD in world.conditions.current(SCOPE).conditions
+    assert result.not_recorded is not None
+    assert result.red_flags == (RedFlag.RF_FAINTING,)
+    assert (result.checkin.sleep_quality, result.checkin.notes) == (None, None)
+    assert result.safety_notice is not None
+    (stored,) = world.checkins.list_all(SCOPE)
+    assert stored.red_flags_raised() == (RedFlag.RF_FAINTING,)
+    with pytest.raises(DomainValidationError):  # without red flags, invalid answers fail
+        world.service.record_checkin(SCOPE, CheckInAnswers(sleep_quality=6))
+
+
+class FailingCheckins(InMemoryRepository[DailyCheckIn]):
+    def add(self, scope: OwnerScope, entity: DailyCheckIn) -> DailyCheckIn:
+        raise RuntimeError("storage down")
+
+
+@pytest.mark.req("SAFE-MED-002", "SAFE-MED-003")
+def test_the_hold_is_activated_before_the_checkin_is_stored() -> None:
+    world = RecoveryWorld()
+    service = RecoveryService(
+        FailingCheckins(),
+        conditions=world.conditions,
+        screen=SecretScreen(world.events),
+        timezone_of=lambda _scope: BUENOS_AIRES,
+        events=world.events,
+        clock=world.clock,
+        ids=lambda: UUID(int=99),
+    )
+    with pytest.raises(RuntimeError):
+        service.record_checkin(SCOPE, CheckInAnswers(red_flags=(RedFlag.RF_NEURO,)))
+    assert Condition.SAFETY_HOLD in world.conditions.current(SCOPE).conditions
+
+
+@pytest.mark.req("SAFE-MED-002", "SEC-INJ-001")
+@pytest.mark.parametrize(
+    ("answers", "flags"),
+    [
+        (CheckInAnswers(notes="Ayer sentí DOLOR en el pecho subiendo"), {RedFlag.RF_CHEST_PAIN}),
+        (CheckInAnswers(notes="I couldn't breathe on the hill"), {RedFlag.RF_BREATHING}),
+        (CheckInAnswers(notes="no tuve palpitaciones"), {RedFlag.RF_PALPITATIONS}),  # fail-safe
+        (
+            CheckInAnswers(notes="me desmayé y perdí fuerza"),
+            {RedFlag.RF_FAINTING, RedFlag.RF_STRENGTH_LOSS},
+        ),
+        (
+            CheckInAnswers(pain_intensity=3, pain_location="Pecho, lado izquierdo"),
+            {RedFlag.RF_CHEST_PAIN},
+        ),
+        (CheckInAnswers(pain_intensity=3, pain_location="gemelo"), set()),
+        (CheckInAnswers(notes="piernas pesadas, pechuga de pollo en la cena"), set()),
+    ],
+)
+def test_warning_phrases_and_a_chest_pain_activate_the_hold(
+    answers: CheckInAnswers, flags: set[RedFlag]
+) -> None:
+    world = RecoveryWorld()
+    result = world.service.record_checkin(SCOPE, answers)
+    assert set(result.red_flags) == flags
+    assert (Condition.SAFETY_HOLD in world.conditions.current(SCOPE).conditions) == bool(flags)
+    assert set(result.checkin.detected_flags) == flags
+
+
+@pytest.mark.req("SAFE-MED-002")
+def test_phrase_lists_are_normalised_and_versioned() -> None:
+    assert normalised("¡Dolor   TORÁCICO!") == " dolor toracico "
+    assert detect("Perdi la vision un rato") == (RedFlag.RF_NEURO,)
+    assert detect(None) == ()
+    assert PHRASE_RULES_VERSION == "1.0.0"
+    for flag, phrases in PHRASES.items():
+        for phrase in phrases:
+            assert normalised(phrase).strip() == phrase, (flag, phrase)
+
+
+@pytest.mark.req("FR-REC-001")
+@pytest.mark.parametrize(
+    "answers",
+    [
+        CheckInAnswers(pain_location="rodilla"),  # a location without a pain
+        CheckInAnswers(pain_onset=PainOnset.GRADUAL, fatigue=3),
+        CheckInAnswers(pain_intensity=0, pain_location="rodilla"),
+        CheckInAnswers(pain_intensity=4, pain_flag=False),
+    ],
+)
+def test_pain_answers_are_consistent(answers: CheckInAnswers) -> None:
+    with pytest.raises(DomainValidationError):
+        RecoveryWorld().service.record_checkin(SCOPE, answers)
+
+
+@pytest.mark.req("FR-REC-001")
+def test_pain_intensity_zero_is_no_pain() -> None:
+    result = RecoveryWorld().service.record_checkin(SCOPE, CheckInAnswers(pain_intensity=0))
+    assert (result.checkin.pain_flag, result.checkin.pain) == (False, None)

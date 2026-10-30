@@ -2,7 +2,9 @@
 
 One status per athlete and provider: the capability snapshot, the state of synchronisation
 with its failure reason (codes only), freshness (last success), the postponement after a rate
-limit and the cursor that lets an interrupted sync resume (garmin spec section 4.1).
+limit and the cursor that lets an interrupted sync resume (garmin spec section 4.1), and,
+per daily metric, the last day requested (recovery spec 5), so days without data are not
+asked again on every sync.
 """
 
 from __future__ import annotations
@@ -100,6 +102,7 @@ class IntegrationStatus:
     last_success_at: datetime | None = None
     not_before: datetime | None = None
     cursor: SyncCursor = field(default_factory=SyncCursor)
+    daily_through: tuple[tuple[str, date], ...] = ()  # per daily metric, sorted by name
     version: int = 1
 
     def __post_init__(self) -> None:
@@ -115,6 +118,9 @@ class IntegrationStatus:
             raise DomainValidationError("a synced status records its last success")
         if self.sync_state is SyncState.NEVER_SYNCED and self.last_success_at is not None:
             raise DomainValidationError("a status that never synced has no last success")
+        names = [name for name, _ in self.daily_through]
+        if names != sorted(set(names)) or not all(_CODE.match(name) for name in names):
+            raise DomainValidationError("daily metrics are unique codes, sorted")
 
     @property
     def entity_id(self) -> UUID:
@@ -128,6 +134,17 @@ class IntegrationStatus:
 
     def started(self, at: datetime) -> IntegrationStatus:
         return replace(self, last_attempt_at=at)
+
+    def daily(self, metric: str) -> date | None:
+        """The last day requested for a daily metric, if any."""
+        return dict(self.daily_through).get(metric)
+
+    def with_daily(self, metric: str, through: date) -> IntegrationStatus:
+        """Record the last day requested for a daily metric; it never moves back."""
+        known = dict(self.daily_through)
+        earlier = known.get(metric)
+        known[metric] = through if earlier is None else max(earlier, through)
+        return replace(self, daily_through=tuple(sorted(known.items())))
 
     def progressed(self, cursor: SyncCursor) -> IntegrationStatus:
         return replace(self, cursor=cursor)

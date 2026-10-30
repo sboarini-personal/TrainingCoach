@@ -28,9 +28,17 @@ Rules (P11, precision of this section; contract
   `painFlag` is null when the pain question was not answered; `pain` (intensity, the
   athlete's location in their own words, onset SUDDEN or GRADUAL) needs the flag.
 - `redFlags` are the explicit answers to the check-in's red-flag question (the codes of the
-  safety spec); pain of intensity 7 or more with SUDDEN onset is RF_SEVERE_ACUTE_PAIN by
-  itself. Any red flag activates SAFETY_HOLD at once and the athlete is shown a fixed safety
-  notice (safety spec 3).
+  safety spec), listed once. `detectedFlags` are the ones the system found in what the
+  athlete wrote or rated (safety spec 2): red-flag phrases in the notes, a pain located in
+  the chest (RF_CHEST_PAIN), pain of intensity 7 or more whose onset is not GRADUAL
+  (RF_SEVERE_ACUTE_PAIN; an unknown onset counts as sudden, fail-safe). Any red flag
+  activates SAFETY_HOLD at once and the athlete is shown a fixed safety notice naming the
+  warning signs (safety spec 3).
+- Fail-safe: the hold is activated before the check-in is validated or stored. If the other
+  answers are invalid, a check-in with the red flags only is recorded and the athlete is
+  told the rest was not (`coach checkin add` exits 1).
+- Pain intensity 0 is no pain (`painFlag` false). A location or onset needs a pain above 0.
+  The location is at most 100 characters, the notes 1000.
 - A check-in is immutable: recording another for the same training day supersedes it (the
   latest is in force; the earlier stays for lineage). The training day defaults to today in
   the athlete's timezone.
@@ -94,10 +102,13 @@ Provider recovery data (P11; contract
   (a proprietary 0 to 100 recovery signal, PROVIDER_DERIVED, PROVIDER_RECOVERY_METRICS).
 - `coach garmin sync` synchronises them after the activities, each metric only with its
   consent (a metric without it is neither requested nor stored), through the provider's
-  documented endpoint (garmin spec section 12; capability `healthRead`). The first sync
-  reaches back 28 days (the baseline window); later ones start at the last day known, less
-  two days whose values may still settle. Every payload is stored as RAW; the values become
-  immutable observations, one per day, metric and RAW source, so a repeated sync stores
-  nothing new, and the latest received is in force.
+  documented endpoint (garmin spec section 12; capability `healthRead`), even without the
+  ACTIVITIES consent. The first sync reaches back 28 days (the baseline window); later ones
+  start at the last day requested, less two days whose values may still settle. A provider
+  payload also carries other consent categories, so it is never stored: RAW keeps a
+  minimised document of the values read (ADR-032). A value becomes an immutable observation
+  when it differs from the one in force for its day and metric, so a repeated sync stores
+  nothing new; the latest received is in force.
 - Reads (`coach recovery data`, the assessment) use the metrics whose consent is granted
-  now: a revocation hides stored values at once; deleting them is offered (privacy spec 1).
+  now: a revocation hides stored values at once. Deleting them is offered by the deletion
+  workflow (privacy spec 1; P15); until then they stay hidden.

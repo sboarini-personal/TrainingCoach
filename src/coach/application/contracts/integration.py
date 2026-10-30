@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from coach.application.contracts._json import (
@@ -74,6 +75,7 @@ def integration_status_to_contract(status: IntegrationStatus) -> Json:
             "window": date_window(status.cursor.window),
             "processed": list(status.cursor.processed),
         },
+        "dailyThrough": {name: day.isoformat() for name, day in status.daily_through},
     }
 
 
@@ -104,5 +106,11 @@ def integration_status_from_contract(document: Document) -> IntegrationStatus:
             completed_through=parse_optional_date(cursor["completedThrough"]),
             window=parse_date_window(cursor["window"]),
             processed=tuple(cursor["processed"]),
+        ),
+        daily_through=tuple(
+            sorted(
+                (name, date.fromisoformat(day))
+                for name, day in document.get("dailyThrough", {}).items()
+            )
         ),
     )

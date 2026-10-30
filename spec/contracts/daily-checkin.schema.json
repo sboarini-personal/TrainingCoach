@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:daily-checkin:1",
   "title": "DailyCheckIn",
-  "description": "The athlete's daily check-in on the documented scale (FR-REC-001): items 1 to 5 (sleepQuality and motivation higher is better; fatigue, soreness and stress higher is worse), pain 0 to 10 with an untrusted location, explicit red-flag answers (safety spec 2) and untrusted notes. Immutable: a correction is a later check-in of the same training day that supersedes it. null = UNKNOWN (not answered). Owner spec: spec/functional/recovery.spec.md section 1.",
+  "description": "The athlete's daily check-in on the documented scale (FR-REC-001): items 1 to 5 (sleepQuality and motivation higher is better; fatigue, soreness and stress higher is worse), pain 0 to 10 with an untrusted location, explicit red-flag answers (safety spec 2), the red flags the system detected in what the athlete wrote or rated (detectedFlags: red-flag phrases 1.0.0 in the notes, a pain located in the chest, severe pain not known to be gradual; absent in check-ins recorded before it existed) and untrusted notes. Immutable: a correction is a later check-in of the same training day that supersedes it. null = UNKNOWN (not answered). Owner spec: spec/functional/recovery.spec.md section 1.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -44,13 +44,32 @@
           "additionalProperties": false,
           "properties": {
             "intensity": { "type": "integer", "minimum": 0, "maximum": 10 },
-            "location": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" },
+            "location": {
+              "allOf": [
+                { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" },
+                { "maxLength": 100 }
+              ]
+            },
             "onset": { "enum": ["SUDDEN", "GRADUAL", null] }
           }
         },
         { "type": "null" }
       ]
     },
+    "redFlags": { "$ref": "#/$defs/redFlags" },
+    "detectedFlags": { "$ref": "#/$defs/redFlags" },
+    "notes": {
+      "allOf": [
+        { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" },
+        { "maxLength": 1000 }
+      ]
+    },
+    "supersedes": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    }
+  },
+  "$defs": {
+    "item": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
     "redFlags": {
       "type": "array",
       "uniqueItems": true,
@@ -65,13 +84,6 @@
           "RF_PALPITATIONS"
         ]
       }
-    },
-    "notes": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" },
-    "supersedes": {
-      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
     }
-  },
-  "$defs": {
-    "item": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 }
   }
 }

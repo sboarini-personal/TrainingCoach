@@ -13,6 +13,7 @@
   "painFlag": true,
   "pain": { "intensity": 3, "location": "left calf", "onset": "GRADUAL" },
   "redFlags": [],
+  "detectedFlags": [],
   "notes": "Legs heavy after yesterday's intervals.",
   "supersedes": null
 }

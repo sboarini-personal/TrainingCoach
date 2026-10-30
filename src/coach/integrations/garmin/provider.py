@@ -194,8 +194,8 @@ class GarminPersonalProvider:
         else:
             path, params = BODY_BATTERY_PATH, {"startDate": start, "endDate": end}
         response = self._get(path, params, accept=JSON_MEDIA_TYPE, limit=JSON_LIMIT_BYTES)
-        if response is None:
-            return None
+        if response is None or response.status == 204 or not response.body.strip():
+            return None  # no data for the window: 204 (documented for HRV), empty body or 404
         return RawPayload(
             PROVIDER, CATEGORIES[metric], JSON_MEDIA_TYPE, response.body, window=window
         )

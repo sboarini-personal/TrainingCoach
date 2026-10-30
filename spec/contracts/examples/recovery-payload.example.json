@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0.0",
+  "minimisation": "1.0.0",
+  "provider": "garmin",
+  "category": "GARMIN_SLEEP",
+  "metric": "SLEEP_DURATION",
+  "window": { "start": "2026-10-01", "end": "2026-10-28" },
+  "values": [
+    { "day": "2026-10-20", "value": 26000.0, "sourcePath": "[3].sleepTimeSeconds" },
+    { "day": "2026-10-21", "value": 25200.0, "sourcePath": "[4].sleepTimeSeconds" }
+  ]
+}

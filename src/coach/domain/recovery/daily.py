@@ -1,8 +1,10 @@
 """Daily recovery metrics from a provider (recovery spec sections 2, 3 and 5; FR-REC-005).
 
-One immutable observation per calendar day, metric and RAW source: the value a provider
-reported for the athlete's day, with its provenance. A newer payload for the same day and
-metric supersedes an older one in reads (the latest received wins); nothing is ever edited.
+One immutable observation each time a provider reports a new value for a calendar day and
+metric: the value, when it was received and its provenance (the RAW source and the path of the
+value). The latest received is in force; a sync stores an observation only when the value
+differs from the one in force, so a value that returns to an earlier one is in force again.
+Nothing is ever edited.
 Each metric belongs to one consent type: without it the metric is neither fetched nor read.
 Provider recovery metrics are training signals, never diagnoses (recovery spec 2).
 """
@@ -54,10 +56,13 @@ METRICS: Final[Mapping[RecoveryMetric, MetricSpec]] = {
 
 
 def observation_id(
-    athlete_id: UUID, day: date, metric: RecoveryMetric, raw_source_id: UUID
+    athlete_id: UUID, day: date, metric: RecoveryMetric, raw_source_id: UUID, received_at: datetime
 ) -> UUID:
-    """Deterministic: the same payload stored twice is the same observation (idempotent)."""
-    return uuid5(OBSERVATION_NAMESPACE, f"{athlete_id}/{day}/{metric.value}/{raw_source_id}")
+    """Deterministic: the same value received at the same moment is the same observation."""
+    moment = ensure_utc(received_at).isoformat()
+    return uuid5(
+        OBSERVATION_NAMESPACE, f"{athlete_id}/{day}/{metric.value}/{raw_source_id}/{moment}"
+    )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -84,10 +89,12 @@ class RecoveryObservation:
         if not _PATH.fullmatch(self.source_path):
             raise DomainValidationError("invalid source path")
         object.__setattr__(self, "received_at", ensure_utc(self.received_at))
-        expected = observation_id(self.athlete_id, self.day, self.metric, self.raw_source_id)
+        expected = observation_id(
+            self.athlete_id, self.day, self.metric, self.raw_source_id, self.received_at
+        )
         if self.observation_id != expected:
             raise DomainValidationError(
-                "an observation's ID derives from its day, metric and source"
+                "an observation's ID derives from its day, metric, source and reception"
             )
 
     @property

@@ -11,9 +11,12 @@ that consent category only, so a payload is never stored without its consent:
 - BODY_BATTERY_CHARGED (PROVIDER_RECOVERY_METRICS):
   ``/wellness-service/wellness/bodyBattery/reports/daily``, ``[].charged``.
 
-A payload that is not what the document describes is a protocol error (``DAILY_FORMAT``); a
-value that is absent, not a number or outside the metric's range is left out; a day stated
-twice with different values is left out. Nothing else of the payload is read.
+A payload that is not what the document describes is a protocol error (``DAILY_FORMAT``),
+a resting heart rate payload whose ``calendarDate`` is not a ``ConnectDate`` naming the
+requested day included; a value that is absent, not a number or outside the metric's range is
+left out; a day stated twice with different values is left out. Nothing else of the payload is
+read, and the payload itself is never stored: the sync keeps a minimised document of the
+values read (garmin spec 12).
 """
 
 from __future__ import annotations
@@ -83,7 +86,10 @@ def _number(metric: RecoveryMetric, value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     spec = METRICS[metric]
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:  # an integer too large for any measurement
+        return None
     return number if spec.low <= number <= spec.high else None
 
 
@@ -93,10 +99,11 @@ def _resting(payload: RawPayload) -> list[DailyValue]:
         _format()
     requested = payload.window.start
     stated = document.get("calendarDate")
-    if stated is not None:
-        local = stated.get("localDate") if isinstance(stated, dict) else None
-        if local is not None and _day(local) != requested:
-            _format()
+    # calendarDate, when present, is a ConnectDate object naming the requested day.
+    if stated is not None and (
+        not isinstance(stated, dict) or _day(stated.get("localDate")) != requested
+    ):
+        _format()
     value = _number(RecoveryMetric.RESTING_HR, document.get("restingHeartRate"))
     if value is None:
         return []
