@@ -218,13 +218,17 @@ def kilometre_splits(series: TimeSeries) -> list[float]:
     return splits
 
 
+def structured_intervals(laps: Laps) -> bool:
+    """A structured interval session: a REST or RECOVERY lap and at least 3 work laps (4.3)."""
+    work = sum(lap.intensity in _WORK for lap in laps.laps)
+    return work >= MIN_REPETITIONS and any(lap.intensity in _RECOVERY for lap in laps.laps)
+
+
 def repetition_speeds(laps: Laps) -> list[float] | None:
     """Speeds of the comparable work laps of a structured interval session, else ``None``."""
-    if not any(lap.intensity in _RECOVERY for lap in laps.laps):
+    if not structured_intervals(laps):
         return None
     work = [lap for lap in laps.laps if lap.intensity in _WORK]
-    if len(work) < MIN_REPETITIONS:
-        return None
     distances = [lap.distance_meters for lap in work]
     timers = [lap.timer_seconds for lap in work]
     if any(value is None or value <= 0 for value in distances) or any(

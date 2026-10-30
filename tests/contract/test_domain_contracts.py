@@ -25,10 +25,11 @@ from coach.domain.common.time import TrainingDayBasis, Weekday
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.goals.goal import GoalPriority, GoalStatus
 from coach.domain.raw.source import DetectedType, MalwareScan, SourceOrigin
-from coach.domain.strength.prescription import EffortCue, InterferenceLevel, LoadKind
+from coach.domain.strength.prescription import EffortCue, LoadKind
 from coach.domain.strength.vocabulary import (
     BodyRegion,
     ContraindicationTag,
+    InterferenceLevel,
     MovementPattern,
     MuscleGroup,
 )

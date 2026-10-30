@@ -3,13 +3,13 @@ sets of imported strength activities, end to end through the parser sandbox and 
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from cli_harness import Cli
-from file_samples import START, fit_file, fit_set, strength_session
+from file_samples import START, fit_file, fit_lap, fit_session, fit_set, strength_session
 
 
 @pytest.fixture
@@ -204,3 +204,47 @@ def test_progress_explains_each_decision(cli: Cli, tmp_path: Path) -> None:
     assert lines[2].split() == ["sessions:", "2026-10-20", "NO_TARGETS"]
     code, output = cli.run("strength", "progress", "sentadilla rara")
     assert (code, "unknown exercise" in output) == (2, True)
+
+
+def _interval_run(at: datetime) -> bytes:
+    laps, offset = [], at
+    for seconds, intensity in (
+        [(600, "warmup")]
+        + [(180, "active") if index % 2 == 0 else (90, "rest") for index in range(8)]
+        + [(300, "cooldown")]
+    ):
+        laps.append(fit_lap(offset, seconds, seconds * 3.5, intensity=intensity))
+        offset += timedelta(seconds=seconds)
+    records, run = fit_session(start=at, seconds=int((offset - at).total_seconds()))
+    return fit_file([([*records, *laps], run)])
+
+
+@pytest.mark.req("FR-STR-007")
+@pytest.mark.acceptance("AT-STR-001")
+def test_interference_of_heavy_legs_before_intervals(cli: Cli, tmp_path: Path) -> None:
+    gym = _imported_workout(cli, tmp_path)
+    for number in ("1", "2"):
+        assert (
+            cli.run("strength", "log", gym, "ex.back_squat", "--set", number, "--rpe", "8")[0] == 0
+        )
+    code, output = cli.run(
+        "strength", "log", gym, "ex.romanian_deadlift", "--reps", "8", "--load", "60", "--rpe", "8"
+    )
+    assert code == 0, output
+    code, output = cli.run("strength", "interference")
+    assert (code, "no interference found" in output) == (0, True)
+    path = tmp_path / "intervals.fit"
+    path.write_bytes(_interval_run(START + timedelta(hours=18)))
+    assert cli.run("import", str(path))[0] == 0
+    run = next(line for line in cli.run("activity", "list")[1].splitlines() if "RUNNING" in line)
+    run_id = run.split()[-1]
+    code, output = cli.run("activity", "correct", run_id, "subjective.rpe", "8", "--reason", "hard")
+    assert code == 0, output
+    code, output = cli.run("strength", "interference")
+    assert code == 0, output
+    lines = output.splitlines()
+    assert lines[0].startswith("interference rules 1.0.0, 2026-10-19 to 2026-10-25: 2 sessions")
+    assert lines[1].split()[:2] == ["HIGH", "HEAVY_LEGS_BEFORE_KEY_RUN"]
+    assert "STRENGTH ->" in lines[1]
+    assert lines[1].endswith("RUNNING")
+    assert "KNEES" in lines[2]

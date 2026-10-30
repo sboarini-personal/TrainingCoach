@@ -20,7 +20,12 @@ from coach.domain.common.numbers import require_finite
 from coach.domain.common.text import clean_text
 from coach.domain.strength.exercise import Exercise, ExerciseCatalogue, check_exercise_id
 from coach.domain.strength.sets import check_rir, check_rpe
-from coach.domain.strength.vocabulary import BodyRegion, MovementPattern, MuscleGroup
+from coach.domain.strength.vocabulary import (
+    BodyRegion,
+    InterferenceLevel,
+    MovementPattern,
+    MuscleGroup,
+)
 
 PRESCRIPTION_RULES_VERSION: Final = "1.0.0"
 MAX_SETS: Final = 20
@@ -46,14 +51,6 @@ class EffortCue(StrEnum):
     EASY = "EASY"  # many more repetitions were possible
     MODERATE = "MODERATE"  # challenging, form stays perfect, several repetitions left
     HARD = "HARD"  # only a few repetitions left
-
-
-class InterferenceLevel(StrEnum):
-    NONE = "NONE"
-    LOW = "LOW"
-    MODERATE = "MODERATE"
-    HIGH = "HIGH"
-    VERY_HIGH = "VERY_HIGH"
 
 
 @dataclass(frozen=True, slots=True)

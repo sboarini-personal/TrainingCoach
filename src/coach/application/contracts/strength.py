@@ -18,7 +18,6 @@ from coach.domain.strength.exercise import Exercise
 from coach.domain.strength.prescription import (
     EffortCue,
     ExpectedInterference,
-    InterferenceLevel,
     Load,
     LoadKind,
     PrescribedExercise,
@@ -26,7 +25,12 @@ from coach.domain.strength.prescription import (
 )
 from coach.domain.strength.session import Relabel, SetEntry, StrengthSession
 from coach.domain.strength.sets import SetType, WatchSet, WatchSets
-from coach.domain.strength.vocabulary import BodyRegion, MovementPattern, MuscleGroup
+from coach.domain.strength.vocabulary import (
+    BodyRegion,
+    InterferenceLevel,
+    MovementPattern,
+    MuscleGroup,
+)
 
 
 def exercise_to_contract(exercise: Exercise, catalogue_version: str) -> Json:

@@ -17,11 +17,13 @@ from coach.cli.analytics import athlete_today, total_text, week_argument
 from coach.cli.runtime import Runtime
 from coach.domain.athlete.profile import AthleteProfile, ProfileUpdate
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.quality import UncertaintyReason
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.exercise import Exercise, ExerciseAlias, normalise_alias, own_aliases
 from coach.domain.strength.progression import PROGRESSION_RULES_VERSION, Reason
 from coach.domain.strength.session import SetEntry, SetSource, StrengthSetResult
 from coach.domain.strength.vocabulary import MovementPattern
+from coach.planning.interference import INTERFERENCE_RULES_VERSION
 
 
 def _profile(runtime: Runtime, scope: OwnerScope) -> tuple[AthleteProfile, AthleteProfile | None]:
@@ -335,4 +337,31 @@ def progress(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out:
         print(f"{decision.exercise_id:<34} {decision.decision.value:<18} {reasons}", file=out)
         if sessions:
             print(f"{'':<34} {'':<18} sessions: {sessions}", file=out)
+    return 0
+
+
+def interference(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Baseline interference among the recent completed sessions (strength spec 7)."""
+    until = athlete_today(runtime, scope)
+    with _translated():
+        report = runtime.analytics.interference(scope, until=until, days=args.days)
+    period = report.period
+    print(
+        f"interference rules {INTERFERENCE_RULES_VERSION}, {period.start} to {period.end}: "
+        f"{len(report.sessions)} sessions with a demand",
+        file=out,
+    )
+    if not report.assessments:
+        print("no interference found", file=out)
+    described = {load.session_id: load for load in report.sessions}
+    for item in report.assessments:
+        sessions = " -> ".join(
+            f"{described[session].start:%Y-%m-%d %H:%M}Z {described[session].sport.value}"
+            for session in item.sessions
+        )
+        regions = ", ".join(region.value for region in item.affected_regions) or "-"
+        print(f"{item.level.value:<10} {item.rule.value:<30} {sessions}", file=out)
+        print(f"{'':<10} regions {regions}", file=out)
+        if UncertaintyReason.MISSING_DATA in item.reasons:
+            print(f"{'':<10} possible: an effort or load level is unknown", file=out)
     return 0

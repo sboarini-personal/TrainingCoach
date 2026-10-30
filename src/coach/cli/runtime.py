@@ -272,6 +272,7 @@ def build_runtime(
         metrics=derived,
         consents=gate,
         strength=strength,
+        streams=read_stream,
         batch=database.batch,
     )
     ingestion_records = SqliteIngestionRecordRepository(database)

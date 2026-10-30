@@ -18,14 +18,13 @@ from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.prescription import (
     EffortCue,
     ExpectedInterference,
-    InterferenceLevel,
     Load,
     LoadKind,
     PrescribedExercise,
     StrengthPrescription,
     check_against,
 )
-from coach.domain.strength.vocabulary import BodyRegion
+from coach.domain.strength.vocabulary import BodyRegion, InterferenceLevel
 from schemas import EXAMPLES_DIR, load_json, validation_errors
 
 FAMILIAR = StrengthExperience(rpe_familiar=True, rir_familiar=True)

@@ -202,6 +202,10 @@ def _parser() -> argparse.ArgumentParser:
     )
     progressing.add_argument("exercise", nargs="?", help="one exercise; default every one done")
     progressing.add_argument("--weeks", type=int, default=12, help="1 to 104; default 12")
+    interfering = strength.add_parser(
+        "interference", help="combinations of recent sessions that interfere (rules 1.0.0)"
+    )
+    interfering.add_argument("--days", type=int, default=7, help="1 to 56; default 7")
     watching = strength.add_parser("watch-sets", help="use or ignore the watch's sets")
     watching.add_argument("activity_id", type=UUID)
     watching.add_argument("choice", choices=["use", "ignore"])
@@ -387,6 +391,8 @@ def main(
                 return strength_commands.relabel(runtime, _session(runtime), args, stream)
             case ("strength", "progress"):
                 return strength_commands.progress(runtime, _session(runtime), args, stream)
+            case ("strength", "interference"):
+                return strength_commands.interference(runtime, _session(runtime), args, stream)
             case ("strength", "week"):
                 return strength_commands.week(runtime, _session(runtime), args, stream)
             case ("strength", "watch-sets"):

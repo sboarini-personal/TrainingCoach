@@ -1,6 +1,7 @@
 """Analytics reads: period totals, the week report, recomputation (metrics spec 9.3 to 9.5)
-the strength week: hard sets per muscle group and volume load (strength spec 8), and the
-progression decisions of each exercise from its execution history (strength spec 6).
+the strength week: hard sets per muscle group and volume load (strength spec 8), the
+progression decisions of each exercise from its execution history (strength spec 6) and the
+interference among completed sessions (strength spec 7).
 
 Every read requires the ACTIVITIES consent and is owner-scoped. Period totals are materialised
 when requested from the EFFECTIVE views of the period's ACTIVE activities: an unchanged
@@ -12,7 +13,7 @@ internal load stay separate (FR-MET-005).
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -28,8 +29,16 @@ from coach.application.ownership import OwnerScope
 from coach.application.ports import ActivityRepository, Batch, OverrideRepository
 from coach.application.strength import StrengthService
 from coach.domain.activity.activity import Activity
-from coach.domain.activity.fields import Cadence, CadenceUnit, Pain, StrokeType
+from coach.domain.activity.fields import (
+    STREAM_KEYS,
+    Cadence,
+    CadenceUnit,
+    Pain,
+    StreamKind,
+    StrokeType,
+)
 from coach.domain.activity.overrides import TRAINING_DAY_FIELD, EntityType
+from coach.domain.activity.segments import Laps
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import UncertaintyReason
@@ -44,7 +53,7 @@ from coach.domain.strength.progression import (
     decide,
 )
 from coach.domain.strength.session import StrengthSetResult
-from coach.domain.strength.vocabulary import MuscleGroup
+from coach.domain.strength.vocabulary import BodyRegion, MuscleGroup
 from coach.metrics.catalog import (
     CATALOG,
     PERIOD_TOTALS,
@@ -60,10 +69,22 @@ from coach.metrics.derived import (
     SubjectKind,
 )
 from coach.metrics.registry import MetricDefinition
+from coach.metrics.running import structured_intervals
 from coach.metrics.strength import is_hard, muscle_shares
 from coach.metrics.subjects import DimensionKind
+from coach.metrics.tennis import LoadLevel
 from coach.metrics.trends import Point, Trend, group_of
 from coach.metrics.trends import trend as trend_of
+from coach.planning.interference import (
+    InterferenceAssessment,
+    Modifier,
+    SessionLoad,
+    assess,
+    run_demands,
+    strength_demands,
+    swim_demands,
+    tennis_demands,
+)
 
 # A training day is a local date: the activity starts at most 14 h away from it in UTC.
 _START_MARGIN: Final = timedelta(days=2)
@@ -71,6 +92,13 @@ _BASIS_FIELD: Final = "timing.trainingDayBasis"
 RECOMPUTE_CHUNK: Final = 50  # activities per unit of work: short write locks (ADR-027)
 CADENCE_FIELD: Final = "performance.cadence"  # the average running cadence (metrics spec 11)
 PAIN_FIELD: Final = "subjective.pain"
+RPE_FIELD: Final = "subjective.rpe"
+ELAPSED_FIELD: Final = "timing.elapsedSeconds"
+TENNIS_LOAD: Final = "ten.neuromuscular_load"
+INTERFERENCE_MARGIN: Final = timedelta(days=2)  # a combination reaches 48 h back
+MAX_INTERFERENCE_DAYS: Final = 56
+# A stream by kind and blob digest; None when it cannot be read.
+type StreamReader = Callable[[OwnerScope, StreamKind, str], object | None]
 MAX_TREND_WEEKS: Final = 104
 
 
@@ -138,6 +166,15 @@ class PeriodReport:
 
 
 @dataclass(frozen=True, slots=True)
+class InterferenceReport:
+    """Interference among the completed sessions of a period (strength spec 7)."""
+
+    period: DateRange
+    sessions: tuple[SessionLoad, ...]
+    assessments: tuple[InterferenceAssessment, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MuscleSets:
     muscle: MuscleGroup
     hard_sets: TotalReport  # unknown sets: their effort (RIR, RPE) is not known
@@ -167,9 +204,11 @@ class AnalyticsService:
         consents: ConsentGate,
         totals: Sequence[PeriodTotal] = PERIOD_TOTALS,
         strength: StrengthService | None = None,
+        streams: StreamReader | None = None,
         batch: Batch = nullcontext,
     ) -> None:
         self._strength = strength
+        self._streams = streams
         self._activities = activities
         self._store = store
         self._overrides = overrides
@@ -444,6 +483,92 @@ class AnalyticsService:
             covered = [report for report in pains if report.training_day >= since]
             decisions.append(decide(catalogue.get(found), exposures, covered))
         return decisions
+
+    def interference(
+        self,
+        scope: OwnerScope,
+        *,
+        until: date,
+        days: int = 7,
+        modifiers: Sequence[Modifier] = (),
+    ) -> InterferenceReport:
+        """Baseline interference (rules 1.0.0) among the ACTIVE sessions of the ``days``
+        ending ``until``, with the 48 hours before them (strength spec 7)."""
+        self._consents.require(scope, ConsentType.ACTIVITIES)
+        if self._strength is None:
+            raise DomainValidationError("strength sessions are not available here")
+        if not 1 <= days <= MAX_INTERFERENCE_DAYS:
+            raise DomainValidationError(f"days must be 1 to {MAX_INTERFERENCE_DAYS}")
+        period = DateRange(until - timedelta(days=days - 1), until)
+        reach = DateRange(period.start - INTERFERENCE_MARGIN, until)
+        with self._batch():
+            sessions = tuple(
+                load
+                for view in self._members(scope, reach)
+                if (load := self._session_load(scope, view)) is not None
+            )
+        found = assess(sessions, modifiers)
+        inside = [
+            item
+            for item in found
+            if any(
+                load.session_id in item.sessions and load.start.date() >= period.start
+                for load in sessions
+            )
+        ]
+        return InterferenceReport(period, sessions, tuple(inside))
+
+    def _session_load(self, scope: OwnerScope, view: Activity) -> SessionLoad | None:
+        if self._strength is None:  # pragma: no cover - checked by the caller
+            return None
+        evidence = (EvidenceRef(EvidenceKind.ACTIVITY, view.activity_id),)
+        rpe = view.number(RPE_FIELD)
+        regions: frozenset[BodyRegion] = frozenset()
+        match view.sport:
+            case Sport.STRENGTH:
+                sets = self._strength.of_view(scope, view).sets
+                demands, possible, regions = strength_demands(sets, self._strength.catalogue)
+            case Sport.RUNNING:
+                demands, possible = run_demands(
+                    rpe=rpe,
+                    elapsed_seconds=view.number(ELAPSED_FIELD),
+                    structured_intervals=self._structured_intervals(scope, view),
+                )
+            case Sport.SWIMMING:
+                demands, possible = swim_demands(rpe=rpe)
+            case Sport.TENNIS:
+                current = self._metrics.current(
+                    scope, TENNIS_LOAD, MetricSubject.activity(view.activity_id)
+                )
+                high = None
+                if current is not None and current.value is not None:
+                    high = round(current.value) >= LoadLevel.HIGH
+                demands, possible = tennis_demands(high_load=high)
+            case _:
+                return None
+        if not demands and not possible:
+            return None
+        return SessionLoad(
+            view.activity_id,
+            view.start_time_utc,
+            view.sport,
+            planned=False,
+            demands=demands,
+            possible=possible,
+            regions=regions,
+            evidence=evidence,
+        )
+
+    def _structured_intervals(self, scope: OwnerScope, view: Activity) -> bool:
+        """Whether the run's LAPS stream shows a structured interval session; a run without
+        readable laps is not one (running spec 4.3)."""
+        stream = next((item for item in view.streams if item.kind is StreamKind.LAPS), None)
+        if stream is None or self._streams is None:
+            return False
+        if view.provenance.get(STREAM_KEYS[StreamKind.LAPS]) is None:
+            return False
+        laps = self._streams(scope, StreamKind.LAPS, stream.blob_sha256)
+        return isinstance(laps, Laps) and structured_intervals(laps)
 
     def _strength_volume(
         self, scope: OwnerScope, subject: MetricSubject, members: Sequence[Activity]

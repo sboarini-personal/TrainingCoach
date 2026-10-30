@@ -80,6 +80,16 @@ class BodyRegion(StrEnum):
         return cls(muscle.value)
 
 
+class InterferenceLevel(StrEnum):
+    """Expected or assessed interference between sessions (strength spec 7)."""
+
+    NONE = "NONE"
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+    VERY_HIGH = "VERY_HIGH"
+
+
 class ContraindicationTag(StrEnum):
     AXIAL_LOAD = "AXIAL_LOAD"
     OVERHEAD = "OVERHEAD"

@@ -210,6 +210,33 @@ strength history and good recovery), and the evidence is stated. The output is a
 planner avoids HIGH and VERY_HIGH combinations unless the evidence justifies them
 (AT-STR-001).
 
+Rules 1.0.0 (P10, precision of this section; `coach.planning.interference`):
+
+- A session, planned or completed, is described by its demands and the body regions it loads
+  (section 2). Heavy lower (upper) body: at least 3 hard sets (section 8) of lower-body
+  (upper-body) patterns; a planned set is read at its target (RIR 4 or less, else RPE 6 or
+  more; the HARD cue is hard, EASY and MODERATE are not). Plyometric: a HIGH_IMPACT
+  exercise. Calf and Achilles intensive: at least 3 sets of exercises whose primary muscles
+  include the calves or soleus. Hard running intervals: a structured interval session
+  (running spec 4.3, from the LAPS stream) at session RPE 7 or more; long run: 90 minutes or
+  more. Hard swim: session RPE 7 or more. Tennis: every tennis session; demanding when its
+  regional load level is HIGH (tennis spec 4).
+- A demand that would hold only if an unknown value were high (effort without RIR or RPE, a
+  run or swim without RPE, a tennis level not computed) is *possible*. An assessment resting
+  on one keeps its level and carries MISSING_DATA: interference is never dismissed for lack
+  of data.
+- "Before" is start to start: within 24 hours (0 to 24 h) and 24 to 48 hours. The first
+  three rules need the strength session first; the tennis, intervals and heavy legs rule
+  needs the three within 48 hours in any order; the calf and Achilles rule applies in either
+  order. Affected regions: the strength session's lower-body regions (first, second and
+  fourth rules, plus the tennis regions in the fourth), its other regions (third), calves,
+  soleus and Achilles region (fifth).
+- Context modifiers move every level of an assessment one step each (never below LOW), only
+  with stated evidence; the assessment keeps its base level, the modifiers and their
+  evidence. Recovery-state modifiers arrive with P11; the planner (P12) states them.
+- `coach strength interference [--days]` assesses the completed sessions of the last days
+  (with the 48 hours before them). Assessments are read models, not stored.
+
 ## 8. Volume by muscle group (FR-STR-008)
 
 Weekly hard sets per muscle group (`str.weekly_sets_by_muscle`) and volume load
