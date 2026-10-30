@@ -95,6 +95,12 @@ class CoachingConditions:
             )
         )
         name = EventName.CONDITION_ACTIVATED if event.activated else EventName.CONDITION_CLEARED
-        self._events.emit(
-            name, {"condition": condition.value, "reason": event.reason or "UNSPECIFIED"}
-        )
+        fields = {"condition": condition.value, "reason": event.reason or "UNSPECIFIED"}
+        self._events.emit(name, fields)
+        if condition is Condition.SAFETY_HOLD:  # nfr spec: safety events of their own
+            safety = (
+                EventName.SAFETY_HOLD_ACTIVATED
+                if event.activated
+                else EventName.SAFETY_HOLD_RELEASED
+            )
+            self._events.emit(safety, {"reason": fields["reason"]})

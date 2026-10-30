@@ -21,6 +21,7 @@ from coach.application.authorization import AuthorizationService
 from coach.application.coaching import CoachingConditions
 from coach.application.consent import ConsentGate, ConsentService
 from coach.application.contracts import (
+    CHECKIN_CODEC,
     COACHING_STATE_CODEC,
     CONSENT_LEDGER_CODEC,
     CREDENTIAL_RECORD_CODEC,
@@ -42,6 +43,7 @@ from coach.application.ingestion import IngestionService
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.providers import FitnessProvider
+from coach.application.recovery import RecoveryService
 from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
 from coach.application.strength import StrengthService, session_reader
@@ -135,6 +137,7 @@ class Runtime:
     ingestion: IngestionService
     analytics: AnalyticsService
     strength: StrengthService
+    recovery: RecoveryService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
@@ -272,6 +275,15 @@ def build_runtime(
         events=events,
         clock=clock,
     )
+    recovery = RecoveryService(
+        SqliteAggregateRepository(database, CHECKIN_CODEC),
+        conditions=conditions,
+        screen=screen,
+        timezone_of=lambda scope: athlete_timezone(profiles, scope),
+        events=events,
+        clock=clock,
+        ids=new_id,
+    )
     analytics = AnalyticsService(
         activities=activities,
         store=activity_store,
@@ -334,6 +346,7 @@ def build_runtime(
         ingestion=ingestion,
         analytics=analytics,
         strength=strength,
+        recovery=recovery,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

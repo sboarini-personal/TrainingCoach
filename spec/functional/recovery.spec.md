@@ -21,6 +21,27 @@ Documented scale (integers 1 to 5; the direction is explicit per item):
 Pain intensity uses a 0 to 10 numeric rating. Pain rules are in
 [../safety/sport-safety.spec.md](../safety/sport-safety.spec.md).
 
+Rules (P11, precision of this section; contract
+[../contracts/daily-checkin.schema.json](../contracts/daily-checkin.schema.json)):
+
+- Every answer is optional (UNKNOWN when not given), but a check-in states at least one.
+  `painFlag` is null when the pain question was not answered; `pain` (intensity, the
+  athlete's location in their own words, onset SUDDEN or GRADUAL) needs the flag.
+- `redFlags` are the explicit answers to the check-in's red-flag question (the codes of the
+  safety spec); pain of intensity 7 or more with SUDDEN onset is RF_SEVERE_ACUTE_PAIN by
+  itself. Any red flag activates SAFETY_HOLD at once and the athlete is shown a fixed safety
+  notice (safety spec 3).
+- A check-in is immutable: recording another for the same training day supersedes it (the
+  latest is in force; the earlier stays for lineage). The training day defaults to today in
+  the athlete's timezone.
+- A check-in is the athlete's own declaration, like the profile: it needs no category
+  consent (the consent types cover provider data, section 5). Its notes and pain location
+  are untrusted text, screened for disclosed secrets before they are stored (SEC-SEC-005),
+  and never interpreted: a location names a region only by the exact rule of strength spec
+  section 2.
+- Commands: `coach checkin add` (one option per item, `--pain`, `--pain-location`,
+  `--pain-onset`, `--red-flag`, `--notes`) and `coach checkin list`.
+
 ## 2. Subjective vs wearable (FR-REC-002)
 
 - Subjective feedback and wearable metrics coexist; both are evidence.

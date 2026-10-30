@@ -30,6 +30,7 @@ from coach.application.secrets import SecretValue
 from coach.cli import activities as activity_commands
 from coach.cli import analytics as analytics_commands
 from coach.cli import garmin as garmin_commands
+from coach.cli import recovery as recovery_commands
 from coach.cli import strength as strength_commands
 from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.athlete.physiology import SensorType
@@ -220,6 +221,7 @@ def _parser() -> argparse.ArgumentParser:
     trending.add_argument(
         "--stroke", choices=["BACKSTROKE", "BREASTSTROKE", "BUTTERFLY", "FREESTYLE"]
     )
+    recovery_commands.add_parsers(commands)
     garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
         dest="action", required=True
     )
@@ -417,6 +419,14 @@ def main(
                 return activity_commands.list_issues(runtime, _session(runtime), stream)
             case ("issue", "ack"):
                 return activity_commands.acknowledge_issue(runtime, _session(runtime), args, stream)
+            case ("checkin", "add"):
+                return recovery_commands.add(runtime, _session(runtime), args, stream)
+            case ("checkin", "list"):
+                return recovery_commands.list_checkins(runtime, _session(runtime), args, stream)
+            case ("safety", "status"):
+                return recovery_commands.status(runtime, _session(runtime), stream)
+            case ("safety", "release"):
+                return recovery_commands.release(runtime, _session(runtime), args, stream)
             case ("garmin", "status"):
                 return garmin_commands.status(runtime, _session(runtime), stream)
             case ("garmin", "sync"):

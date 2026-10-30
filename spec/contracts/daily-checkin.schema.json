@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:daily-checkin:1",
+  "title": "DailyCheckIn",
+  "description": "The athlete's daily check-in on the documented scale (FR-REC-001): items 1 to 5 (sleepQuality and motivation higher is better; fatigue, soreness and stress higher is worse), pain 0 to 10 with an untrusted location, explicit red-flag answers (safety spec 2) and untrusted notes. Immutable: a correction is a later check-in of the same training day that supersedes it. null = UNKNOWN (not answered). Owner spec: spec/functional/recovery.spec.md section 1.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "checkinId",
+    "athleteId",
+    "version",
+    "recordedAt",
+    "trainingDay",
+    "sleepQuality",
+    "fatigue",
+    "soreness",
+    "stress",
+    "motivation",
+    "painFlag",
+    "pain",
+    "redFlags",
+    "notes",
+    "supersedes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "checkinId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "recordedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "trainingDay": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "sleepQuality": { "$ref": "#/$defs/item" },
+    "fatigue": { "$ref": "#/$defs/item" },
+    "soreness": { "$ref": "#/$defs/item" },
+    "stress": { "$ref": "#/$defs/item" },
+    "motivation": { "$ref": "#/$defs/item" },
+    "painFlag": { "type": ["boolean", "null"] },
+    "pain": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["intensity", "location", "onset"],
+          "additionalProperties": false,
+          "properties": {
+            "intensity": { "type": "integer", "minimum": 0, "maximum": 10 },
+            "location": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" },
+            "onset": { "enum": ["SUDDEN", "GRADUAL", null] }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "redFlags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "RF_CHEST_PAIN",
+          "RF_FAINTING",
+          "RF_BREATHING",
+          "RF_NEURO",
+          "RF_STRENGTH_LOSS",
+          "RF_SEVERE_ACUTE_PAIN",
+          "RF_PALPITATIONS"
+        ]
+      }
+    },
+    "notes": { "$ref": "urn:coach:schema:common:1#/$defs/untrustedText" },
+    "supersedes": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    }
+  },
+  "$defs": {
+    "item": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 }
+  }
+}

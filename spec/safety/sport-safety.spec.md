@@ -30,7 +30,9 @@ any drug or supplement is given.
 Detection sources, combined fail-safe (any one activates the hold):
 
 1. Structured inputs: check-in or activity pain intensity of 7 or more with acute onset; an
-   explicit red-flag question in onboarding or check-in.
+   explicit red-flag question in onboarding or check-in. (P11: the daily check-in records
+   both, recovery spec section 1; the hold's reason code is the first red flag, and
+   `safety.hold.activated` is emitted.)
 2. Deterministic phrase detection in athlete messages and notes (Spanish and English lists,
    versioned), run before the LLM call.
 3. LLM classification flag returned with the response.
@@ -53,6 +55,10 @@ AT-SAFE-001 covers activation, the policy denial and the response content.
 - The hold is released only by an explicit athlete action (for example confirming that a
   healthcare professional cleared them to train), recorded and audited.
 - Neither the agent nor any automatic rule releases a hold.
+- (P11) `coach safety release --cleared-by-professional` is that action: refused without the
+  confirmation; audited as `coaching.condition_cleared` with reason
+  `CLEARED_BY_PROFESSIONAL` and emitted as `safety.hold.released`. `coach safety status`
+  shows whether the hold is active.
 - After release, training resumes conservatively (the next plan version starts with reduced
   intensity and a re-evaluation date).
 

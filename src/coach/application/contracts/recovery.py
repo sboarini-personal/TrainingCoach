@@ -1,0 +1,71 @@
+"""Recovery documents (recovery spec): DailyCheckIn <-> daily-checkin contract."""
+
+from __future__ import annotations
+
+from datetime import date
+from uuid import UUID
+
+from coach.application.contracts._json import (
+    SCHEMA_VERSION,
+    Document,
+    Json,
+    instant,
+    parse_instant,
+    parse_optional_uuid,
+)
+from coach.domain.recovery.checkin import CheckInPain, DailyCheckIn, PainOnset, RedFlag
+
+
+def checkin_to_contract(checkin: DailyCheckIn) -> Json:
+    pain = checkin.pain
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "checkinId": str(checkin.checkin_id),
+        "athleteId": str(checkin.athlete_id),
+        "version": checkin.version,
+        "recordedAt": instant(checkin.recorded_at),
+        "trainingDay": checkin.training_day.isoformat(),
+        "sleepQuality": checkin.sleep_quality,
+        "fatigue": checkin.fatigue,
+        "soreness": checkin.soreness,
+        "stress": checkin.stress,
+        "motivation": checkin.motivation,
+        "painFlag": checkin.pain_flag,
+        "pain": None
+        if pain is None
+        else {
+            "intensity": pain.intensity,
+            "location": pain.location,
+            "onset": None if pain.onset is None else pain.onset.value,
+        },
+        "redFlags": [flag.value for flag in checkin.red_flags],
+        "notes": checkin.notes,
+        "supersedes": None if checkin.supersedes is None else str(checkin.supersedes),
+    }
+
+
+def checkin_from_contract(document: Document) -> DailyCheckIn:
+    pain = document["pain"]
+    return DailyCheckIn(
+        checkin_id=UUID(document["checkinId"]),
+        athlete_id=UUID(document["athleteId"]),
+        version=document["version"],
+        recorded_at=parse_instant(document["recordedAt"]),
+        training_day=date.fromisoformat(document["trainingDay"]),
+        sleep_quality=document["sleepQuality"],
+        fatigue=document["fatigue"],
+        soreness=document["soreness"],
+        stress=document["stress"],
+        motivation=document["motivation"],
+        pain_flag=document["painFlag"],
+        pain=None
+        if pain is None
+        else CheckInPain(
+            intensity=pain["intensity"],
+            location=pain["location"],
+            onset=None if pain["onset"] is None else PainOnset(pain["onset"]),
+        ),
+        red_flags=tuple(RedFlag(flag) for flag in document["redFlags"]),
+        notes=document["notes"],
+        supersedes=parse_optional_uuid(document["supersedes"]),
+    )

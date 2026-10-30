@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0.0",
+  "checkinId": "0193b2a0-0000-7000-8000-000000000601",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 1,
+  "recordedAt": "2026-10-21T10:30:00Z",
+  "trainingDay": "2026-10-21",
+  "sleepQuality": 2,
+  "fatigue": 4,
+  "soreness": 3,
+  "stress": null,
+  "motivation": 3,
+  "painFlag": true,
+  "pain": { "intensity": 3, "location": "left calf", "onset": "GRADUAL" },
+  "redFlags": [],
+  "notes": "Legs heavy after yesterday's intervals.",
+  "supersedes": null
+}
