@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:recovery-prescription:1",
+  "title": "RecoveryPrescription",
+  "description": "The training-workload decision a major recovery decision calls for, rules 1.0.0 (FR-REC-004; recovery spec section 4). Not medical treatment. REST and ACTIVE_RECOVERY activate RECOVERY_BLOCK until reevaluateAfter (day + durationDays). It is in force on the days it covers while its assessment is still the one in force for its day; a re-assessment of that day withdraws it. evidence starts with the assessment, then the deviating signals' sources. Owner spec: spec/functional/recovery.spec.md section 4.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "prescriptionId",
+    "athleteId",
+    "version",
+    "assessmentId",
+    "day",
+    "type",
+    "reason",
+    "evidence",
+    "durationDays",
+    "reevaluateAfter",
+    "createdAt",
+    "rulesVersion"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "prescriptionId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "assessmentId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "day": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "type": { "enum": ["REST", "ACTIVE_RECOVERY", "EASY_SESSION", "REDUCED_VOLUME"] },
+    "reason": { "enum": ["THREE_GROUPS", "SEVERE_PAIN", "TWO_GROUPS", "PERSISTENT_SIGNAL"] },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
+    },
+    "durationDays": { "type": "integer", "minimum": 1, "maximum": 14 },
+    "reevaluateAfter": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "createdAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "rulesVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+  }
+}

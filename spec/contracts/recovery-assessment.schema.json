@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:recovery-assessment:1",
+  "title": "RecoveryAssessment",
+  "description": "The recovery assessment of one training day, rules 1.0.0 (FR-REC-002, FR-REC-003; recovery spec sections 2 and 3). Every signal is listed with its state: provider metrics against the athlete's 28-day baseline (NO_CONSENT without the metric's consent, AT-CON-001), check-in items against the anchors of their scale, and pain. status is NORMAL, MONITOR (an isolated deviation: an observation, AT-REC-001), REDUCE or REST (a major decision), or INSUFFICIENT_DATA. reasons start with the decisive one; observations follow (a wearable and the athlete disagreeing, AT-REC-002; pain reported, persistent or worsening). group and evidence are derived from the signals. Immutable: a re-assessment of the day with another result is a new document, and the latest is in force. A training-load decision, never a diagnosis. Owner spec: spec/functional/recovery.spec.md section 3.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "assessmentId",
+    "athleteId",
+    "version",
+    "day",
+    "status",
+    "reasons",
+    "signals",
+    "pain",
+    "confidence",
+    "uncertaintyReasons",
+    "evidence",
+    "assessedAt",
+    "rulesVersion"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "assessmentId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "day": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "status": { "enum": ["NORMAL", "MONITOR", "REDUCE", "REST", "INSUFFICIENT_DATA"] },
+    "reasons": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "SAFETY_HOLD",
+          "THREE_GROUPS",
+          "SEVERE_PAIN",
+          "TWO_GROUPS",
+          "PERSISTENT_SIGNAL",
+          "ISOLATED_SIGNAL",
+          "NO_DEVIATION",
+          "NO_SIGNAL",
+          "WEARABLE_SUBJECTIVE_CONFLICT",
+          "PAIN_REPORTED",
+          "PAIN_PERSISTENT",
+          "PAIN_WORSENING"
+        ]
+      }
+    },
+    "signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+    "pain": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+    "confidence": { "$ref": "urn:coach:schema:common:1#/$defs/confidence" },
+    "uncertaintyReasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/uncertaintyReason" }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
+    },
+    "assessedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "rulesVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+  },
+  "$defs": {
+    "signal": {
+      "type": "object",
+      "required": [
+        "name",
+        "group",
+        "state",
+        "value",
+        "baselineMean",
+        "baselineSd",
+        "baselineReadings",
+        "consecutiveDays",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "RESTING_HR",
+            "HRV_NIGHTLY",
+            "SLEEP_DURATION",
+            "BODY_BATTERY_CHARGED",
+            "sleepQuality",
+            "fatigue",
+            "soreness",
+            "stress",
+            "motivation",
+            "pain"
+          ]
+        },
+        "group": {
+          "enum": ["AUTONOMIC", "SLEEP", "FATIGUE", "SORENESS", "STRESS", "MOTIVATION", "PAIN"]
+        },
+        "state": {
+          "enum": ["DEVIATING", "NORMAL", "FAVOURABLE", "NO_BASELINE", "MISSING", "NO_CONSENT"]
+        },
+        "value": { "type": ["number", "null"] },
+        "baselineMean": { "type": ["number", "null"] },
+        "baselineSd": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "baselineReadings": { "type": "integer", "minimum": 0, "maximum": 28 },
+        "consecutiveDays": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
+        }
+      }
+    }
+  }
+}

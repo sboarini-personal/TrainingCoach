@@ -31,7 +31,9 @@ from coach.application.contracts import (
     LAPS_CODEC,
     LENGTHS_CODEC,
     PROFILE_CODEC,
+    RECOVERY_ASSESSMENT_CODEC,
     RECOVERY_OBSERVATION_CODEC,
+    RECOVERY_PRESCRIPTION_CODEC,
     SETS_CODEC,
     STRENGTH_SESSION_CODEC,
     TIME_SERIES_CODEC,
@@ -46,6 +48,7 @@ from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.providers import FitnessProvider
 from coach.application.recovery import RecoveryService
+from coach.application.recovery_assessment import RecoveryAssessmentService
 from coach.application.recovery_sync import RecoverySyncService
 from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
@@ -143,6 +146,7 @@ class Runtime:
     strength: StrengthService
     recovery: RecoveryService
     recovery_sync: RecoverySyncService
+    recovery_assessment: RecoveryAssessmentService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
@@ -298,6 +302,16 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+    recovery_assessment = RecoveryAssessmentService(
+        recovery,
+        SqliteAggregateRepository(database, RECOVERY_ASSESSMENT_CODEC),
+        SqliteAggregateRepository(database, RECOVERY_PRESCRIPTION_CODEC),
+        consents=gate,
+        conditions=conditions,
+        events=events,
+        clock=clock,
+        ids=new_id,
+    )
     analytics = AnalyticsService(
         activities=activities,
         store=activity_store,
@@ -379,6 +393,7 @@ def build_runtime(
         strength=strength,
         recovery=recovery,
         recovery_sync=recovery_sync,
+        recovery_assessment=recovery_assessment,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

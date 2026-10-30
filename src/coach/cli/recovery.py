@@ -4,17 +4,19 @@ sections 2 to 4)."""
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, timedelta
 from typing import Final, TextIO
 
 from coach.application.ownership import OwnerScope
 from coach.application.recovery import CheckInAnswers
-from coach.cli.activities import CommandError
+from coach.application.recovery_assessment import AssessmentResult
+from coach.cli.activities import CONSENT_TYPES, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.coaching.state import Actor, Condition
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
+from coach.domain.recovery.assessment import Reason, Signal, SignalState
 from coach.domain.recovery.checkin import CheckInItem, DailyCheckIn, PainOnset, RedFlag
-from coach.domain.recovery.daily import RecoveryMetric, RecoveryObservation
+from coach.domain.recovery.daily import METRICS, RecoveryMetric, RecoveryObservation
 
 TIMEZONE_HINT: Final = "set your timezone first: coach profile timezone <IANA name>"
 SCALE_HELP: Final = {
@@ -59,6 +61,7 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     )
     data = recovery.add_parser("data", help="daily metrics from your devices, by consent")
     data.add_argument("--days", type=int, default=14)
+    recovery.add_parser("status", help="assess today's recovery (training load, not medical)")
     safety = commands.add_parser("safety", help="safety hold").add_subparsers(
         dest="action", required=True
     )
@@ -200,4 +203,74 @@ def data(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
         )
     if not found:
         print("no recovery data in these days (coach garmin sync, with the consents)", file=out)
+    return 0
+
+
+_CONSENT_NAMES: Final = {value: name for name, value in CONSENT_TYPES.items()}
+_EVALUATION: Final = "consider an evaluation by a healthcare professional"
+OBSERVATIONS: Final = {
+    Reason.SAFETY_HOLD: "safety hold active: intensive training is paused (coach safety status)",
+    Reason.ISOLATED_SIGNAL: "one signal deviates: an observation, training does not change yet",
+    Reason.WEARABLE_SUBJECTIVE_CONFLICT: (
+        "your devices and your check-in disagree: the more conservative of the two counts"
+    ),
+    Reason.SEVERE_PAIN: f"severe pain: active recovery only; {_EVALUATION}",
+    Reason.PAIN_REPORTED: "pain reported: it counts as a recovery signal",
+    Reason.PAIN_PERSISTENT: f"pain reported for more than 7 days: {_EVALUATION}",
+    Reason.PAIN_WORSENING: f"pain growing since it began: {_EVALUATION}",
+}
+
+
+def _amount(name: str, value: float) -> str:
+    if name == RecoveryMetric.SLEEP_DURATION.value:
+        minutes = round(value / 60)
+        return f"{minutes // 60}:{minutes % 60:02d}"
+    return f"{value:.1f}".removesuffix(".0")
+
+
+def _signal_line(signal: Signal) -> str:
+    detail = "-"
+    if signal.state is SignalState.NO_CONSENT:
+        consent = _CONSENT_NAMES[METRICS[RecoveryMetric(signal.name)].consent]
+        detail = f"needs consent: coach consent grant {consent}"
+    elif signal.value is not None:
+        detail = _amount(signal.name, signal.value)
+        if signal.baseline_mean is not None and signal.baseline_sd is not None:
+            mean = _amount(signal.name, signal.baseline_mean)
+            spread = _amount(signal.name, signal.baseline_sd)
+            detail += f" (baseline {mean} +/- {spread}, {signal.baseline_readings} days)"
+        if signal.consecutive_days > 1:
+            detail += f", {signal.consecutive_days} days in a row"
+    return f"  {signal.name:<21} {signal.state.value:<11} {detail}"
+
+
+def assessment(runtime: Runtime, scope: OwnerScope, out: TextIO) -> int:
+    try:
+        result: AssessmentResult = runtime.recovery_assessment.assess(scope)
+    except TimezoneRequiredError:
+        raise CommandError(TIMEZONE_HINT) from None
+    found = result.assessment
+    decisive = found.reasons[0].value
+    print(
+        f"recovery {found.day}: {found.status.value} ({decisive}), "
+        f"confidence {found.confidence.value}",
+        file=out,
+    )
+    for signal in found.signals:
+        print(_signal_line(signal), file=out)
+    for reason in found.reasons:
+        if reason in OBSERVATIONS:
+            print(f"observation: {OBSERVATIONS[reason]}", file=out)
+    if found.uncertainty_reasons:
+        reasons = ", ".join(sorted(item.value for item in found.uncertainty_reasons))
+        print(f"uncertainty: {reasons}", file=out)
+    for prescription in result.prescriptions:
+        last = prescription.reevaluate_after - timedelta(days=1)
+        print(
+            f"prescription: {prescription.type.value} through {last} "
+            f"({prescription.reason.value}), re-evaluated on {prescription.reevaluate_after}",
+            file=out,
+        )
+    print(f"recovery block: {'active' if result.recovery_block else 'none'}", file=out)
+    print("training-load guidance, not a medical assessment", file=out)
     return 0

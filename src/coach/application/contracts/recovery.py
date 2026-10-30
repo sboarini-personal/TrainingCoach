@@ -1,5 +1,6 @@
-"""Recovery documents (recovery spec): DailyCheckIn <-> daily-checkin contract and
-RecoveryObservation <-> recovery-observation contract."""
+"""Recovery documents (recovery spec): DailyCheckIn <-> daily-checkin contract,
+RecoveryObservation <-> recovery-observation, RecoveryAssessment <-> recovery-assessment and
+RecoveryPrescription <-> recovery-prescription."""
 
 from __future__ import annotations
 
@@ -10,11 +11,24 @@ from coach.application.contracts._json import (
     SCHEMA_VERSION,
     Document,
     Json,
+    evidence,
     instant,
+    parse_evidence,
     parse_instant,
     parse_optional_uuid,
+    sorted_values,
 )
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.quality import Confidence, UncertaintyReason
+from coach.domain.recovery.assessment import (
+    PrescriptionType,
+    RecoveryAssessment,
+    RecoveryPrescription,
+    RecoveryStatus,
+    Signal,
+    SignalState,
+)
+from coach.domain.recovery.assessment import Reason as AssessmentReason
 from coach.domain.recovery.checkin import CheckInPain, DailyCheckIn, PainOnset, RedFlag
 from coach.domain.recovery.daily import METRICS, RecoveryMetric, RecoveryObservation
 
@@ -108,4 +122,108 @@ def recovery_observation_from_contract(document: Document) -> RecoveryObservatio
         raw_source_id=UUID(document["rawSourceId"]),
         source_path=document["sourcePath"],
         received_at=parse_instant(document["receivedAt"]),
+    )
+
+
+def _signal_to_contract(signal: Signal) -> Json:
+    return {
+        "name": signal.name,
+        "group": signal.group.value,
+        "state": signal.state.value,
+        "value": signal.value,
+        "baselineMean": signal.baseline_mean,
+        "baselineSd": signal.baseline_sd,
+        "baselineReadings": signal.baseline_readings,
+        "consecutiveDays": signal.consecutive_days,
+        "evidence": [evidence(ref) for ref in signal.evidence],
+    }
+
+
+def _optional_float(value: float | None) -> float | None:
+    return None if value is None else float(value)
+
+
+def _signal_from_contract(document: Document) -> Signal:
+    return Signal(
+        name=document["name"],
+        state=SignalState(document["state"]),
+        value=_optional_float(document["value"]),
+        baseline_mean=_optional_float(document["baselineMean"]),
+        baseline_sd=_optional_float(document["baselineSd"]),
+        baseline_readings=document["baselineReadings"],
+        consecutive_days=document["consecutiveDays"],
+        evidence=tuple(parse_evidence(ref) for ref in document["evidence"]),
+    )
+
+
+def assessment_to_contract(assessment: RecoveryAssessment) -> Json:
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "assessmentId": str(assessment.assessment_id),
+        "athleteId": str(assessment.athlete_id),
+        "version": assessment.version,
+        "day": assessment.day.isoformat(),
+        "status": assessment.status.value,
+        "reasons": [reason.value for reason in assessment.reasons],
+        "signals": [_signal_to_contract(signal) for signal in assessment.signals],
+        "pain": assessment.pain,
+        "confidence": assessment.confidence.value,
+        "uncertaintyReasons": sorted_values(assessment.uncertainty_reasons),
+        "evidence": [evidence(ref) for ref in assessment.evidence],
+        "assessedAt": instant(assessment.assessed_at),
+        "rulesVersion": assessment.rules_version,
+    }
+
+
+def assessment_from_contract(document: Document) -> RecoveryAssessment:
+    return RecoveryAssessment(
+        assessment_id=UUID(document["assessmentId"]),
+        athlete_id=UUID(document["athleteId"]),
+        version=document["version"],
+        day=date.fromisoformat(document["day"]),
+        status=RecoveryStatus(document["status"]),
+        reasons=tuple(AssessmentReason(reason) for reason in document["reasons"]),
+        signals=tuple(_signal_from_contract(signal) for signal in document["signals"]),
+        pain=document["pain"],
+        confidence=Confidence(document["confidence"]),
+        uncertainty_reasons=frozenset(
+            UncertaintyReason(reason) for reason in document["uncertaintyReasons"]
+        ),
+        assessed_at=parse_instant(document["assessedAt"]),
+        rules_version=document["rulesVersion"],
+    )
+
+
+def prescription_to_contract(prescription: RecoveryPrescription) -> Json:
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "prescriptionId": str(prescription.prescription_id),
+        "athleteId": str(prescription.athlete_id),
+        "version": prescription.version,
+        "assessmentId": str(prescription.assessment_id),
+        "day": prescription.day.isoformat(),
+        "type": prescription.type.value,
+        "reason": prescription.reason.value,
+        "evidence": [evidence(ref) for ref in prescription.evidence],
+        "durationDays": prescription.duration_days,
+        "reevaluateAfter": prescription.reevaluate_after.isoformat(),
+        "createdAt": instant(prescription.created_at),
+        "rulesVersion": prescription.rules_version,
+    }
+
+
+def prescription_from_contract(document: Document) -> RecoveryPrescription:
+    return RecoveryPrescription(
+        prescription_id=UUID(document["prescriptionId"]),
+        athlete_id=UUID(document["athleteId"]),
+        version=document["version"],
+        assessment_id=UUID(document["assessmentId"]),
+        day=date.fromisoformat(document["day"]),
+        type=PrescriptionType(document["type"]),
+        reason=AssessmentReason(document["reason"]),
+        evidence=tuple(parse_evidence(ref) for ref in document["evidence"]),
+        duration_days=document["durationDays"],
+        reevaluate_after=date.fromisoformat(document["reevaluateAfter"]),
+        created_at=parse_instant(document["createdAt"]),
+        rules_version=document["rulesVersion"],
     )

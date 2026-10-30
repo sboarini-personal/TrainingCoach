@@ -124,3 +124,25 @@ def test_recovery_metrics_sync_without_the_activities_consent(tmp_path: Path) ->
     assert output.startswith("activities: needs consent (activities)\n")
     assert "HRV_NIGHTLY 1 new" in output
     assert not [item for item in scripted.sent if "activitylist" in item.path]
+
+
+@pytest.mark.req("FR-REC-003", "FR-REC-004", "FR-REC-005")
+def test_recovery_status_assesses_the_day_and_blocks_intensity(cli: Cli) -> None:
+    assert cli.run("profile", "timezone", "America/Argentina/Buenos_Aires")[0] == 0
+    code, output = cli.run("recovery", "status")
+    assert code == 0, output
+    assert output.startswith("recovery 2026-10-25: INSUFFICIENT_DATA (NO_SIGNAL), confidence LOW")
+    assert "RESTING_HR            NO_CONSENT  needs consent: coach consent grant recovery" in output
+    command = ("checkin", "add", "--fatigue", "4", "--sleep", "2", "--soreness", "4")
+    assert cli.run(*command)[0] == 0
+    code, output = cli.run("recovery", "status")
+    assert code == 0, output
+    lines = output.splitlines()
+    assert lines[0] == "recovery 2026-10-25: REST (THREE_GROUPS), confidence MEDIUM"
+    assert "  fatigue               DEVIATING   4" in lines
+    assert "uncertainty: MISSING_DATA" in lines
+    assert (
+        "prescription: REST through 2026-10-25 (THREE_GROUPS), re-evaluated on 2026-10-26" in lines
+    )
+    assert "recovery block: active" in lines
+    assert lines[-1] == "training-load guidance, not a medical assessment"

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "1.0.0",
+  "assessmentId": "0193b2a0-0000-7000-8000-000000000901",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "version": 1,
+  "day": "2026-10-25",
+  "status": "REDUCE",
+  "reasons": ["TWO_GROUPS"],
+  "signals": [
+    {
+      "name": "RESTING_HR",
+      "group": "AUTONOMIC",
+      "state": "DEVIATING",
+      "value": 58.0,
+      "baselineMean": 50.0,
+      "baselineSd": 2.5,
+      "baselineReadings": 28,
+      "consecutiveDays": 1,
+      "evidence": [{ "kind": "DAILY_RECOVERY", "id": "0193b2a0-0000-7000-8000-000000000801" }]
+    },
+    {
+      "name": "HRV_NIGHTLY",
+      "group": "AUTONOMIC",
+      "state": "NO_CONSENT",
+      "value": null,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 0,
+      "evidence": []
+    },
+    {
+      "name": "SLEEP_DURATION",
+      "group": "SLEEP",
+      "state": "NORMAL",
+      "value": 25200.0,
+      "baselineMean": 26000.0,
+      "baselineSd": 1800.0,
+      "baselineReadings": 20,
+      "consecutiveDays": 0,
+      "evidence": [{ "kind": "DAILY_RECOVERY", "id": "0193b2a0-0000-7000-8000-000000000802" }]
+    },
+    {
+      "name": "BODY_BATTERY_CHARGED",
+      "group": "AUTONOMIC",
+      "state": "NO_CONSENT",
+      "value": null,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 0,
+      "evidence": []
+    },
+    {
+      "name": "sleepQuality",
+      "group": "SLEEP",
+      "state": "NORMAL",
+      "value": 3.0,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 0,
+      "evidence": [{ "kind": "DAILY_CHECKIN", "id": "0193b2a0-0000-7000-8000-000000000601" }]
+    },
+    {
+      "name": "fatigue",
+      "group": "FATIGUE",
+      "state": "DEVIATING",
+      "value": 4.0,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 1,
+      "evidence": [{ "kind": "DAILY_CHECKIN", "id": "0193b2a0-0000-7000-8000-000000000601" }]
+    },
+    {
+      "name": "soreness",
+      "group": "SORENESS",
+      "state": "NORMAL",
+      "value": 3.0,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 0,
+      "evidence": [{ "kind": "DAILY_CHECKIN", "id": "0193b2a0-0000-7000-8000-000000000601" }]
+    },
+    {
+      "name": "stress",
+      "group": "STRESS",
+      "state": "MISSING",
+      "value": null,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 0,
+      "evidence": []
+    },
+    {
+      "name": "motivation",
+      "group": "MOTIVATION",
+      "state": "NORMAL",
+      "value": 3.0,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 0,
+      "evidence": [{ "kind": "DAILY_CHECKIN", "id": "0193b2a0-0000-7000-8000-000000000601" }]
+    },
+    {
+      "name": "pain",
+      "group": "PAIN",
+      "state": "MISSING",
+      "value": null,
+      "baselineMean": null,
+      "baselineSd": null,
+      "baselineReadings": 0,
+      "consecutiveDays": 0,
+      "evidence": []
+    }
+  ],
+  "pain": null,
+  "confidence": "HIGH",
+  "uncertaintyReasons": ["MISSING_DATA"],
+  "evidence": [
+    { "kind": "DAILY_RECOVERY", "id": "0193b2a0-0000-7000-8000-000000000801" },
+    { "kind": "DAILY_RECOVERY", "id": "0193b2a0-0000-7000-8000-000000000802" },
+    { "kind": "DAILY_CHECKIN", "id": "0193b2a0-0000-7000-8000-000000000601" }
+  ],
+  "assessedAt": "2026-10-25T10:40:00Z",
+  "rulesVersion": "1.0.0"
+}

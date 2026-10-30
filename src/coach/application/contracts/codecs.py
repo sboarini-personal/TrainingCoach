@@ -56,8 +56,12 @@ from coach.application.contracts.integration import (
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
 from coach.application.contracts.recovery import (
+    assessment_from_contract,
+    assessment_to_contract,
     checkin_from_contract,
     checkin_to_contract,
+    prescription_from_contract,
+    prescription_to_contract,
     recovery_observation_from_contract,
     recovery_observation_to_contract,
 )
@@ -88,6 +92,7 @@ from coach.domain.goals.goal import Goal, SportEvent
 from coach.domain.ingestion.record import IngestionRecord
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.raw.source import RawSource
+from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription
 from coach.domain.recovery.checkin import DailyCheckIn
 from coach.domain.recovery.daily import RecoveryObservation
 from coach.domain.strength.session import StrengthSession
@@ -194,6 +199,18 @@ RECOVERY_OBSERVATION_CODEC: Final[DocumentCodec[RecoveryObservation]] = Document
     recovery_observation_to_contract,
     recovery_observation_from_contract,
 )
+RECOVERY_ASSESSMENT_CODEC: Final[DocumentCodec[RecoveryAssessment]] = DocumentCodec(
+    "recovery_assessment",
+    "recovery-assessment",
+    assessment_to_contract,
+    assessment_from_contract,
+)
+RECOVERY_PRESCRIPTION_CODEC: Final[DocumentCodec[RecoveryPrescription]] = DocumentCodec(
+    "recovery_prescription",
+    "recovery-prescription",
+    prescription_to_contract,
+    prescription_from_contract,
+)
 INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
     "integration_status",
     "integration-status",
@@ -222,5 +239,7 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     STRENGTH_SESSION_CODEC,
     CHECKIN_CODEC,
     RECOVERY_OBSERVATION_CODEC,
+    RECOVERY_ASSESSMENT_CODEC,
+    RECOVERY_PRESCRIPTION_CODEC,
     INTEGRATION_STATUS_CODEC,
 )

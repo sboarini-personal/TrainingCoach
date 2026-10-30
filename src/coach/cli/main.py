@@ -425,6 +425,8 @@ def main(
                 return recovery_commands.list_checkins(runtime, _session(runtime), args, stream)
             case ("recovery", "data"):
                 return recovery_commands.data(runtime, _session(runtime), args, stream)
+            case ("recovery", "status"):
+                return recovery_commands.assessment(runtime, _session(runtime), stream)
             case ("safety", "status"):
                 return recovery_commands.status(runtime, _session(runtime), stream)
             case ("safety", "release"):
