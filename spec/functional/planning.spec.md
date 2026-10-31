@@ -34,6 +34,29 @@ Contract: [../contracts/training-plan.schema.json](../contracts/training-plan.sc
 - Creating a PROPOSED version needs no confirmation (internal action). Activation is an
   explicit athlete action. Both are audited.
 
+**Precisions (P12):**
+
+- **Plan header.** Each plan has one header
+  ([../contracts/plan-header.schema.json](../contracts/plan-header.schema.json)) holding the
+  latest and the ACTIVE version numbers. Creating a version and activating one update the
+  header with optimistic concurrency (its `version` is the storage revision) in the same
+  transaction as the versions, so version numbers are never given twice and two activations
+  made from the same reading cannot both succeed (AT-PLN-002). The athlete activates with
+  the header revision they reviewed (`coach plan list` shows it); a stale revision fails with
+  CONCURRENCY_CONFLICT and nothing is written.
+- **Revision.** A version's `revision` (storage revision) changes only with its status; its
+  content never changes.
+- **Canonical hash.** The canonical JSON has sorted keys, no whitespace, UTF-8, and whole
+  numbers written without a fraction (so 4 and 4.0 hash alike after a JSON round trip). The
+  hash is recomputed whenever a version is read; a mismatch refuses the read (tamper or
+  corruption detection).
+- **Several proposals.** Several versions may be PROPOSED at once (AT-PLN-002). A proposal
+  is SUPERSEDED with REPLACED_BY_NEWER_PROPOSAL only when a newer proposal names it as the
+  one it replaces (the generator and the adaptive loop do this); otherwise it stays PROPOSED
+  until the athlete activates or rejects it. A new version keeps the plan's goal.
+- **Activation reason.** Optional free text, screened for disclosed secrets before it is
+  stored (SEC-SEC-005).
+
 ## 3. Training week (FR-PLN-004)
 
 `TrainingWeek`: `weekIndex`, `startDate` (Monday, athlete's local date), `phase`,
@@ -41,6 +64,13 @@ Contract: [../contracts/training-plan.schema.json](../contracts/training-plan.sc
 (monday to sunday, each a list of planned workouts), `keyWorkouts[]`, `strengthSessions[]`,
 `tennisSessions[]`, `recoveryDays[]`, `monitoringMetrics[]` (metric IDs),
 `adaptationRules[]`.
+
+Precision (P12): `keyWorkouts`, `strengthSessions`, `tennisSessions` and `recoveryDays` are
+derived from `days`, never set separately. A recovery day is a day whose planned workouts are
+all REST or RECOVERY (a day with nothing planned is free, not a recovery day). A workout is
+**intensive** when its highest prescribed RPE is 7 or more (strength: the target RPE, else
+10 minus the target RIR, else the effort cue EASY 3, MODERATE 5, HARD 8); the policy engine
+and the interference rules use this.
 
 ## 4. Endurance workouts (FR-PLN-005)
 
@@ -58,6 +88,9 @@ Intensity dimensions are used only when supported by reliable athlete data:
 | Power | MEASURED power capability for the sport (FR-CYC-002) |
 
 Stop conditions always include the safety rule: stop on red-flag symptoms or unusual pain.
+Precision (P12): the rule is one canonical text, "Stop at once on red-flag symptoms (chest
+pain, fainting, unusual breathlessness) or unusual pain."; an endurance workout without it is
+refused.
 
 ## 5. Progression (FR-PLN-006)
 

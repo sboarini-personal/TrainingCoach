@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:training-plan:1",
   "title": "TrainingPlan version",
-  "description": "Immutable plan version (FR-PLN-002, ADR-010). contentHash is the SHA-256 of the canonical JSON of the content fields (phases, weeks, assumptions, provisional, startDate, endDate). Owner spec: spec/functional/planning.spec.md.",
+  "description": "Immutable plan version (FR-PLN-002, ADR-010). The content hash is recomputed and checked whenever a version is read (P12); every endurance workout's stop conditions include the canonical safety rule (planning spec 4). contentHash is the SHA-256 of the canonical JSON of the content fields (phases, weeks, assumptions, provisional, startDate, endDate): keys sorted, no whitespace, UTF-8, whole numbers written without a fraction. Owner spec: spec/functional/planning.spec.md.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -28,6 +28,11 @@
     "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
     "planId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
     "version": { "type": "integer", "minimum": 1 },
+    "revision": {
+      "description": "Storage revision of this version (P12): status changes are made with optimistic concurrency; the content never changes. Absent before it existed.",
+      "type": "integer",
+      "minimum": 1
+    },
     "parentVersion": { "type": ["integer", "null"], "minimum": 1 },
     "status": { "enum": ["DRAFT", "PROPOSED", "ACTIVE", "SUPERSEDED", "COMPLETED"] },
     "supersededReason": {

@@ -54,6 +54,12 @@ from coach.application.contracts.integration import (
     integration_status_from_contract,
     integration_status_to_contract,
 )
+from coach.application.contracts.plans import (
+    plan_header_from_contract,
+    plan_header_to_contract,
+    plan_version_from_contract,
+    plan_version_to_contract,
+)
 from coach.application.contracts.profile import profile_from_contract, profile_to_contract
 from coach.application.contracts.raw import raw_source_from_contract, raw_source_to_contract
 from coach.application.contracts.recovery import (
@@ -93,6 +99,7 @@ from coach.domain.goals.goal import Goal, SportEvent
 from coach.domain.ingestion.record import IngestionRecord
 from coach.domain.insights import Insight
 from coach.domain.integration.status import IntegrationStatus
+from coach.domain.plans.plan import PlanVersion, TrainingPlan
 from coach.domain.raw.source import RawSource
 from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription
 from coach.domain.recovery.checkin import DailyCheckIn
@@ -216,6 +223,12 @@ RECOVERY_PRESCRIPTION_CODEC: Final[DocumentCodec[RecoveryPrescription]] = Docume
 INSIGHT_CODEC: Final[DocumentCodec[Insight]] = DocumentCodec(
     "insight", "insight", insight_to_contract, insight_from_contract
 )
+PLAN_VERSION_CODEC: Final[DocumentCodec[PlanVersion]] = DocumentCodec(
+    "plan_version", "training-plan", plan_version_to_contract, plan_version_from_contract
+)
+PLAN_HEADER_CODEC: Final[DocumentCodec[TrainingPlan]] = DocumentCodec(
+    "plan_header", "plan-header", plan_header_to_contract, plan_header_from_contract
+)
 INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
     "integration_status",
     "integration-status",
@@ -247,5 +260,7 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     RECOVERY_ASSESSMENT_CODEC,
     RECOVERY_PRESCRIPTION_CODEC,
     INSIGHT_CODEC,
+    PLAN_VERSION_CODEC,
+    PLAN_HEADER_CODEC,
     INTEGRATION_STATUS_CODEC,
 )

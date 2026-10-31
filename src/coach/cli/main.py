@@ -32,6 +32,7 @@ from coach.cli import analytics as analytics_commands
 from coach.cli import athlete as athlete_commands
 from coach.cli import garmin as garmin_commands
 from coach.cli import insights as insight_commands
+from coach.cli import plans as plan_commands
 from coach.cli import recovery as recovery_commands
 from coach.cli import reports as report_commands
 from coach.cli import strength as strength_commands
@@ -227,6 +228,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     recovery_commands.add_parsers(commands)
     athlete_commands.add_parsers(commands)
+    plan_commands.add_parsers(commands)
     insight_commands.add_parsers(commands)
     report_commands.add_parsers(commands)
     garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
@@ -460,6 +462,8 @@ def main(
                 return athlete_commands.goal(runtime, _session(runtime), args, stream)
             case ("readiness", _):
                 return athlete_commands.readiness(runtime, _session(runtime), stream)
+            case ("plan", _):
+                return plan_commands.plan(runtime, _session(runtime), args, stream)
             case ("safety", "status"):
                 return recovery_commands.status(runtime, _session(runtime), stream)
             case ("safety", "release"):

@@ -2,6 +2,7 @@
   "schemaVersion": "1.0.0",
   "planId": "0193b2a0-0000-7000-8000-000000000501",
   "version": 13,
+  "revision": 1,
   "parentVersion": 12,
   "status": "PROPOSED",
   "supersededReason": null,
@@ -18,7 +19,7 @@
   },
   "provisional": true,
   "assumptions": ["No recovery history yet: recovery-based adaptation rules use subjective check-ins only."],
-  "contentHash": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+  "contentHash": "9ec06b34f3e92022bbcfe2c9480b6fd725b81985f817d688473e8c1efbb6e2b3",
   "startDate": "2026-10-26",
   "endDate": "2026-11-01",
   "phases": [
@@ -178,7 +179,7 @@
                 }
               ],
               "techniqueFocus": null,
-              "stopConditions": ["Stop immediately on red-flag symptoms or sudden severe pain."],
+              "stopConditions": ["Stop at once on red-flag symptoms (chest pain, fainting, unusual breathlessness) or unusual pain."],
               "evaluationMetrics": ["run.interval_degradation"]
             }
           }

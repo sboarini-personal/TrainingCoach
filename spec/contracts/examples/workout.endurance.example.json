@@ -59,7 +59,7 @@
     ],
     "techniqueFocus": "Relaxed shoulders, steady cadence",
     "stopConditions": [
-      "Stop immediately on chest pain, fainting, unusual breathlessness or sudden severe pain.",
+      "Stop at once on red-flag symptoms (chest pain, fainting, unusual breathlessness) or unusual pain.",
       "End the interval set if the target cannot be held at RPE 7."
     ],
     "evaluationMetrics": ["run.interval_degradation", "run.hr_drift"]

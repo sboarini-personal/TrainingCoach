@@ -35,6 +35,8 @@ from coach.application.contracts import (
     INTEGRATION_STATUS_CODEC,
     LAPS_CODEC,
     LENGTHS_CODEC,
+    PLAN_HEADER_CODEC,
+    PLAN_VERSION_CODEC,
     PROFILE_CODEC,
     RECOVERY_ASSESSMENT_CODEC,
     RECOVERY_OBSERVATION_CODEC,
@@ -52,6 +54,7 @@ from coach.application.ids import new_id
 from coach.application.ingestion import IngestionService
 from coach.application.insights import InsightService
 from coach.application.ownership import OwnerScope
+from coach.application.plans import PlanService
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.providers import FitnessProvider
 from coach.application.recovery import RecoveryService
@@ -164,6 +167,7 @@ class Runtime:
     recovery_assessment: RecoveryAssessmentService
     insights: InsightService
     inputs: AthleteInputsService
+    plans: PlanService
     reports: ReportService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
@@ -384,23 +388,36 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+    lifecycle = CoachingLifecycle(
+        SqliteAggregateRepository(database, COACHING_STATE_CODEC),
+        audit=audit,
+        events=events,
+        clock=clock,
+    )
     inputs = AthleteInputsService(
         profiles,
         SqliteAggregateRepository(database, AVAILABILITY_CODEC),
         SqliteAggregateRepository(database, GOAL_CODEC),
         SqliteAggregateRepository(database, SPORT_EVENT_CODEC),
         consents=consents,
-        lifecycle=CoachingLifecycle(
-            SqliteAggregateRepository(database, COACHING_STATE_CODEC),
-            audit=audit,
-            events=events,
-            clock=clock,
-        ),
+        lifecycle=lifecycle,
         screen=screen,
         history=planning_history(analytics, recovery, credentials),
         today=recovery.today,
         clock=clock,
         ids=new_id,
+    )
+    plans = PlanService(
+        SqliteAggregateRepository(database, PLAN_HEADER_CODEC),
+        SqliteAggregateRepository(database, PLAN_VERSION_CODEC),
+        lifecycle=lifecycle,
+        conditions=conditions,
+        screen=screen,
+        audit=audit,
+        events=events,
+        clock=clock,
+        ids=new_id,
+        batch=database.batch,
     )
     reports = ReportService(
         activities=activities,
@@ -486,6 +503,7 @@ def build_runtime(
         insights=insights,
         reports=reports,
         inputs=inputs,
+        plans=plans,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

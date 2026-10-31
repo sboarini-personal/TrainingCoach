@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:plan-header:1",
+  "title": "TrainingPlan header",
+  "description": "One per training plan (P12): the latest and the ACTIVE version numbers. Creating a version and activating one update it with optimistic concurrency in the same transaction as the versions, so at most one version is ACTIVE and version numbers are never given twice (FR-PLN-003, AT-PLN-002). version is the storage revision. Owner spec: spec/functional/planning.spec.md section 2.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "planId",
+    "athleteId",
+    "goalId",
+    "version",
+    "createdAt",
+    "latestVersion",
+    "activeVersion"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "planId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "goalId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "version": { "type": "integer", "minimum": 1 },
+    "createdAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "latestVersion": { "type": "integer", "minimum": 1 },
+    "activeVersion": { "type": ["integer", "null"], "minimum": 1 }
+  }
+}
