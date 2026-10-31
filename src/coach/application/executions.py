@@ -4,7 +4,8 @@ ACTIVE plan version, by execution rules 1.0.0, and the athlete's manual links.
 Executions are computed on read from the ACTIVE version, the ACTIVE activities (EFFECTIVE
 view, so corrections count) and the links; only the links are stored. A link names an
 activity of the athlete and a planned workout of the ACTIVE version in the same training week
-(Monday to Sunday), or none to make the activity UNPLANNED; a newer link replaces it.
+(Monday to Sunday), or none to make the activity UNPLANNED; a newer link replaces it. Both
+activity readers require the ACTIVITIES consent (privacy spec: every activity read).
 """
 
 from __future__ import annotations

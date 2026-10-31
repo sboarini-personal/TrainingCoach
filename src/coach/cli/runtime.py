@@ -72,6 +72,7 @@ from coach.application.retry import Retrier, RetryPolicy
 from coach.application.screening import SecretScreen
 from coach.application.strength import StrengthService, session_reader
 from coach.application.sync import SyncService
+from coach.domain.activity.activity import Activity
 from coach.domain.activity.fields import StreamKind
 from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.athlete.profile import AthleteProfile
@@ -79,6 +80,7 @@ from coach.domain.athlete.settings import AnalysisSettings
 from coach.domain.coaching.state import Condition
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange, parse_timezone
+from coach.domain.consent.ledger import ConsentType
 from coach.domain.goals.feasibility import FeasibilityAssessment
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.onboarding.readiness import (
@@ -450,11 +452,16 @@ def build_runtime(
         ids=new_id,
         batch=database.batch,
     )
+
+    def consented_activity(scope: OwnerScope, activity_id: UUID) -> Activity:
+        gate.require(scope, ConsentType.ACTIVITIES)  # as analytics.activities does
+        return activities.effective(scope, activity_id).activity
+
     executions = ExecutionService(
         plans,
         SqliteAggregateRepository(database, EXECUTION_LINK_CODEC),
         activities=analytics.activities,
-        activity=lambda scope, activity_id: activities.effective(scope, activity_id).activity,
+        activity=consented_activity,
         today=recovery.today,
         audit=audit,
         clock=clock,

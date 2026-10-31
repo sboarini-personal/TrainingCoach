@@ -9,11 +9,12 @@ from datetime import date, timedelta
 from typing import TextIO
 from uuid import UUID
 
+from coach.application.consent import ConsentRequiredError
 from coach.application.errors import ConcurrencyConflictError, NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.application.plans import PlanNotReadyError
 from coach.application.policy_gate import PolicyDeniedError
-from coach.cli.activities import TIMEZONE_HINT, CommandError
+from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.common.time import DateRange
@@ -190,6 +191,8 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
         raise CommandError("denied by policy: " + denial(denied)) from None
     except TimezoneRequiredError:
         raise CommandError(TIMEZONE_HINT) from None
+    except ConsentRequiredError:
+        raise CommandError(CONSENT_HINT) from None
     except NotFoundError:
         raise CommandError("plan, version, workout or activity not found") from None
     except ConcurrencyConflictError:

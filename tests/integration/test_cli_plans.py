@@ -205,6 +205,10 @@ def test_executions_show_planned_versus_done_and_links_change_them(tmp_path: Pat
     assert "duration " in linked  # 40 minutes against the planned duration
     code, output = cli.run("plan", "link", "00000000-0000-0000-0000-000000000999", workout_id)
     assert (code, output) == (2, "error: plan, version, workout or activity not found\n")
+    ok(cli, "consent", "revoke", "activities")
+    hint = "error: grant the ACTIVITIES consent first: coach consent grant activities\n"
+    for command in (("executions",), ("link", activity_id, "none"), ("adapt",)):
+        assert cli.run("plan", *command) == (2, hint), command  # activities are not read
 
 
 @pytest.mark.req("FR-ADP-001", "FR-ADP-004")
