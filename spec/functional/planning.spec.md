@@ -214,6 +214,33 @@ not prescribed is UNKNOWN.
 | REPLACED | a different sport or workout type was done instead on that day |
 | UNPLANNED | an activity without a planned workout (FR-ACT-011) |
 
+Execution rules 1.0.0 (P12, precision; `coach.planning.execution`, `coach plan executions
+[--week]`, `coach plan link ACTIVITY (WORKOUT|none)`):
+
+- **Read model.** Executions are computed on read from the ACTIVE plan version, the
+  athlete's ACTIVE activities (EFFECTIVE view, so corrections count) and the athlete's links;
+  only the links are stored ([../contracts/execution-link.schema.json](../contracts/execution-link.schema.json),
+  one per activity, a newer one replacing it, audited as `plan.execution_linked`). Athlete
+  feedback is the activity's own: its session RPE is shown (`subjective.rpe`), and soreness and
+  pain come from the activity and the daily check-in.
+- **Links.** A link names one of the athlete's activities and a non-REST workout of the ACTIVE
+  version in the same training week (Monday to Sunday), or none (the activity is UNPLANNED); a
+  workout may take several linked activities. A link to a workout no longer in the ACTIVE
+  version is ignored (the rules match the activity again).
+- **Matching.** Each planned workout, in its day's order, takes the earliest activity left
+  that day of a compatible sport (its sport; STRENGTH and TENNIS by type; a recovery session
+  without a sport takes OTHER). A workout still without one takes the earliest activity left
+  that day of another sport: REPLACED. REST workouts take nothing: an activity on a rest day is
+  UNPLANNED (AT-UNP-001); every activity left is UNPLANNED.
+- **Statuses.** COMPLETE when every measured ratio is within 80% to 120%, else PARTIAL; with
+  nothing measured the done workout is COMPLETE (its compliance says nothing was measured).
+  SKIPPED once the day after the training day has ended (a grace day for late uploads);
+  before that the workout is PLANNED (a status this precision adds for workouts not yet due).
+- **Compliance 1.0.0.** The duration ratio (elapsed time over planned time) and, when the
+  workout states a distance, the distance ratio; an unknown value is no ratio, never zero.
+  Intensity (time in the target range) and structure (planned steps completed) are not
+  measured: rules 1.0.0 prescribe RPE, which has no time in range; they stay UNKNOWN.
+
 ## 7. Adaptive loop (FR-ADP-001 to FR-ADP-004)
 
 Triggered after relevant completed workouts, a new recovery assessment, or the weekly

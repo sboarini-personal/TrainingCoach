@@ -4,7 +4,7 @@ Synthetic data only."""
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -17,6 +17,7 @@ from coach.domain.plans.plan import Generator, GeneratorKind
 from coach.infrastructure.datadir import ensure_layout
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from coach.infrastructure.sqlite.identities import SqliteIdentityDirectory
+from file_samples import fit_file, fit_session
 from plan_samples import MONDAY, content, easy_run, rest, week
 
 ENGINE = Generator(kind=GeneratorKind.ENGINE, engine_version="1.0.0")
@@ -106,7 +107,7 @@ def test_the_athlete_reviews_activates_and_rejects_plan_versions(tmp_path: Path)
     assert f"plan {plan_id} version 1: SUPERSEDED" in shown
     assert "version 2 (from version 1): ACTIVE" in ok(cli, "plan", "show")
     missing = cli.run("plan", "activate", plan_id, "9", "--revision", "5")[1]
-    assert missing == "error: plan or version not found\n"
+    assert missing == "error: plan, version, workout or activity not found\n"
 
 
 @pytest.mark.req("SAFE-MED-003", "FR-POL-001")
@@ -160,3 +161,38 @@ def test_plan_generate_follows_readiness_and_the_baseline_block(tmp_path: Path) 
     listed = ok(cli, "plan", "list")
     assert f"{plan_id}  goal {goal}  revision 4  active version 1" in listed
     assert "  version 2  SUPERSEDED" in listed  # replaced by the newer proposal
+
+
+@pytest.mark.req("FR-PLN-007", "FR-ACT-011")
+def test_executions_show_planned_versus_done_and_links_change_them(tmp_path: Path) -> None:
+    cli, _runtime, _scope, _goal = onboarded(tmp_path)
+    ok(cli, "consent", "grant", "activities")
+    plan_id = ok(cli, "plan", "generate").splitlines()[0].split()[1]
+    ok(cli, "plan", "activate", plan_id, "1", "--revision", "1")
+    run = tmp_path / "run.fit"
+    wednesday = datetime(2026, 10, 28, 21, 0, tzinfo=UTC)  # 18:00 in Buenos Aires
+    run.write_bytes(fit_file([fit_session(start=wednesday, seconds=2400)]))
+    ok(cli, "import", str(run))
+    cli.now = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
+    shown = ok(cli, "plan", "executions")
+    assert shown.startswith("week of 2026-10-26: ")
+    activity_id = next(
+        line.split()[1] for line in shown.splitlines() if line.startswith("    activity ")
+    )
+    assert (
+        ok(cli, "plan", "link", activity_id, "none")
+        == f"activity {activity_id} linked: unplanned\n"
+    )
+    shown = ok(cli, "plan", "executions")
+    assert "2026-10-28 Wed  UNPLANNED  an activity not in the plan (linked by you)" in shown
+    lines = shown.splitlines()
+    index = next(number for number, line in enumerate(lines) if "ENDURANCE RUNNING" in line)
+    workout_id = lines[index + 1].split()[1]
+    ok(cli, "plan", "link", activity_id, workout_id)
+    linked = next(
+        line for line in ok(cli, "plan", "executions").splitlines() if "linked by you" in line
+    )
+    assert "ENDURANCE RUNNING" in linked
+    assert "duration " in linked  # 40 minutes against the planned duration
+    code, output = cli.run("plan", "link", "00000000-0000-0000-0000-000000000999", workout_id)
+    assert (code, output) == (2, "error: plan, version, workout or activity not found\n")

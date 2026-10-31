@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:execution-link:1",
+  "title": "ExecutionLink",
+  "description": "The athlete's manual link of a completed activity to a planned workout, or to none (the activity is UNPLANNED); one per activity, replaced by a newer link (P12). Executions themselves are a read model computed by execution rules 1.0.0; a link to a workout no longer in the ACTIVE plan is ignored. version is the storage revision. Owner spec: spec/functional/planning.spec.md section 6.",
+  "type": "object",
+  "required": ["schemaVersion", "athleteId", "activityId", "plannedWorkoutId", "linkedAt", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "activityId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "plannedWorkoutId": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "linkedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "version": { "type": "integer", "minimum": 1 }
+  }
+}

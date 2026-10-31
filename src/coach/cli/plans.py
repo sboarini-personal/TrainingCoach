@@ -5,7 +5,7 @@ shown as stored; this module only formats it."""
 from __future__ import annotations
 
 import argparse
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import TextIO
 from uuid import UUID
 
@@ -16,6 +16,7 @@ from coach.application.policy_gate import PolicyDeniedError
 from coach.cli.activities import TIMEZONE_HINT, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
+from coach.domain.common.time import DateRange
 from coach.domain.onboarding.readiness import LABELS
 from coach.domain.plans.plan import PlanVersion
 from coach.domain.plans.workout import PlannedWorkout
@@ -46,6 +47,13 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     reject = plan.add_parser("reject", help="reject a PROPOSED version")
     reject.add_argument("plan_id")
     reject.add_argument("version", type=int)
+    done = plan.add_parser("executions", help="planned versus done, a week at a time")
+    done.add_argument(
+        "--week", type=date.fromisoformat, help="any date of the week; default: this week"
+    )
+    link = plan.add_parser("link", help="link an activity to a planned workout")
+    link.add_argument("activity_id")
+    link.add_argument("workout_id", help="a workout of the ACTIVE plan, or none (unplanned)")
 
 
 def _minutes(seconds: float | None) -> str:
@@ -107,6 +115,14 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                             file=out,
                         )
                 return 0
+            case "executions":
+                return _executions(runtime, scope, args.week, out)
+            case "link":
+                workout = None if args.workout_id == "none" else UUID(args.workout_id)
+                linked = runtime.executions.link(scope, UUID(args.activity_id), workout)
+                target = "unplanned" if linked.planned_workout_id is None else str(workout)
+                print(f"activity {linked.activity_id} linked: {target}", file=out)
+                return 0
             case "generate":
                 made = runtime.generation.generate(
                     scope, None if args.goal is None else UUID(args.goal)
@@ -145,7 +161,7 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
     except TimezoneRequiredError:
         raise CommandError(TIMEZONE_HINT) from None
     except NotFoundError:
-        raise CommandError("plan or version not found") from None
+        raise CommandError("plan, version, workout or activity not found") from None
     except ConcurrencyConflictError:
         raise CommandError("the plan changed since you reviewed it; run plan list again") from None
     except (DomainValidationError, InvalidTransitionError, ValueError) as error:
@@ -163,6 +179,41 @@ def denial(denied: PolicyDeniedError) -> str:
         if text not in shown:
             shown.append(text)
     return "; ".join(shown)
+
+
+def _executions(runtime: Runtime, scope: OwnerScope, week: date | None, out: TextIO) -> int:
+    day = runtime.recovery.today(scope) if week is None else week
+    monday = day - timedelta(days=day.isoweekday() - 1)
+    found = runtime.executions.executions(scope, DateRange(monday, monday + timedelta(days=6)))
+    active = runtime.plans.active(scope)
+    print(f"week of {monday}: {len(found)} executions", file=out)
+    for item in found:
+        workout = (
+            None
+            if item.planned_workout_id is None or active is None
+            else active.content.workout(item.planned_workout_id)
+        )
+        what = "an activity not in the plan" if workout is None else _workout(workout)
+        ratios = [
+            f"{name} {round(value * 100)}%"
+            for name, value in (
+                ("duration", item.compliance.duration_ratio),
+                ("distance", item.compliance.distance_ratio),
+            )
+            if value is not None
+        ]
+        rpe = [] if item.session_rpe is None else [f"RPE {item.session_rpe:g}"]
+        extra = ", ".join(ratios + rpe + (["linked by you"] if item.manual else []))
+        print(
+            f"{item.training_day} {item.training_day:%a}  {item.status.value:<9}  {what}"
+            + (f" ({extra})" if extra else ""),
+            file=out,
+        )
+        if item.planned_workout_id is not None:
+            print(f"    workout {item.planned_workout_id}", file=out)
+        for activity in item.completed_activity_ids:
+            print(f"    activity {activity}", file=out)
+    return 0
 
 
 def _selected(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace) -> PlanVersion | None:

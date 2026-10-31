@@ -30,6 +30,7 @@ from coach.application.contracts import (
     CONSENT_LEDGER_CODEC,
     CREDENTIAL_RECORD_CODEC,
     DATA_QUALITY_ISSUE_CODEC,
+    EXECUTION_LINK_CODEC,
     GOAL_CODEC,
     INSIGHT_CODEC,
     INTEGRATION_STATUS_CODEC,
@@ -50,6 +51,7 @@ from coach.application.contracts import (
 from coach.application.credentials import CredentialKind, CredentialService
 from coach.application.derived_metrics import DerivedMetricService
 from coach.application.errors import ApplicationError, NotFoundError
+from coach.application.executions import ExecutionService
 from coach.application.ids import new_id
 from coach.application.ingestion import IngestionService
 from coach.application.insights import InsightService
@@ -172,6 +174,7 @@ class Runtime:
     inputs: AthleteInputsService
     plans: PlanService
     generation: PlanGenerationService
+    executions: ExecutionService
     reports: ReportService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
@@ -436,6 +439,15 @@ def build_runtime(
         ids=new_id,
         batch=database.batch,
     )
+    executions = ExecutionService(
+        plans,
+        SqliteAggregateRepository(database, EXECUTION_LINK_CODEC),
+        activities=analytics.activities,
+        activity=lambda scope, activity_id: activities.effective(scope, activity_id).activity,
+        today=recovery.today,
+        audit=audit,
+        clock=clock,
+    )
     generation = PlanGenerationService(
         inputs,
         plans,
@@ -529,6 +541,7 @@ def build_runtime(
         inputs=inputs,
         plans=plans,
         generation=generation,
+        executions=executions,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

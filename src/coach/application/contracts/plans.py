@@ -25,6 +25,7 @@ from coach.application.contracts.strength import (
 from coach.domain.athlete.resources import TennisSessionType
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.sport import Sport
+from coach.domain.plans.execution import ExecutionLink
 from coach.domain.plans.plan import (
     EstimatedLoad,
     Generator,
@@ -438,6 +439,29 @@ def plan_version_from_contract(document: Document) -> PlanVersion:
         content=content,
         content_hash=document["contentHash"],
         version=document.get("revision", 1),
+    )
+
+
+def execution_link_to_contract(link: ExecutionLink) -> Json:
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "athleteId": str(link.athlete_id),
+        "activityId": str(link.activity_id),
+        "plannedWorkoutId": None
+        if link.planned_workout_id is None
+        else str(link.planned_workout_id),
+        "linkedAt": instant(link.linked_at),
+        "version": link.version,
+    }
+
+
+def execution_link_from_contract(document: Document) -> ExecutionLink:
+    return ExecutionLink(
+        athlete_id=UUID(document["athleteId"]),
+        activity_id=UUID(document["activityId"]),
+        planned_workout_id=parse_optional_uuid(document["plannedWorkoutId"]),
+        linked_at=parse_instant(document["linkedAt"]),
+        version=document["version"],
     )
 
 
