@@ -34,7 +34,11 @@ from coach.domain.common.quality import UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
 from coach.domain.consent.ledger import ConsentType
+from coach.domain.goals.feasibility import FeasibilityAssessment
 from coach.domain.insights import Insight, Pattern
+from coach.domain.plans.adaptation import AdaptationDecision, Decision
+from coach.domain.plans.execution import COMPLIANCE_BAND, ExecutionStatus, WorkoutExecution
+from coach.domain.plans.plan import PlanVersion
 from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryStatus
 from coach.domain.reports import (
     ReportData,
@@ -142,6 +146,50 @@ def _sum(label: str, values: Sequence[DerivedMetricValue], unit: str) -> ReportI
     )
 
 
+def _clock_time(seconds: float) -> str:
+    whole = round(seconds)
+    hours, rest = divmod(whole, 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def _execution_ref(item: WorkoutExecution) -> tuple[EvidenceRef, ...]:
+    if item.planned_workout_id is None:
+        return ()
+    return (
+        EvidenceRef(
+            EvidenceKind.WORKOUT_EXECUTION, item.planned_workout_id, note=item.status.value
+        ),
+    )
+
+
+def _unavailable(
+    names: tuple[str, str, str], reason: Unavailable
+) -> tuple[Section, Section, Section]:
+    first, second, third = names
+    return (
+        Section.not_available(first, reason),
+        Section.not_available(second, reason),
+        Section.not_available(third, reason),
+    )
+
+
+def _ratios(item: WorkoutExecution, evidence: tuple[EvidenceRef, ...]) -> list[ReportItem]:
+    return [
+        ReportItem(
+            label=f"{name} done of planned",
+            value=round(ratio * 100, 1),
+            unit="%",
+            evidence=evidence,
+        )
+        for name, ratio in (
+            ("duration", item.compliance.duration_ratio),
+            ("distance", item.compliance.distance_ratio),
+        )
+        if ratio is not None
+    ]
+
+
 class ReportService:
     def __init__(
         self,
@@ -154,7 +202,15 @@ class ReportService:
         consents: ConsentGate,
         today: Callable[[OwnerScope], date],
         clock: Clock,
+        executions: Callable[[OwnerScope, DateRange], Sequence[WorkoutExecution]] | None = None,
+        active_plan: Callable[[OwnerScope], PlanVersion | None] | None = None,
+        decisions: Callable[[OwnerScope], Sequence[AdaptationDecision]] | None = None,
+        feasibility: Callable[[OwnerScope], FeasibilityAssessment | None] | None = None,
     ) -> None:
+        self._executions = executions
+        self._active_plan = active_plan
+        self._decisions = decisions
+        self._goal_feasibility = feasibility
         self._activities = activities
         self._analytics = analytics
         self._assessments = assessments
@@ -199,14 +255,15 @@ class ReportService:
             if item.period.start <= day <= item.period.end
         ]
         recovery = [_status(item) for item in self._assessments.history(scope, until=day, days=1)]
+        planned, deviations, impact = self._plan_sections(scope, view)
         sections = (
             Section("Summary", tuple(summary)),
-            Section.not_available("Planned vs Actual", Unavailable.NEEDS_PLANS),
+            planned,
             Section.not_available("What Went Well", Unavailable.NARRATIVE),
-            Section.not_available("Deviations", Unavailable.NEEDS_PLANS),
+            deviations,
             self._section("Insights", insights),
             self._section("Recovery", recovery),
-            Section.not_available("Plan Impact", Unavailable.NEEDS_PLANS),
+            impact,
         )
         return ReportData(
             kind=ReportKind.POST_ACTIVITY,
@@ -253,13 +310,15 @@ class ReportService:
                 )
             )
         sections = (
-            Section.not_available("Adherence", Unavailable.NEEDS_PLANS),
+            self._adherence(scope, period)
+            if activity_data
+            else Section.not_available("Adherence", Unavailable.NO_CONSENT),
             *measured,
             self._section("Recovery", recovery),
             self._section("Trends", trends),
             Section("Alerts", tuple(alerts)),
-            Section.not_available("Progression toward the A goal", Unavailable.NEEDS_GOAL_METRICS),
-            Section.not_available("Changes for the following week", Unavailable.NEEDS_PLANS),
+            self._progression(scope),
+            self._changes(scope, period),
         )
         return ReportData(
             kind=ReportKind.WEEKLY,
@@ -269,6 +328,227 @@ class ReportService:
             sections=sections,
             generated_at=self._clock(),
         )
+
+    # ------------------------------------------------------------------ plans (P12)
+
+    def _plan_sections(self, scope: OwnerScope, view: Activity) -> tuple[Section, Section, Section]:
+        """Planned vs Actual, Deviations and Plan Impact of one activity (P12)."""
+        names = ("Planned vs Actual", "Deviations", "Plan Impact")
+        active = None if self._active_plan is None else self._active_plan(scope)
+        if active is None or self._executions is None:
+            return _unavailable(names, Unavailable.NEEDS_PLANS)
+        day = view.training_day
+        found = next(
+            (
+                item
+                for item in self._executions(scope, DateRange(day, day))
+                if view.activity_id in item.completed_activity_ids
+            ),
+            None,
+        )
+        if found is None:
+            return _unavailable(names, Unavailable.NO_DATA)
+        evidence = (EvidenceRef(EvidenceKind.ACTIVITY, view.activity_id), *_execution_ref(found))
+        workout = (
+            None
+            if found.planned_workout_id is None
+            else active.content.workout(found.planned_workout_id)
+        )
+        planned = [ReportItem(label="status", value=found.status.value)]
+        if workout is not None:
+            planned.append(
+                ReportItem(label="planned", value=f"{workout.type.value}: {workout.what}")
+            )
+        planned += _ratios(found, evidence)
+        low, high = COMPLIANCE_BAND
+        deviations = [
+            ReportItem(
+                label=f"{item.label} outside {round(low * 100)} % to {round(high * 100)} %",
+                value=item.value,
+                unit=item.unit,
+                evidence=item.evidence,
+            )
+            for item in _ratios(found, evidence)
+            if isinstance(item.value, float) and not low * 100 <= item.value <= high * 100
+        ]
+        if found.status is ExecutionStatus.REPLACED:
+            deviations.append(
+                ReportItem(label="replaced", value="another sport or type than planned that day")
+            )
+        impact = [
+            ReportItem(
+                label=f"adaptation {item.training_day}",
+                value=f"{item.decision.value}: {item.interpretation}"
+                + (
+                    ""
+                    if item.proposed_version is None
+                    else f" (version {item.proposed_version} proposed)"
+                ),
+            )
+            for item in ([] if self._decisions is None else self._decisions(scope))
+            if any(
+                ref.kind is EvidenceKind.ACTIVITY and ref.ref_id == view.activity_id
+                for ref in item.evidence
+            )
+        ]
+        return (
+            Section("Planned vs Actual", tuple(planned)),
+            self._section("Deviations", deviations),
+            self._section("Plan Impact", impact),
+        )
+
+    def _adherence(self, scope: OwnerScope, period: DateRange) -> Section:
+        """The week's executions by status (planning spec 6)."""
+        active = None if self._active_plan is None else self._active_plan(scope)
+        if active is None or self._executions is None:
+            return Section.not_available("Adherence", Unavailable.NEEDS_PLANS)
+        found = self._executions(scope, period)
+        if not found:
+            return Section.not_available("Adherence", Unavailable.NO_DATA)
+        plan = EvidenceRef(EvidenceKind.PLAN_VERSION, active.entity_id)
+        due = [
+            item
+            for item in found
+            if item.planned_workout_id is not None and item.status is not ExecutionStatus.PLANNED
+        ]
+
+        def refs(items: Sequence[WorkoutExecution]) -> tuple[EvidenceRef, ...]:
+            return (plan, *(ref for item in items for ref in _execution_ref(item)))
+
+        items = [
+            ReportItem(label="planned workouts due", value=float(len(due)), evidence=refs(due))
+        ]
+        for status in (
+            ExecutionStatus.COMPLETE,
+            ExecutionStatus.PARTIAL,
+            ExecutionStatus.SKIPPED,
+            ExecutionStatus.REPLACED,
+        ):
+            chosen = [item for item in due if item.status is status]
+            items.append(
+                ReportItem(
+                    label=status.value.lower(), value=float(len(chosen)), evidence=refs(chosen)
+                )
+            )
+        unplanned = [item for item in found if item.status is ExecutionStatus.UNPLANNED]
+        items.append(
+            ReportItem(
+                label="unplanned activities",
+                value=float(len(unplanned)),
+                evidence=(
+                    plan,
+                    *(
+                        EvidenceRef(EvidenceKind.ACTIVITY, ref)
+                        for item in unplanned
+                        for ref in item.completed_activity_ids
+                    ),
+                ),
+            )
+        )
+        complete = sum(1 for item in due if item.status is ExecutionStatus.COMPLETE)
+        items.append(
+            ReportItem(
+                label="done as planned",
+                value=round(100 * complete / len(due), 1) if due else None,
+                unit="%",
+                evidence=refs(due),
+            )
+        )
+        return Section("Adherence", tuple(items))
+
+    def _changes(self, scope: OwnerScope, period: DateRange) -> Section:
+        """The adaptations decided in the week that changed the plan (planning spec 7)."""
+        if self._decisions is None:
+            return Section.not_available("Changes for the following week", Unavailable.NEEDS_PLANS)
+        items = [
+            ReportItem(
+                label=f"adaptation {item.training_day}",
+                value=f"{item.decision.value}: {item.interpretation}"
+                + (
+                    ""
+                    if item.proposed_version is None
+                    else f" (version {item.proposed_version} proposed)"
+                ),
+            )
+            for item in self._decisions(scope)
+            if period.start <= item.training_day <= period.end
+            and item.decision is not Decision.MAINTAIN
+        ]
+        return self._section("Changes for the following week", items)
+
+    def _feasibility(self, scope: OwnerScope) -> FeasibilityAssessment | None:
+        return None if self._goal_feasibility is None else self._goal_feasibility(scope)
+
+    def _progression(self, scope: OwnerScope) -> Section:
+        """Progression toward the A goal: feasibility rules 1.0.0 (goals spec 4)."""
+        name = "Progression toward the A goal"
+        found = self._feasibility(scope)
+        if found is None:
+            return Section.not_available(name, Unavailable.NEEDS_GOAL_METRICS)
+        items = [
+            ReportItem(label="classification", value=found.classification.value),
+            ReportItem(label="assessed on", value=found.assessed_on.isoformat()),
+        ]
+        if found.desired_seconds is not None:
+            items.append(ReportItem(label="target time", value=_clock_time(found.desired_seconds)))
+        current = found.current
+        if current is not None:
+            items.append(
+                ReportItem(
+                    label="current estimate for the goal distance",
+                    value=round(current.seconds, 1),
+                    unit="s",
+                    evidence=(current.evidence,),
+                    confidence=current.confidence,
+                )
+            )
+            if found.required_percent_per_week is not None and math.isfinite(
+                found.required_percent_per_week
+            ):
+                items.append(
+                    ReportItem(
+                        label="progression needed per week",
+                        value=round(found.required_percent_per_week, 2),
+                        unit="%",
+                        evidence=(current.evidence,),
+                        confidence=found.confidence,
+                    )
+                )
+        items += [ReportItem(label="reason", value=reason.value) for reason in found.reasons]
+        return Section(name, tuple(items))
+
+    def _forecast(self, scope: OwnerScope) -> Section:
+        """A cautious forecast: the realistic and minimum goals, never a promise (FR-GOL-005)."""
+        name = "Cautious forecast"
+        found = self._feasibility(scope)
+        if found is None or found.current is None or found.realistic_seconds is None:
+            return Section.not_available(name, Unavailable.NEEDS_GOAL_METRICS)
+        evidence = (found.current.evidence,)
+        items = [
+            ReportItem(
+                label="realistic goal",
+                value=round(found.realistic_seconds, 1),
+                unit="s",
+                evidence=evidence,
+                confidence=found.confidence,
+            ),
+            ReportItem(
+                label="minimum satisfactory goal",
+                value=round(found.minimum_seconds or found.current.seconds, 1),
+                unit="s",
+                evidence=evidence,
+                confidence=found.confidence,
+            ),
+            ReportItem(label="classification", value=found.classification.value),
+            ReportItem(
+                label="assumption",
+                value=(
+                    "an estimate from your data (Riegel 1981 from your declared race, improved at "
+                    "the LIKELY rate), never a guarantee of the outcome"
+                ),
+            ),
+        ]
+        return Section(name, tuple(items))
 
     # ------------------------------------------------------------------ monthly
 
@@ -324,7 +604,7 @@ class ReportService:
             self._section("Recovery", recovery),
             strength,
             self._section("Risks", risks),
-            Section.not_available("Cautious forecast", Unavailable.NEEDS_GOAL_METRICS),
+            self._forecast(scope),
             Section.not_available("Recommendations", Unavailable.NARRATIVE),
         )
         return ReportData(

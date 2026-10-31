@@ -6,6 +6,7 @@ from __future__ import annotations
 import itertools
 import math
 import re
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
@@ -15,8 +16,10 @@ import pytest
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import Confidence, UncertaintyReason
+from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
 from coach.domain.insights import Association, Insight, Pattern, Relationship
+from coach.domain.plans.execution import ExecutionStatus
 from coach.domain.recovery.assessment import Reason, RecoveryAssessment, RecoveryStatus
 from coach.domain.recovery.checkin import DailyCheckIn
 from coach.domain.strength.vocabulary import InterferenceLevel
@@ -32,7 +35,7 @@ from coach.metrics.derived import (
 from coach.metrics.trends import Point, Trend
 from coach.planning import patterns
 from coach.planning.interference import InterferenceAssessment, Rule
-from coach.planning.patterns import SleepPair, WeekLoad, ZoneSession
+from coach.planning.patterns import PlannedSession, SleepPair, WeekLoad, ZoneSession
 from samples import ATHLETE, NOW
 
 IDS = itertools.count(5000)
@@ -429,3 +432,129 @@ def test_percent_metrics_need_a_change_of_one_point_and_an_exact_fit_is_named() 
     finding = patterns.worsening(drift, trend=exact, **kwargs)
     assert finding is not None
     assert finding.observation.endswith("least-squares trend of 6 sessions, an exact linear fit.")
+
+
+# --------------------------------------------------------------------------- plans (P12)
+
+PLAN = EvidenceRef(EvidenceKind.PLAN_VERSION, UUID(int=0x501))
+PLAN_PERIOD = DateRange(UNTIL - timedelta(days=13), UNTIL)
+
+
+def session(
+    offset: int,
+    status: ExecutionStatus,
+    ratio: float | None = None,
+    *,
+    rpe: float | None = None,
+    target: float | None = None,
+) -> PlannedSession:
+    done = status not in (ExecutionStatus.SKIPPED, ExecutionStatus.PLANNED)
+    return PlannedSession(
+        workout_id=UUID(int=0x700 + offset),
+        day=UNTIL - timedelta(days=offset),
+        status=status,
+        duration_ratio=ratio,
+        session_rpe=rpe,
+        target_rpe=target,
+        activity_ids=(UUID(int=0x800 + offset),) if done else (),
+    )
+
+
+@pytest.mark.req("FR-INS-002", "FR-PLN-007")
+def test_adherence_counts_what_was_not_done_as_planned() -> None:
+    complete = [session(offset, ExecutionStatus.COMPLETE, 1.0) for offset in (1, 3, 5, 7)]
+    missed = [
+        session(2, ExecutionStatus.SKIPPED),
+        session(4, ExecutionStatus.PARTIAL, 0.5),
+        session(6, ExecutionStatus.REPLACED),
+    ]
+    upcoming = [session(-1, ExecutionStatus.PLANNED)]  # not due: not counted
+    found = patterns.adherence(complete + missed + upcoming, PLAN_PERIOD, PLAN)
+    assert found is not None
+    assert found.kind is Pattern.ADHERENCE
+    assert found.observation == (
+        "3 of the 7 planned workouts due in the 14 days to 2026-10-25 were not done as planned "
+        "(1 skipped, 1 partial, 1 replaced): 43 %."
+    )
+    assert found.evidence[0] == PLAN
+    assert (
+        EvidenceRef(EvidenceKind.WORKOUT_EXECUTION, UUID(int=0x702), note="SKIPPED")
+        in found.evidence
+    )
+    assert EvidenceRef(EvidenceKind.ACTIVITY, UUID(int=0x804)) in found.evidence
+    few = complete * 2 + missed  # 3 of 11: under 30 %
+    assert patterns.adherence(few, PLAN_PERIOD, PLAN) is None
+    assert patterns.adherence(complete + missed[:2], PLAN_PERIOD, PLAN) is None  # only 2
+
+
+@pytest.mark.req("FR-INS-002", "FR-PLN-007")
+def test_planned_vs_actual_finds_a_systematic_deviation() -> None:
+    short = [
+        session(offset, ExecutionStatus.PARTIAL, ratio)
+        for offset, ratio in ((1, 0.6), (3, 0.7), (5, 0.75))
+    ]
+    found = patterns.planned_vs_actual(short, PLAN_PERIOD, PLAN)
+    assert found is not None
+    assert found.observation == (
+        "In the 14 days to 2026-10-25, the duration done averaged 68 % of the plan over 3 "
+        "workouts (from 60 % to 75 %)."
+    )
+    harder = [
+        session(offset, ExecutionStatus.COMPLETE, 1.0, rpe=6, target=4) for offset in (1, 3, 5)
+    ]
+    effort = patterns.planned_vs_actual(harder, PLAN_PERIOD, PLAN)
+    assert effort is not None
+    assert (
+        "the session RPE averaged +2.0 above the highest target over 3 workouts"
+        in effort.observation
+    )
+    balanced = [
+        session(offset, ExecutionStatus.COMPLETE, 0.95, rpe=4, target=4) for offset in (1, 3, 5)
+    ]
+    assert patterns.planned_vs_actual(balanced, PLAN_PERIOD, PLAN) is None
+    assert patterns.planned_vs_actual(short[:2], PLAN_PERIOD, PLAN) is None  # 2 workouts
+
+
+@pytest.mark.req("FR-INS-002", "FR-GOL-003")
+@pytest.mark.parametrize(
+    ("relative", "found"),
+    [(1.0, True), (-3.0, True), (2.5, False), (-6.0, False)],  # flat, slight dip; better; worse
+)
+def test_plateau_is_a_goal_metric_that_stopped_improving(relative: float, found: bool) -> None:
+    watch = patterns.GOAL_METRICS[Sport.RUNNING]  # run.efficiency_hr, higher is better
+    trend = Trend(
+        sessions=8,
+        slope_per_day=0.0,
+        change=relative / 100,
+        relative_change_percent=relative,
+        t_value=1.0,
+        confidence=Confidence.MEDIUM,
+    )
+    period = DateRange(UNTIL - timedelta(days=55), UNTIL)
+    finding = patterns.plateau(
+        watch,
+        label="RUNNING ROAD FLAT",
+        points=points(8),
+        trend=trend,
+        unit="m/beat",
+        period=period,
+        calculation_version="1.0.0",
+    )
+    assert (finding is not None) == found
+    if finding is not None:
+        assert finding.kind is Pattern.PLATEAU
+        assert "no improvement of 2 % or more" in finding.observation
+    few = replace(trend, sessions=5)
+    assert (
+        patterns.plateau(
+            watch,
+            label="x",
+            points=points(5),
+            trend=few,
+            unit="m/beat",
+            period=period,
+            calculation_version="1.0.0",
+        )
+        is None
+    )
+    assert Sport.CYCLING not in patterns.GOAL_METRICS  # no goal metric for cycling in 1.1.0

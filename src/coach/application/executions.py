@@ -21,10 +21,12 @@ from coach.application.plans import PlanService
 from coach.application.ports import AuditLog, Clock, OwnedRepository
 from coach.domain.activity.activity import Activity
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.time import DateRange
 from coach.domain.plans.execution import DoneActivity, ExecutionLink, WorkoutExecution
 from coach.domain.plans.workout import WorkoutType
 from coach.planning.execution import executions
+from coach.planning.patterns import PlannedSession
 
 DISTANCE_FIELD = "distance.meters"
 
@@ -87,6 +89,32 @@ class ExecutionService:
         links = {item.activity_id: item for item in self._links.list_all(scope)}
         found = executions(planned, views, links, today=self._today(scope))
         return found, {item.activity_id: item for item in views}
+
+    def planned_sessions(
+        self, scope: OwnerScope, period: DateRange
+    ) -> tuple[list[PlannedSession], EvidenceRef] | None:
+        """The executions of the ACTIVE plan's workouts in the period as the pattern rules
+        read them, and the plan version as their evidence; ``None`` without a plan."""
+        active = self._plans.active(scope)
+        if active is None:
+            return None
+        found = []
+        for item in self.executions(scope, period):
+            if item.planned_workout_id is None:
+                continue
+            workout = active.content.workout(item.planned_workout_id)
+            found.append(
+                PlannedSession(
+                    workout_id=item.planned_workout_id,
+                    day=item.training_day,
+                    status=item.status,
+                    duration_ratio=item.compliance.duration_ratio,
+                    session_rpe=item.session_rpe,
+                    target_rpe=None if workout is None else workout.max_rpe,
+                    activity_ids=item.completed_activity_ids,
+                )
+            )
+        return found, EvidenceRef(EvidenceKind.PLAN_VERSION, active.entity_id)
 
     def link(self, scope: OwnerScope, activity_id: UUID, workout_id: UUID | None) -> ExecutionLink:
         """The athlete links an activity to a planned workout, or to none (UNPLANNED)."""

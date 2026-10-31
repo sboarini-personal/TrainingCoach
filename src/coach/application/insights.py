@@ -9,7 +9,7 @@ until the AI coach (P13). A finding already stored is not stored again.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from enum import StrEnum
@@ -26,6 +26,7 @@ from coach.domain.activity.fields import StrokeType
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import UncertaintyReason
+from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.insights import Insight, Pattern, Relationship, readable
@@ -34,7 +35,7 @@ from coach.metrics.catalog import CATALOG, SRPE_LOAD_TOTAL
 from coach.metrics.derived import MetricSubject, SubjectKind
 from coach.metrics.subjects import week_key
 from coach.planning import patterns
-from coach.planning.patterns import Finding, SleepPair, WeekLoad
+from coach.planning.patterns import Finding, PlannedSession, SleepPair, WeekLoad
 
 STROKES: Final = (
     StrokeType.FREESTYLE,
@@ -53,13 +54,19 @@ ACTIVITY_PATTERNS: Final = (
     Pattern.TENNIS_INTERFERENCE,
     Pattern.EXCESSIVE_INTENSITY,
     Pattern.INSUFFICIENT_EASY,
+    Pattern.ADHERENCE,
+    Pattern.PLANNED_VS_ACTUAL,
+    Pattern.PLATEAU,
 )
+PlanSessions = Callable[
+    [OwnerScope, DateRange], tuple[Sequence[PlannedSession], EvidenceRef] | None
+]
 
 
 class NotEvaluated(StrEnum):
     NO_CONSENT = "NO_CONSENT"
-    NEEDS_PLANS = "NEEDS_PLANS"  # workout executions and plans arrive in P12
-    NEEDS_GOAL_METRICS = "NEEDS_GOAL_METRICS"  # goal-relevant metrics arrive in P12
+    NEEDS_PLANS = "NEEDS_PLANS"  # no ACTIVE plan: no executions to read
+    NEEDS_GOAL_METRICS = "NEEDS_GOAL_METRICS"  # no primary goal, or no goal metric for its sport
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +89,11 @@ class InsightService:
         events: EventSink,
         clock: Clock,
         ids: IdFactory,
+        plan_sessions: PlanSessions | None = None,
+        goal_sport: Callable[[OwnerScope], Sport | None] | None = None,
     ) -> None:
+        self._plan_sessions = plan_sessions
+        self._goal_sport = goal_sport
         self._analytics = analytics
         self._recovery = recovery
         self._assessments = assessments
@@ -96,11 +107,7 @@ class InsightService:
         """Run pattern rules 1.0.0 up to today (the athlete's timezone)."""
         today = self._recovery.today(scope)
         granted = self._consents.granted(scope)
-        skipped: list[tuple[Pattern, NotEvaluated]] = [
-            (Pattern.PLATEAU, NotEvaluated.NEEDS_GOAL_METRICS),
-            (Pattern.ADHERENCE, NotEvaluated.NEEDS_PLANS),
-            (Pattern.PLANNED_VS_ACTUAL, NotEvaluated.NEEDS_PLANS),
-        ]
+        skipped: list[tuple[Pattern, NotEvaluated]] = []
         found: list[Finding] = []
         if ConsentType.ACTIVITIES in granted:
             found += self._load(scope, today)
@@ -108,6 +115,9 @@ class InsightService:
             found += self._interference(scope, today)
             period = DateRange(today - timedelta(days=patterns.INTENSITY_DAYS - 1), today)
             found += patterns.intensity(self._analytics.zone_sessions(scope, period), period)
+            plan_found, plan_skipped = self._plans(scope, today)
+            found += plan_found
+            skipped += plan_skipped
         else:
             skipped += [(kind, NotEvaluated.NO_CONSENT) for kind in ACTIVITY_PATTERNS]
         history = self._assessments.history(scope, until=today, days=patterns.RECOVERY_DAYS)
@@ -189,6 +199,55 @@ class InsightService:
                     if finding is not None:
                         found.append(finding)
         return found
+
+    def _plans(
+        self, scope: OwnerScope, today: date
+    ) -> tuple[list[Finding], list[tuple[Pattern, NotEvaluated]]]:
+        """ADHERENCE and PLANNED_VS_ACTUAL from the ACTIVE plan's executions, PLATEAU from
+        the goal sport's goal metric (pattern rules 1.1.0)."""
+        found: list[Finding] = []
+        skipped: list[tuple[Pattern, NotEvaluated]] = []
+        period = DateRange(today - timedelta(days=patterns.PLAN_DAYS - 1), today)
+        read = None if self._plan_sessions is None else self._plan_sessions(scope, period)
+        if read is None:
+            skipped += [
+                (Pattern.ADHERENCE, NotEvaluated.NEEDS_PLANS),
+                (Pattern.PLANNED_VS_ACTUAL, NotEvaluated.NEEDS_PLANS),
+            ]
+        else:
+            sessions, plan = read
+            for finding in (
+                patterns.adherence(sessions, period, plan),
+                patterns.planned_vs_actual(sessions, period, plan),
+            ):
+                if finding is not None:
+                    found.append(finding)
+        sport = None if self._goal_sport is None else self._goal_sport(scope)
+        watch = None if sport is None else patterns.GOAL_METRICS.get(sport)
+        if watch is None:
+            skipped.append((Pattern.PLATEAU, NotEvaluated.NEEDS_GOAL_METRICS))
+            return found, skipped
+        definition = CATALOG.get(watch.metric_id)
+        strokes: tuple[StrokeType | None, ...] = (
+            (None,) if definition.dimension is None else STROKES
+        )
+        for stroke in strokes:
+            report = self._analytics.trend(
+                scope, watch.metric_id, until=today, weeks=patterns.TREND_WEEKS, stroke=stroke
+            )
+            for group in report.groups:
+                finding = patterns.plateau(
+                    watch,
+                    label=group.label,
+                    points=group.points,
+                    trend=group.trend,
+                    unit=report.unit,
+                    period=report.period,
+                    calculation_version=definition.calculation_version,
+                )
+                if finding is not None:
+                    found.append(finding)
+        return found, skipped
 
     def _interference(self, scope: OwnerScope, today: date) -> list[Finding]:
         try:

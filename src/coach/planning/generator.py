@@ -54,6 +54,7 @@ from coach.domain.plans.workout import (
     TennisSession,
     WorkoutType,
 )
+from coach.domain.recovery.pain import PainRestriction
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.equipment import equipment_available
 from coach.domain.strength.exercise import Exercise, ExerciseCatalogue
@@ -193,6 +194,7 @@ class GenerationInputs:
     safety_hold: bool = False
     recovery_block: bool = False
     recovery_block_until: date | None = None  # with the block on, unknown: every day blocked
+    pain: PainRestriction = field(default_factory=PainRestriction)  # recent pain (P12)
     catalogue: ExerciseCatalogue = CATALOGUE
 
 
@@ -519,7 +521,7 @@ def _exercises(
         for constraint in constraints
         for restriction in constraint.restrictions
     )
-    protected = _regions(constraints)
+    protected = _regions(constraints) | inputs.pain.applies(day)
     cap = _rpe_cap(inputs.health, day, Sport.STRENGTH)
     rpe = _STRENGTH_RPE.get(phase, 6.0)
     if _blocked(inputs, day):

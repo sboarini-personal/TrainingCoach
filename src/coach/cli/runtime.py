@@ -79,6 +79,7 @@ from coach.domain.athlete.settings import AnalysisSettings
 from coach.domain.coaching.state import Condition
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange, parse_timezone
+from coach.domain.goals.feasibility import FeasibilityAssessment
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.onboarding.readiness import (
     BASELINE_DAYS,
@@ -211,6 +212,20 @@ def garmin_providers(
         return adapter
 
     return build
+
+
+def goal_feasibility(
+    inputs: AthleteInputsService,
+) -> Callable[[OwnerScope], FeasibilityAssessment | None]:
+    """The primary goal's feasibility now; none without a goal or a timezone."""
+
+    def assess(scope: OwnerScope) -> FeasibilityAssessment | None:
+        try:
+            return inputs.feasibility(scope)
+        except (NotFoundError, TimezoneRequiredError):
+            return None
+
+    return assess
 
 
 def planning_history(
@@ -388,16 +403,6 @@ def build_runtime(
         safety_hold=lambda scope: Condition.SAFETY_HOLD in conditions.current(scope).conditions,
         batch=database.batch,
     )
-    insights = InsightService(
-        analytics,
-        recovery,
-        recovery_assessment,
-        SqliteAggregateRepository(database, INSIGHT_CODEC),
-        consents=gate,
-        events=events,
-        clock=clock,
-        ids=new_id,
-    )
     lifecycle = CoachingLifecycle(
         SqliteAggregateRepository(database, COACHING_STATE_CODEC),
         audit=audit,
@@ -418,7 +423,10 @@ def build_runtime(
         ids=new_id,
     )
     planning_context = PlanningContextSource(
-        inputs, recovery_assessment.prescriptions, today=recovery.today
+        inputs,
+        recovery_assessment.prescriptions,
+        today=recovery.today,
+        checkins=lambda scope, until, days: recovery.checkins(scope, until=until, days=days),
     )
     plans = PlanService(
         SqliteAggregateRepository(database, PLAN_HEADER_CODEC),
@@ -478,6 +486,20 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+    insights = InsightService(
+        analytics,
+        recovery,
+        recovery_assessment,
+        SqliteAggregateRepository(database, INSIGHT_CODEC),
+        consents=gate,
+        events=events,
+        clock=clock,
+        ids=new_id,
+        plan_sessions=executions.planned_sessions,
+        goal_sport=lambda scope: (
+            None if (goal := inputs.primary_goal(scope)) is None else goal.sport
+        ),
+    )
     reports = ReportService(
         activities=activities,
         analytics=analytics,
@@ -487,6 +509,10 @@ def build_runtime(
         consents=gate,
         today=recovery.today,
         clock=clock,
+        executions=executions.executions,
+        active_plan=plans.active,
+        decisions=adaptation.decisions,
+        feasibility=goal_feasibility(inputs),
     )
     ingestion_records = SqliteIngestionRecordRepository(database)
     ingestion = IngestionService(

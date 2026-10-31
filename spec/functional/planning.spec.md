@@ -176,7 +176,8 @@ what they produce. Initial values under A-18.
   1.0.0; no HIGH_IMPACT or OVERHEAD exercise; without RPE or RIR familiarity, only exercises
   against the body's resistance or with a declared load). Target RPE 6 in ADAPTATION and
   TAPER, 7 otherwise, 6 at most during a recovery block, 5 for a lower-body exercise under
-  NO_HEAVY_LOWER_BODY or one loading an affected region, capped by MAX_RPE; RIR is 10 minus
+  NO_HEAVY_LOWER_BODY or one loading an affected region or a region recent pain restricts
+  (pain rules 1.0.0, safety spec 5), capped by MAX_RPE; RIR is 10 minus
   that RPE for an athlete familiar with RIR only; otherwise EASY (below RPE 5) or MODERATE.
   Strength is not planned during a safety hold, under a constraint restricting strength, or
   under a MAX_RPE below 3, and the plan says so (AT-STR-002). A heavy lower-body session that

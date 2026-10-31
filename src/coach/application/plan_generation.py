@@ -127,6 +127,7 @@ class PlanGenerationService:
                 safety_hold=Condition.SAFETY_HOLD in conditions,
                 recovery_block=Condition.RECOVERY_BLOCK in conditions,
                 recovery_block_until=context.recovery_block_until,
+                pain=context.pain,
             )
         )
         generator = replace(GENERATOR, decision_id=decision_id)

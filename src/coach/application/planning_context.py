@@ -1,8 +1,9 @@
 """The planning context of the plan policies, assembled from stored state (policy spec 5).
 
 The athlete's availability, resources and health declaration as stored, the athlete's local
-today, and the end of the recovery block: the latest re-evaluation date of the blocking
-prescriptions in force today. Nothing comes from the caller of a plan action.
+today, the end of the recovery block (the latest re-evaluation date of the blocking
+prescriptions in force today) and the regions recent pain restricts (pain rules 1.0.0).
+Nothing comes from the caller of a plan action.
 """
 
 from __future__ import annotations
@@ -13,6 +14,12 @@ from datetime import date
 from coach.application.athlete_inputs import AthleteInputsService
 from coach.application.ownership import OwnerScope
 from coach.domain.recovery.assessment import RecoveryPrescription
+from coach.domain.recovery.checkin import DailyCheckIn
+from coach.domain.recovery.pain import (
+    PAIN_RESTRICTION_DAYS,
+    PainRestriction,
+    pain_restriction,
+)
 from coach.policy.plans import PlanningContext
 
 
@@ -23,7 +30,9 @@ class PlanningContextSource:
         prescriptions: Callable[[OwnerScope, date], Sequence[RecoveryPrescription]],
         *,
         today: Callable[[OwnerScope], date],
+        checkins: Callable[[OwnerScope, date, int], Sequence[DailyCheckIn]] | None = None,
     ) -> None:
+        self._checkins = checkins
         self._inputs = inputs
         self._prescriptions = prescriptions
         self._today = today
@@ -38,4 +47,7 @@ class PlanningContextSource:
             health=None if profile.health is None else profile.health.value,
             resources=None if profile.resources is None else profile.resources.value,
             recovery_block_until=max((item.reevaluate_after for item in blocking), default=None),
+            pain=PainRestriction()
+            if self._checkins is None
+            else pain_restriction(self._checkins(scope, day, PAIN_RESTRICTION_DAYS), day),
         )

@@ -25,7 +25,7 @@ from coach.domain.common.text import clean_optional_text, clean_text
 from coach.domain.common.time import DateRange, ensure_utc
 from coach.domain.consent.ledger import ConsentType
 
-PATTERN_RULES_VERSION: Final = "1.0.0"
+PATTERN_RULES_VERSION: Final = "1.1.0"  # 1.1.0 (P12): ADHERENCE, PLANNED_VS_ACTUAL, PLATEAU
 MAX_STATEMENT: Final = 1000
 _METRIC_ID: Final = re.compile(r"^[a-z]+\.[a-z0-9_]+$")
 _SEMVER: Final = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")

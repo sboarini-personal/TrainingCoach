@@ -83,7 +83,8 @@ An `Action` may carry the plan content it proposes or activates (`plan`) and whe
 activates a plan (`activatesPlan`). For such an action the `PolicyContext` also holds the
 **planning context**, assembled by the application from stored state, never from the caller:
 the athlete's local today, the effective availability (profile spec 4), the declared
-resources and health constraints, and the end of the recovery block (the latest
+resources and health constraints, the regions recent pain restricts (pain rules 1.0.0),
+and the end of the recovery block (the latest
 `reevaluateAfter` of the blocking prescriptions in force today, recovery spec 4). A plan
 proposal is evaluated before anything is written; a denied one is never persisted, its
 denial is audited (`policy.evaluate`, DENIED, with the acting actor: SYSTEM, AGENT or USER)
@@ -112,6 +113,7 @@ safety hold, recovery block, availability and duration, equipment, health.
 | POL-EQUIPMENT | DENY a strength exercise the athlete's equipment does not allow (equipment rules 1.0.0, strength spec 2), or one not in the catalogue | `EQUIPMENT_MISSING`, `EXERCISE_UNKNOWN` (exerciseId) |
 | POL-EQUIPMENT | DENY swimming without declared pool access, cycling without a bicycle or a smart trainer | `POOL_REQUIRED`, `BICYCLE_REQUIRED` |
 | POL-HEALTH-CONSTRAINT | DENY any plan when the health declaration is missing (never assumed to be "none") | `HEALTH_NOT_DECLARED` |
+| POL-HEALTH-CONSTRAINT | DENY hard strength work loading a region recent pain restricts (pain rules 1.0.0, safety spec 5) | `PAIN_REGION_RESTRICTED` (exerciseId, region) |
 | POL-HEALTH-CONSTRAINT | DENY what an active constraint's restrictions name (below) | `SPORT_RESTRICTED`, `RPE_ABOVE_LIMIT`, `IMPACT_RESTRICTED`, `OVERHEAD_RESTRICTED`, `HEAVY_LOWER_BODY_RESTRICTED`, `REGION_RESTRICTED` (constraintId, exerciseId, maxRpe, region) |
 
 Precisions:

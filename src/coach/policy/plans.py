@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Final
 from uuid import UUID
@@ -31,6 +31,7 @@ from coach.domain.common.sport import Sport
 from coach.domain.common.time import Weekday
 from coach.domain.plans.plan import PlanContent, TrainingWeek
 from coach.domain.plans.workout import PlannedWorkout, WorkoutType
+from coach.domain.recovery.pain import PainRestriction
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.equipment import equipment_available
 from coach.domain.strength.exercise import Exercise, ExerciseCatalogue
@@ -57,6 +58,7 @@ class PlanningContext:
     health: HealthDeclaration | None = None
     resources: Resources | None = None
     recovery_block_until: date | None = None  # re-evaluation of the blocking prescriptions
+    pain: PainRestriction = field(default_factory=PainRestriction)  # recent pain (P12)
     catalogue: ExerciseCatalogue = CATALOGUE
 
 
@@ -386,6 +388,19 @@ def health(content: PlanContent, planning: PlanningContext) -> list[PolicyReason
     for item in _upcoming(content, planning.today):
         for constraint in planning.health.active_constraints(on=item.training_day):
             reasons.extend(_violations(item, constraint, planning.catalogue))
+        hurting = planning.pain.applies(item.training_day)
+        for prescribed, exercise in _exercises(item, planning.catalogue):
+            loaded = sorted(hurting & regions_loaded(exercise)) if exercise else []
+            if loaded and exercise is not None and _hard_target(prescribed):
+                reasons.append(
+                    _reason(
+                        "POL-HEALTH-CONSTRAINT",
+                        "PAIN_REGION_RESTRICTED",
+                        item,
+                        exerciseId=exercise.exercise_id,
+                        region=loaded[0].value,
+                    )
+                )
     return reasons
 
 

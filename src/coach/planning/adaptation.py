@@ -61,6 +61,7 @@ from coach.domain.recovery.assessment import (
     RecoveryStatus,
 )
 from coach.domain.recovery.checkin import DailyCheckIn
+from coach.domain.recovery.pain import PAIN_RESTRICTION_DAYS, PAIN_RESTRICTION_MIN
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.exercise import ExerciseCatalogue
 from coach.domain.strength.prescription import EffortCue, PrescribedExercise
@@ -80,9 +81,9 @@ from coach.planning.interference import (
 
 WINDOW_DAYS: Final = 7
 LOOKBACK_DAYS: Final = 14
-PAIN_DAYS: Final = 3
+PAIN_DAYS: Final = PAIN_RESTRICTION_DAYS
 PAIN_FREE_DAYS: Final = 7
-PAIN_THRESHOLD: Final = 4
+PAIN_THRESHOLD: Final = PAIN_RESTRICTION_MIN
 DEVIATION_RATIO: Final = 0.8
 DEVIATION_RPE: Final = 2.0
 DEVIATED_SESSIONS: Final = 2

@@ -45,8 +45,9 @@ read models: computed when asked, never stored.
 - A section the data cannot fill yet is **not available**, with its reason, never filled
   with an invented value:
   - `NEEDS_PLANS`: Planned vs Actual, Deviations, Plan Impact, Adherence, Changes for the
-    following week (P12);
-  - `NEEDS_GOAL_METRICS`: Progression toward the A goal, Cautious forecast (P12; a forecast
+    following week while there is no ACTIVE plan (P12: filled from the plan, below);
+  - `NEEDS_GOAL_METRICS`: Progression toward the A goal and Cautious forecast without a
+    primary goal, and the forecast without a current estimate and a target time (a forecast
     never promises an outcome, FR-GOL-005);
   - `NARRATIVE`: What Went Well, Recommendations (the AI coach, P13);
   - `NO_CONSENT`: activity sections without the ACTIVITIES consent;
@@ -81,3 +82,26 @@ read models: computed when asked, never stored.
   - Recovery: days per assessment status;
   - Strength progression: volume load per week;
   - Risks: the month's insights.
+
+Data part 1.1.0 (P12, precision): the sections that needed plans and goals.
+
+- **Post-activity** (from the ACTIVE plan's executions, planning spec 6):
+  - Planned vs Actual: the activity's execution status, the planned workout, and the
+    duration and distance done as a share of the plan (evidence: the activity and the
+    execution, `WORKOUT_EXECUTION` with the planned workout's ID);
+  - Deviations: each measured share outside 80 % to 120 %, and a replacement;
+  - Plan Impact: the adaptation decisions whose evidence names the activity, with the
+    version they proposed.
+- **Weekly:**
+  - Adherence: the planned workouts due, how many were complete, partial, skipped and
+    replaced, the unplanned activities, and the share done as planned (evidence: the plan
+    version and the executions); NO_CONSENT without the activities consent;
+  - Progression toward the A goal: the primary goal's feasibility (goals spec 4):
+    classification, the date assessed, the target time (the athlete's, as text), the
+    current estimate for the goal distance and the progression needed per week (evidence:
+    the profile's race result), and the reasons;
+  - Changes for the following week: the adaptation decisions of the week other than
+    MAINTAIN, with their interpretation and the version proposed.
+- **Monthly** Cautious forecast: the realistic and minimum satisfactory goals of the
+  feasibility rules (evidence: the race result), the classification, and the statement
+  that it is an estimate from the athlete's data, never a guarantee of the outcome.

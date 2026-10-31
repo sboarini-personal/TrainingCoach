@@ -14,21 +14,24 @@ from coach.application.coaching import CoachingConditions
 from coach.application.errors import NotFoundError
 from coach.application.events import EventName
 from coach.application.identity import Principal
-from coach.application.insights import InsightService
+from coach.application.insights import InsightService, NotEvaluated
 from coach.application.lineage import LineageService
 from coach.application.recovery import RecoveryService
 from coach.application.recovery_assessment import RecoveryAssessmentService
 from coach.application.screening import SecretScreen
 from coach.domain.activity.observation import Observation, SourceKind
 from coach.domain.coaching.state import CoachingState
-from coach.domain.common.evidence import EvidenceKind
+from coach.domain.common.evidence import EvidenceKind, EvidenceRef
+from coach.domain.common.sport import Sport
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.insights import Insight, Pattern, Relationship
+from coach.domain.plans.execution import ExecutionStatus
 from coach.domain.raw.source import RawSource
 from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription
 from coach.domain.recovery.checkin import DailyCheckIn
 from coach.domain.recovery.daily import RecoveryObservation
 from coach.infrastructure.memory import InMemoryRepository
+from coach.planning.patterns import PlannedSession
 from samples import BUENOS_AIRES, START, USER, sample_observation, tennis_values
 
 IMPORTED = datetime(2026, 10, 27, 12, 0, tzinfo=UTC)  # Tuesday of 2026-W44
@@ -204,3 +207,47 @@ def test_a_new_athlete_has_no_load_spike_against_weeks_before_any_record() -> No
         world.ingest(session(day, 5.0, number := number + 1))
     kinds = {item.kind for item in service(world).detect(SCOPE).insights}
     assert Pattern.AGGRESSIVE_PROGRESSION not in kinds  # W39 to W41 are unknown, not rest
+
+
+@pytest.mark.req("FR-INS-002", "FR-PLN-007")
+def test_plan_patterns_need_an_active_plan_and_a_goal_metric() -> None:
+    world = World()
+    world.clock.now = IMPORTED
+    base = service(world)
+    found = base.detect(SCOPE)
+    assert (Pattern.ADHERENCE, NotEvaluated.NEEDS_PLANS) in found.not_evaluated
+    assert (Pattern.PLATEAU, NotEvaluated.NEEDS_GOAL_METRICS) in found.not_evaluated
+    plan = EvidenceRef(EvidenceKind.PLAN_VERSION, UUID(int=0x501))
+    today = IMPORTED.astimezone(BUENOS_AIRES).date()
+    sessions = [
+        PlannedSession(
+            workout_id=UUID(int=0x700 + offset),
+            day=today - timedelta(days=offset),
+            status=ExecutionStatus.SKIPPED,
+            duration_ratio=None,
+            session_rpe=None,
+            target_rpe=None,
+            activity_ids=(),
+        )
+        for offset in (1, 2, 3)
+    ]
+    planned = InsightService(
+        base._analytics,
+        base._recovery,
+        base._assessments,
+        InMemoryRepository[Insight](),
+        consents=world.consents_gate,
+        events=world.events,
+        clock=world.clock,
+        ids=world.ids,
+        plan_sessions=lambda _scope, _period: (sessions, plan),
+        goal_sport=lambda _scope: Sport.CYCLING,  # no goal metric for cycling in 1.1.0
+    )
+    report = planned.detect(SCOPE)
+    kinds = {item.kind: item for item in report.insights}
+    assert kinds[Pattern.ADHERENCE].observation.startswith(
+        "3 of the 3 planned workouts due in the 14 days"
+    )
+    assert kinds[Pattern.ADHERENCE].evidence[0] == plan
+    assert (Pattern.ADHERENCE, NotEvaluated.NEEDS_PLANS) not in report.not_evaluated
+    assert (Pattern.PLATEAU, NotEvaluated.NEEDS_GOAL_METRICS) in report.not_evaluated

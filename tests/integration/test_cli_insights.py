@@ -35,8 +35,8 @@ def test_detection_finds_fatigue_and_says_what_it_could_not_evaluate(cli: Cli) -
         "(2026-10-22 3, 2026-10-23 4, 2026-10-24 4, 2026-10-25 5)."
     )
     skipped = next(line for line in lines if line.startswith("not evaluated:"))
-    assert "PATTERN.ADHERENCE (NEEDS_PLANS)" in skipped
-    assert "PATTERN.PLATEAU (NEEDS_GOAL_METRICS)" in skipped
+    assert "PATTERN.ADHERENCE (NO_CONSENT)" in skipped  # executions need the activities
+    assert "PATTERN.PLATEAU (NO_CONSENT)" in skipped
     assert "PATTERN.MONOTONY (NO_CONSENT)" in skipped  # no activities consent
     assert "PATTERN.SLEEP_PERFORMANCE (NO_CONSENT)" in skipped
     assert lines[-1] == "interpretation and recommendations arrive with the AI coach"
@@ -65,13 +65,13 @@ def test_reports_print_their_data_part_and_their_document(cli: Cli) -> None:
     assert code == 0, output
     lines = output.splitlines()
     assert lines[0] == "weekly report 2026-W43 (2026-10-19 to 2026-10-25)"
-    assert "Adherence: not available (NEEDS_PLANS)" in lines
+    assert "Adherence: not available (NO_CONSENT)" in lines  # executions read activities
     assert "Volume by sport: not available (NO_CONSENT)" in lines
     assert "  recovery 2026-10-25: REST (THREE_GROUPS)" in lines
     assert "  condition: RECOVERY_BLOCK" in lines
     assert lines[-2].startswith("Confidence: LOW")
     assert lines[-1].startswith(
-        "Missing data: Adherence (NEEDS_PLANS), Volume by sport (NO_CONSENT)"
+        "Missing data: Adherence (NO_CONSENT), Volume by sport (NO_CONSENT)"
     )
     code, output = cli.run("report", "month", "--json")
     assert code == 0, output

@@ -154,7 +154,11 @@ Reconciliation (P10, precision of this section):
   number (`--set`); with repetitions and no set number it is the exercise's next set.
 - A session belongs to its activity: after a deduplication split moves the watch's file to
   another activity, the entries stay with the original one and the athlete reviews them.
-- `workoutId` is UNKNOWN until planned workouts exist (P12). Commands: `coach strength sets`,
+- `workoutId` is UNKNOWN until planned workouts exist (P12). Precision (P12): the planned
+  workout of a session is answered by the execution read model (planning spec 6: the
+  workout its activity is matched or linked to, `coach plan executions`); it is not stored
+  on the session, so a relink or a new plan version never leaves a stale copy. Progression
+  keeps reading the targets the athlete recorded with the sets. Commands: `coach strength sets`,
   `log`, `relabel` and `watch-sets`. Changes are audited (`strength.session_changed`) with
   identifiers only.
 

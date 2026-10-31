@@ -77,11 +77,21 @@ evidence) is not stored again; `coach insights list` shows the stored ones.
 | EXCESSIVE_INTENSITY, INSUFFICIENT_EASY | heart-rate zone time of 14 days, five-zone models, at least 3 sessions and 2 h: zones 4 and 5 above 20 %, zones 1 and 2 below 70 % (informed by Seiler and Kjerland 2006) | the sessions' `cardiovascular.hrZones` | MEDIUM; LOW with an age-predicted model (ESTIMATED_VALUE) |
 | SLEEP_PERFORMANCE | ASSOCIATION of the night's sleep duration (provider metric, SLEEP consent) and `run.efficiency_hr` of that training day: Spearman rank correlation at least 0.5 in absolute value over 10 or more runs in 56 days; NON_COMPARABLE_SESSION when the runs span comparable groups | each pair's two values | LOW; MEDIUM from 20 pairs and 0.6 |
 
-- Not evaluated in P11, and reported as such:
-  - PLATEAU (`NEEDS_GOAL_METRICS`): goal-relevant metrics arrive with planning;
-  - ADHERENCE and PLANNED_VS_ACTUAL (`NEEDS_PLANS`): workout executions and plans arrive in
-    P12;
-  - any pattern whose data has no consent (`NO_CONSENT`).
+- Not evaluated, and reported as such:
+  - ADHERENCE and PLANNED_VS_ACTUAL without an ACTIVE plan (`NEEDS_PLANS`);
+  - PLATEAU without a primary goal or without a goal metric for its sport
+    (`NEEDS_GOAL_METRICS`);
+  - any pattern whose data has no consent (`NO_CONSENT`; the three above need the
+    ACTIVITIES consent, as executions read the activities).
+
+Pattern rules 1.1.0 (P12, additive; `PATTERN_RULES_VERSION`; insights stored under 1.0.0
+keep their version):
+
+| Pattern | Rule (window ending today) | Evidence | Confidence |
+|---|---|---|---|
+| ADHERENCE | of the ACTIVE plan's workouts due in the last 14 days (planning spec 6: not PLANNED), 3 or more not done as planned (SKIPPED, PARTIAL or REPLACED), and at least 30 % of them | the plan version, each such execution (`WORKOUT_EXECUTION`, the planned workout's ID, noting its status) and its activities | MEDIUM |
+| PLANNED_VS_ACTUAL | over 3 or more done workouts (COMPLETE or PARTIAL) of the 14 days: the mean duration ratio outside 80 % to 120 %, or the session RPE 1.5 or more above the workout's highest target on average | the plan version, the executions and their activities | MEDIUM |
+| PLATEAU | the goal sport's goal metric (running: `run.efficiency_hr`, higher is better; swimming: `swim.swolf_avg` per stroke, lower is better; cycling: none in 1.1.0): a comparable group's 8-week trend of 6 sessions or more, MEDIUM or HIGH confidence, improving by less than 2 % and not worsening by 5 % or more (the worsening patterns' case) | the group's values | the trend's |
 - An association names its variables, sample size and window, and its observation ends "An
   association, not a cause." (FR-INS-003). The sleep variable is named
   `<provider>.sleep_duration`.

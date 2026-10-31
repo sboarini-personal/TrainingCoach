@@ -9,8 +9,9 @@ and window, never causes. Every threshold is an initial value under A-18, pendin
 Implemented in P11: MONOTONY, AGGRESSIVE_PROGRESSION, INSUFFICIENT_RECOVERY,
 ACCUMULATED_FATIGUE, the worsening trends (HR_DRIFT, PACE_DETERIORATION, POWER_DEGRADATION,
 TECHNICAL_EFFICIENCY), the interference patterns, the intensity distribution
-(EXCESSIVE_INTENSITY, INSUFFICIENT_EASY) and SLEEP_PERFORMANCE. PLATEAU needs goal-relevant
-metrics, ADHERENCE and PLANNED_VS_ACTUAL need plans: P12.
+(EXCESSIVE_INTENSITY, INSUFFICIENT_EASY) and SLEEP_PERFORMANCE. Added in P12 (rules 1.1.0):
+ADHERENCE and PLANNED_VS_ACTUAL from the executions of the ACTIVE plan, and PLATEAU from the
+goal sport's goal metric.
 """
 
 from __future__ import annotations
@@ -26,8 +27,10 @@ from uuid import UUID
 
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.quality import Confidence, UncertaintyReason, lowest_confidence
+from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
 from coach.domain.insights import Association, Pattern, versions
+from coach.domain.plans.execution import ExecutionStatus
 from coach.domain.recovery.assessment import (
     WORSE_ABOVE,
     Reason,
@@ -63,7 +66,18 @@ ASSOCIATION_MIN_PAIRS: Final = 10
 ASSOCIATION_MIN_RHO: Final = 0.5
 ASSOCIATION_MEDIUM_PAIRS: Final = 20
 ASSOCIATION_MEDIUM_RHO: Final = 0.6
+PLAN_DAYS: Final = 14
+ADHERENCE_MIN_MISSED: Final = 3
+ADHERENCE_MIN_SHARE: Final = 0.3
+DEVIATION_MIN_WORKOUTS: Final = 3
+DURATION_BAND: Final = (0.8, 1.2)
+EFFORT_ABOVE_TARGET: Final = 1.5
+PLATEAU_MIN_SESSIONS: Final = 6
+PLATEAU_MAX_IMPROVEMENT: Final = 2.0  # percent over the 8 weeks
 _LEVELS: Final = tuple(InterferenceLevel)
+_NOT_AS_PLANNED: Final = frozenset(
+    {ExecutionStatus.SKIPPED, ExecutionStatus.PARTIAL, ExecutionStatus.REPLACED}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,6 +280,11 @@ TREND_WATCHES: Final = (
     TrendWatch(Pattern.POWER_DEGRADATION, "cyc.power_fade", Worse.RISING, min_points=1.0),
     TrendWatch(Pattern.TECHNICAL_EFFICIENCY, "swim.swolf_avg", Worse.RISING),
 )
+# The goal metric of each goal sport PLATEAU watches (cycling has none in rules 1.1.0).
+GOAL_METRICS: Final = {
+    Sport.RUNNING: TrendWatch(Pattern.PLATEAU, "run.efficiency_hr", Worse.FALLING),
+    Sport.SWIMMING: TrendWatch(Pattern.PLATEAU, "swim.swolf_avg", Worse.RISING),
+}
 
 
 def worsening(
@@ -463,4 +482,147 @@ def sleep_performance(
         Confidence.MEDIUM if strong else Confidence.LOW,
         versions=versions([("run.efficiency_hr", calculation_version)]),
         association=Association((sleep_variable, "run.efficiency_hr"), len(pairs), period.days),
+    )
+
+
+# --------------------------------------------------------------------------- plans (P12)
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedSession:
+    """What ADHERENCE and PLANNED_VS_ACTUAL read of a planned workout's execution."""
+
+    workout_id: UUID
+    day: date
+    status: ExecutionStatus
+    duration_ratio: float | None
+    session_rpe: float | None
+    target_rpe: float | None  # the workout's highest RPE target
+    activity_ids: tuple[UUID, ...]
+
+
+def _execution(item: PlannedSession) -> EvidenceRef:
+    return EvidenceRef(EvidenceKind.WORKOUT_EXECUTION, item.workout_id, note=item.status.value)
+
+
+def adherence(
+    sessions: Sequence[PlannedSession], period: DateRange, plan: EvidenceRef
+) -> Finding | None:
+    """ADHERENCE: 3 or more of the planned workouts due in the 14 days not done as planned
+    (SKIPPED, PARTIAL or REPLACED), and at least 30 % of them."""
+    due = [
+        item
+        for item in sessions
+        if period.start <= item.day <= period.end and item.status is not ExecutionStatus.PLANNED
+    ]
+    missed = [item for item in due if item.status in _NOT_AS_PLANNED]
+    if len(missed) < ADHERENCE_MIN_MISSED or len(missed) < ADHERENCE_MIN_SHARE * len(due):
+        return None
+    counts = ", ".join(
+        f"{sum(1 for item in missed if item.status is status)} {status.value.lower()}"
+        for status in (ExecutionStatus.SKIPPED, ExecutionStatus.PARTIAL, ExecutionStatus.REPLACED)
+    )
+    observation = (
+        f"{len(missed)} of the {len(due)} planned workouts due in the {period.days} days to "
+        f"{period.end} were not done as planned ({counts}): "
+        f"{_number(100 * len(missed) / len(due))} %."
+    )
+    evidence = (
+        plan,
+        *(_execution(item) for item in missed),
+        *(
+            EvidenceRef(EvidenceKind.ACTIVITY, reference)
+            for item in missed
+            for reference in item.activity_ids
+        ),
+    )
+    return Finding(Pattern.ADHERENCE, period, observation, evidence, Confidence.MEDIUM)
+
+
+def planned_vs_actual(
+    sessions: Sequence[PlannedSession], period: DateRange, plan: EvidenceRef
+) -> Finding | None:
+    """PLANNED_VS_ACTUAL: over 3 or more done workouts of the 14 days, a mean duration
+    outside 80 % to 120 % of the plan, or a session RPE 1.5 or more above the highest target
+    on average."""
+    done = [
+        item
+        for item in sessions
+        if period.start <= item.day <= period.end
+        and item.status in (ExecutionStatus.COMPLETE, ExecutionStatus.PARTIAL)
+    ]
+    timed = [item for item in done if item.duration_ratio is not None]
+    rated = [item for item in done if item.session_rpe is not None and item.target_rpe is not None]
+    statements: list[str] = []
+    used: list[PlannedSession] = []
+    if len(timed) >= DEVIATION_MIN_WORKOUTS:
+        ratios = [item.duration_ratio or 0.0 for item in timed]
+        mean = statistics.fmean(ratios)
+        if not DURATION_BAND[0] <= mean <= DURATION_BAND[1]:
+            statements.append(
+                f"the duration done averaged {_number(100 * mean)} % of the plan over "
+                f"{len(timed)} workouts (from {_number(100 * min(ratios))} % to "
+                f"{_number(100 * max(ratios))} %)"
+            )
+            used += timed
+    if len(rated) >= DEVIATION_MIN_WORKOUTS:
+        gaps = [(item.session_rpe or 0.0) - (item.target_rpe or 0.0) for item in rated]
+        mean_gap = statistics.fmean(gaps)
+        if mean_gap >= EFFORT_ABOVE_TARGET:
+            statements.append(
+                f"the session RPE averaged {mean_gap:+.1f} above the highest target over "
+                f"{len(rated)} workouts"
+            )
+            used += [item for item in rated if item not in used]
+    if not statements:
+        return None
+    observation = f"In the {period.days} days to {period.end}, " + "; ".join(statements) + "."
+    evidence = (
+        plan,
+        *(_execution(item) for item in used),
+        *(EvidenceRef(EvidenceKind.ACTIVITY, ref) for item in used for ref in item.activity_ids),
+    )
+    return Finding(Pattern.PLANNED_VS_ACTUAL, period, observation, evidence, Confidence.MEDIUM)
+
+
+def plateau(
+    watch: TrendWatch,
+    *,
+    label: str,
+    points: Sequence[Point],
+    trend: Trend | None,
+    unit: str,
+    period: DateRange,
+    calculation_version: str,
+) -> Finding | None:
+    """PLATEAU: the goal sport's goal metric (a comparable group's 8-week trend, at least 6
+    sessions, MEDIUM or HIGH confidence) improving by less than 2 % and not worsening by 5 %
+    or more (that is the worsening pattern)."""
+    if trend is None or trend.confidence is Confidence.LOW or trend.sessions < PLATEAU_MIN_SESSIONS:
+        return None
+    relative = trend.relative_change_percent
+    if relative is None:
+        return None
+    better = relative if watch.worse is Worse.FALLING else -relative
+    if better >= PLATEAU_MAX_IMPROVEMENT or better <= -TREND_MIN_CHANGE_PERCENT:
+        return None
+    observation = (
+        f"{watch.metric_id} of {label} sessions changed by {trend.change:+.2f} {unit} "
+        f"({relative:+.1f} %) over the {period.days} days to {period.end}: least-squares trend "
+        f"of {trend.sessions} sessions, no improvement of {_number(PLATEAU_MAX_IMPROVEMENT)} % "
+        "or more."
+    )
+    evidence = tuple(
+        EvidenceRef(EvidenceKind.DERIVED_METRIC, point.value_id)
+        if point.value_id is not None
+        else EvidenceRef(EvidenceKind.ACTIVITY, point.activity_id, field=watch.metric_id)
+        for point in points
+    )
+    return Finding(
+        Pattern.PLATEAU,
+        period,
+        observation,
+        evidence,
+        trend.confidence,
+        versions=versions([(watch.metric_id, calculation_version)]),
     )

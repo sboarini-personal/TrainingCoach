@@ -41,14 +41,23 @@ def ok(cli: Cli, *args: str) -> str:
     return output
 
 
-def onboarded(tmp_path: Path) -> tuple[Cli, Runtime, OwnerScope, UUID]:
+def onboarded(tmp_path: Path, *goal: str) -> tuple[Cli, Runtime, OwnerScope, UUID]:
     """Every REQUIRED input and an active running goal; no history, so PROVISIONAL."""
     cli = Cli(tmp_path / "coach-data")
     assert cli.run("init")[0] == 0
     for command in ONBOARDING:
         ok(cli, *command)
     added = ok(
-        cli, "goal", "add", "--sport", "running", "--date", "2027-03-14", "--distance-km", "10"
+        cli,
+        "goal",
+        "add",
+        "--sport",
+        "running",
+        "--date",
+        "2027-03-14",
+        "--distance-km",
+        "10",
+        *goal,
     )
     goal_id = added.strip().rsplit(" ", 1)[-1]
     ok(cli, "goal", "activate", goal_id)
@@ -213,3 +222,51 @@ def test_plan_adapt_records_and_shows_the_decision(tmp_path: Path) -> None:
     assert "the plan stays" in shown
     assert "proposed:" not in shown  # MAINTAIN proposes no version
     assert ok(cli, "plan", "decisions") == shown
+
+
+@pytest.mark.req("FR-RPT-001", "FR-RPT-002", "FR-RPT-003", "FR-PLN-007", "FR-GOL-005")
+def test_reports_show_planned_versus_done_adherence_and_goal_progress(tmp_path: Path) -> None:
+    cli, _runtime, _scope, _goal = onboarded(tmp_path)
+    ok(cli, "consent", "grant", "activities")
+    plan_id = ok(cli, "plan", "generate").splitlines()[0].split()[1]
+    ok(cli, "plan", "activate", plan_id, "1", "--revision", "1")
+    run = tmp_path / "run.fit"
+    tuesday = datetime(2026, 10, 27, 21, 0, tzinfo=UTC)  # the planned 35-minute easy run
+    run.write_bytes(fit_file([fit_session(start=tuesday, seconds=1500)]))
+    ok(cli, "import", str(run))
+    cli.now = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
+    executions = ok(cli, "plan", "executions", "--week", "2026-10-28")
+    activity = next(
+        line.split()[1] for line in executions.splitlines() if line.startswith("    activity ")
+    )
+    single = ok(cli, "report", "activity", activity).splitlines()
+    planned = single.index("Planned vs Actual")
+    assert single[planned + 1 : planned + 4] == [
+        "  status: PARTIAL",
+        "  planned: ENDURANCE: 35 minutes easy (RPE 3 to 4)",
+        "  duration done of planned: 71.4 %",  # 25 of 35 minutes
+    ]
+    assert "  duration done of planned outside 80 % to 120 %: 71.4 %" in single
+    week = ok(cli, "report", "week", "--week", "2026-W44").splitlines()
+    adherence = week.index("Adherence")
+    assert week[adherence + 1 : adherence + 8] == [
+        "  planned workouts due: 3",
+        "  complete: 0",
+        "  partial: 1",
+        "  skipped: 2",
+        "  replaced: 0",
+        "  unplanned activities: 0",
+        "  done as planned: 0.0 %",
+    ]
+    progress = week.index("Progression toward the A goal")
+    assert week[progress + 1] == "  classification: INSUFFICIENT_DATA"
+    assert "  current estimate for the goal distance: 0:50:00" in week  # the declared 10k race
+    assert "  reason: NO_TARGET_TIME" in week
+    assert "Cautious forecast: not available (NEEDS_GOAL_METRICS)" in ok(cli, "report", "month")
+    timed, *_ = onboarded(tmp_path / "timed", "--target-time", "48:00")
+    forecast = ok(timed, "report", "month").splitlines()
+    start = forecast.index("Cautious forecast")
+    assert forecast[start + 3] == "  classification: LIKELY"  # 2 min in 20 weeks: 0.2 % a week
+    assert forecast[start + 1].startswith("  realistic goal: ")
+    assert forecast[start + 2] == "  minimum satisfactory goal: 0:50:00"
+    assert "never a guarantee of the outcome" in forecast[start + 4]
