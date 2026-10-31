@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime
 from functools import partial
 from uuid import UUID
 
@@ -50,8 +50,15 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import FieldValue
 from coach.domain.common.sport import Sport
 from coach.domain.consent.ledger import ConsentType
+from coach.domain.goals.feasibility import (
+    CurrentState,
+    FeasibilityAssessment,
+    assess_feasibility,
+    current_state,
+)
 from coach.domain.goals.goal import (
     Goal,
+    GoalBaseline,
     GoalPriority,
     GoalStatus,
     SportEvent,
@@ -326,6 +333,10 @@ class AthleteInputsService:
     ) -> Goal:
         if event_id is not None:
             self._events.get(scope, event_id)  # owner-scoped: a foreign event is not found
+        today = self._today(scope)
+        current = None
+        if distance_meters is not None and sport is Sport.RUNNING:
+            current = current_state(self.profile(scope), distance_meters, today=today)
         goal = Goal.new(
             goal_id=self._ids(),
             athlete_id=scope.athlete_id,
@@ -336,8 +347,9 @@ class AthleteInputsService:
             distance_meters=distance_meters,
             target_time_seconds=target_time_seconds,
             event_id=event_id,
+            baseline=_baseline(current, self._clock()),
         )
-        if target_date < self._today(scope):
+        if target_date < today:
             raise DomainValidationError("a goal's target date is today or later")
         return self._goals.add(scope, goal)
 
@@ -354,6 +366,15 @@ class AthleteInputsService:
 
     def primary_goal(self, scope: OwnerScope) -> Goal | None:
         return self._snapshot(scope).primary_goal
+
+    def feasibility(self, scope: OwnerScope, goal_id: UUID | None = None) -> FeasibilityAssessment:
+        """Feasibility rules 1.0.0 for a goal (the primary one by default), computed now."""
+        goal = self.primary_goal(scope) if goal_id is None else self._goals.get(scope, goal_id)
+        if goal is None:
+            raise NotFoundError
+        return assess_feasibility(
+            goal, self.profile(scope), self.availability(scope), today=self._today(scope)
+        )
 
     # ------------------------------------------------------------------ readiness
 
@@ -388,3 +409,16 @@ class AthleteInputsService:
             else:
                 self._lifecycle.advance(scope, Trigger.REQUIRED_INPUTS_WITHOUT_HISTORY)
         return ReadinessReport(readiness, sufficiency, self._lifecycle.current(scope).lifecycle)
+
+
+def _baseline(current: CurrentState | None, now: datetime) -> GoalBaseline:
+    """The immutable snapshot of current-level evidence at goal creation (goals spec 3)."""
+    if current is None:
+        return GoalBaseline(captured_at=now, summary="no comparable evidence (feasibility 1.0.0)")
+    total = round(current.seconds)
+    summary = (
+        f"predicted {total // 3600}:{total % 3600 // 60:02d}:{total % 60:02d} from a "
+        f"{current.source_distance_m / 1000:g} km result of {current.source_date} "
+        f"(Riegel 1981), confidence {current.confidence.value}"
+    )
+    return GoalBaseline(captured_at=now, evidence=(current.evidence,), summary=summary)

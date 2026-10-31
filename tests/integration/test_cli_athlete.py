@@ -91,6 +91,17 @@ def test_onboarding_inputs_bring_readiness_and_the_lifecycle_forward(cli: Cli) -
     )
     goal_id = added.split()[-1]
     ok(cli, "goal", "activate", goal_id)
+    feasible = ok(cli, "goal", "feasibility")
+    lines = feasible.splitlines()
+    assert lines[0] == "feasibility: UNLIKELY, confidence HIGH (rules 1.0.0)"
+    assert "  gap: 0:05:00 to gain" in lines
+    assert "  available: 8.0 weeks, 6 h a week" in lines
+    assert "  required progression: 38 s a week (1.25 % a week)" in lines
+    assert "  desired goal: 0:45:00" in lines
+    assert "  realistic goal: 0:49:00" in lines
+    assert "  minimum satisfactory goal: 0:50:00" in lines
+    assert lines[-1] == "an estimate from your data, never a guarantee of the outcome"
+    assert "you will" not in feasible.lower()
     report = ok(cli, "readiness")
     assert report.startswith("readiness: PROVISIONAL")
     assert "missing (required)" not in report

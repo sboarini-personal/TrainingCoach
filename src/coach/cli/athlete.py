@@ -45,6 +45,7 @@ from coach.domain.common.errors import DomainValidationError, InvalidTransitionE
 from coach.domain.common.provenance import ValueSource
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import Weekday
+from coach.domain.goals.feasibility import FeasibilityAssessment
 from coach.domain.goals.goal import GoalPriority, GoalStatus
 from coach.domain.onboarding.readiness import LABELS
 
@@ -200,6 +201,10 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     goal.add_parser("list", help="your goals")
     activate = goal.add_parser("activate", help="activate a goal")
     activate.add_argument("goal_id")
+    feasible = goal.add_parser(
+        "feasibility", help="whether the goal looks feasible (never a guarantee)"
+    )
+    feasible.add_argument("goal_id", nargs="?", help="default: the primary goal")
     close = goal.add_parser("close", help="close a goal")
     close.add_argument("goal_id")
     close.add_argument("--as", dest="outcome", required=True, choices=sorted(GOAL_CLOSE))
@@ -599,6 +604,12 @@ def goal(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                 )
                 print(f"goal added (DRAFT): {made.goal_id}", file=out)
                 return 0
+            case "feasibility":
+                found = inputs.feasibility(
+                    scope, None if args.goal_id is None else UUID(args.goal_id)
+                )
+                _print_feasibility(found, out)
+                return 0
             case "activate":
                 changed = inputs.change_goal(scope, UUID(args.goal_id), GoalStatus.ACTIVE)
             case _:
@@ -611,6 +622,43 @@ def goal(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
         raise CommandError(str(error)) from None
     print(f"goal {changed.goal_id} is {changed.status.value}", file=out)
     return 0
+
+
+def _time(seconds: float | None) -> str:
+    return "unknown" if seconds is None else str(timedelta(seconds=round(seconds)))
+
+
+def _print_feasibility(found: FeasibilityAssessment, out: TextIO) -> None:
+    print(
+        f"feasibility: {found.classification.value}, confidence {found.confidence.value} "
+        f"(rules {found.rules_version})",
+        file=out,
+    )
+    current = found.current
+    if current is not None:
+        print(
+            f"  current state: {_time(current.seconds)} predicted from "
+            f"{_time(current.source_seconds)} over {current.source_distance_m / 1000:g} km on "
+            f"{current.source_date} (Riegel 1981)",
+            file=out,
+        )
+    if found.gap_seconds is not None:
+        print(f"  gap: {_time(max(found.gap_seconds, 0))} to gain", file=out)
+    hours = "unknown" if found.hours_per_week is None else f"{found.hours_per_week:g} h"
+    print(f"  available: {found.weeks_available:.1f} weeks, {hours} a week", file=out)
+    if found.required_percent_per_week is not None and found.required_seconds_per_week:
+        print(
+            f"  required progression: {found.required_seconds_per_week:.0f} s a week "
+            f"({found.required_percent_per_week:.2f} % a week)",
+            file=out,
+        )
+    for reason in found.reasons:
+        print(f"  reason: {reason.value}", file=out)
+    if found.presents_alternatives and found.desired_seconds is not None:
+        print(f"  desired goal: {_time(found.desired_seconds)}", file=out)
+        print(f"  realistic goal: {_time(found.realistic_seconds)}", file=out)
+        print(f"  minimum satisfactory goal: {_time(found.minimum_seconds)}", file=out)
+    print("an estimate from your data, never a guarantee of the outcome", file=out)
 
 
 def readiness(runtime: Runtime, scope: OwnerScope, out: TextIO) -> int:

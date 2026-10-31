@@ -154,6 +154,7 @@ until a reference is recorded.
 | `any.hr_zone_time` | STANDARD_CALCULATION | P8 | requires a valid zone model; section 9.2 |
 | `any.weekly_volume_by_sport` | APPLICATION_DERIVED | P8 | the week report of section 9.4, not a stored value |
 | `any.training_monotony`, `any.training_strain` | STANDARD_CALCULATION | P11 | Foster 1998 (reference confirmed in P11); section 12 |
+| `goal.feasibility` | APPLICATION_DERIVED | P12 | a read model of the goal, not a stored value: feasibility rules 1.0.0 with their thresholds (goals spec 4); the current state uses Riegel 1981 (STANDARD_CALCULATION) |
 | `run.hr_drift` | APPLICATION_DERIVED (P9 decision, running spec 4) | P9 | first-half vs second-half speed:HR of a steady run |
 | `run.interval_degradation` | APPLICATION_DERIVED | P9 | running spec 4.3 |
 | `run.pace_variability`, `run.efficiency_hr` | APPLICATION_DERIVED | P9 | added in P9: pacing stability and efficiency inputs (FR-RUN-003, FR-RUN-004); running spec 4 |
