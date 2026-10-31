@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import csv
 import io
-import math
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Final
@@ -41,6 +41,10 @@ HEADER: Final = (
 MAX_BYTES: Final = 64 * 1024
 MAX_ROWS: Final = 200
 MAX_EXERCISE: Final = 100
+# ASCII digits only (str.isdigit also accepts superscripts), bounded, so int() and float()
+# never fail; the domain then checks the ranges.
+_WHOLE: Final = re.compile(r"[0-9]{1,6}")
+_NUMBER: Final = re.compile(r"[0-9]{1,6}(?:\.[0-9]{1,6})?")
 
 
 class TemplateError(ValueError):
@@ -71,7 +75,7 @@ def _unquoted(cell: str) -> str:
 def _whole(cell: str, name: str, line: int) -> int | None:
     if not cell:
         return None
-    if not cell.isdigit():
+    if _WHOLE.fullmatch(cell) is None:
         raise TemplateError(f"line {line}: {name} is a whole number")
     return int(cell)
 
@@ -79,12 +83,9 @@ def _whole(cell: str, name: str, line: int) -> int | None:
 def _number(cell: str, name: str, line: int) -> float | None:
     if not cell:
         return None
-    if not all(char.isdigit() or char == "." for char in cell) or cell.count(".") > 1:
+    if _NUMBER.fullmatch(cell) is None:
         raise TemplateError(f"line {line}: {name} is a number with a dot as decimal separator")
-    value = float(cell)
-    if not math.isfinite(value):
-        raise TemplateError(f"line {line}: {name} is a number")
-    return value
+    return float(cell)
 
 
 def parse(data: bytes) -> list[SetRow]:

@@ -39,6 +39,13 @@ REFUSED = [
     (rows("ex.plank,1,-3,,,,,,"), "line 2: reps is a whole number"),
     (rows('ex.plank,1,1,"20,5",,,,,'), "line 2: load_kg is a number with a dot"),
     (rows("ex.plank,1,1,inf,,,,,"), "line 2: load_kg is a number with a dot"),
+    # Review of P12.8: these reached int() or float() and raised a bare ValueError.
+    (rows("ex.plank,1,1,.,,,,,"), "line 2: load_kg is a number with a dot"),
+    (rows("ex.plank,1,²,,,,,,"), "line 2: reps is a whole number"),
+    (rows("ex.plank,²,1,,,,,,"), "line 2: set is a whole number"),
+    (rows("ex.plank,1,1,²,,,,,"), "line 2: load_kg is a number with a dot"),
+    (rows("ex.plank,1," + "9" * 5000 + ",,,,,,"), "line 2: reps is a whole number"),
+    (rows("ex.plank,1,1,1e3,,,,,"), "line 2: load_kg is a number with a dot"),
     (rows(""), "the file has no sets"),
     (rows(*(["ex.plank,1,1,,,,,,"] * 201)), "more than 200 rows"),
     (b"a" * (64 * 1024 + 1), "larger than 64 KiB"),

@@ -36,6 +36,7 @@ from coach.domain.recovery.assessment import (
     RecoveryStatus,
 )
 from coach.domain.recovery.checkin import CheckInPain, DailyCheckIn
+from coach.domain.recovery.pain import pain_restriction
 from coach.planning.adaptation import AdaptationInputs, Outcome, decide
 from coach.policy.plans import plan_reasons
 from plan_samples import MONDAY, content, easy_run, intervals, rest, strength, week
@@ -272,6 +273,84 @@ def test_pain_eases_the_next_days_where_it_hurts() -> None:
 
 def replace_pain(item: DailyCheckIn, intensity: int) -> DailyCheckIn:
     return replace(item, pain=CheckInPain(intensity=intensity, location="rodilla"))
+
+
+def knee_pain(day: date) -> DailyCheckIn:
+    return DailyCheckIn(
+        checkin_id=UUID(int=0xD10 + day.day),
+        athlete_id=ATHLETE,
+        recorded_at=AT,
+        training_day=day,
+        pain=CheckInPain(intensity=5, location="rodilla"),
+        pain_flag=True,
+    )
+
+
+@pytest.mark.req("FR-ADP-002", "SAFE-MED-001", "FR-POL-001")
+def test_whichever_rule_decides_the_adapted_version_respects_recent_pain() -> None:
+    """Review of P12.8: a recovery prescription decided first and left Wednesday's squats
+    hard, so the pain policy refused the whole adaptation."""
+    plan = content(
+        week(
+            MONDAY,
+            {
+                0: [rest(MONDAY)],
+                1: [easy_run(TUESDAY)],
+                2: [strength(WEDNESDAY)],
+                3: [intervals(THURSDAY)],
+            },
+        )
+    )
+    knee = knee_pain(MONDAY)
+    found = decide(
+        inputs(
+            plan,
+            prescriptions=(prescription(PrescriptionType.REST, 2),),  # Monday and Tuesday
+            assessment=assessment(RecoveryStatus.REST),
+            checkins=(knee,),
+        )
+    )
+    assert found.decision is Decision.REST
+    assert found.reasons == (
+        AdaptationReason.RECOVERY_PRESCRIPTION,
+        AdaptationReason.PAIN_REPORTED,
+    )
+    assert found.content is not None
+    squats = plan.on(WEDNESDAY)[0]
+    assert found.content.workout(squats.workout_id).max_rpe == 5.0  # type: ignore[union-attr]
+    assert squats.workout_id in found.affected
+    assert "pain of 5 of 10" in found.interpretation
+    hurting = open_planning(pain=pain_restriction([knee], MONDAY))
+    assert plan_reasons(found.content, frozenset(), hurting) == []
+
+
+@pytest.mark.req("FR-ADP-002", "FR-PLN-007", "FR-POL-001")
+def test_work_done_today_stays_as_it_was_and_the_policies_read_it_as_history() -> None:
+    """Review of P12.8: squats done on Tuesday, then knee pain reported that day. The loop
+    eases Thursday and leaves the squats as history; the pain policy must not refuse the
+    version for them."""
+    plan = content()
+    squats = plan.on(TUESDAY)[0]
+    gym = done(TUESDAY, Sport.STRENGTH, 45, rpe=7.0)
+    knee = knee_pain(TUESDAY)
+    found = decide(
+        inputs(
+            plan,
+            today=TUESDAY,
+            executions=(executed(plan, TUESDAY, ExecutionStatus.COMPLETE, gym, ratio=1.0),),
+            done={gym.activity_id: gym},
+            checkins=(knee,),
+        )
+    )
+    assert found.decision is Decision.REDUCE
+    assert found.content is not None
+    assert found.content.workout(squats.workout_id) == squats  # done: never rewritten
+    assert not found.content.workout(plan.on(THURSDAY)[0].workout_id).intensive  # type: ignore[union-attr]
+    hurting = open_planning(today=TUESDAY, pain=pain_restriction([knee], TUESDAY))
+    refused = plan_reasons(found.content, frozenset(), hurting)
+    assert [item.code for item in refused] == ["PAIN_REGION_RESTRICTED"]  # read as a prescription
+    history = replace(hurting, done=frozenset({squats.workout_id}))
+    assert plan_reasons(found.content, frozenset(), history) == []
 
 
 @pytest.mark.req("FR-ADP-002", "FR-ADP-004")

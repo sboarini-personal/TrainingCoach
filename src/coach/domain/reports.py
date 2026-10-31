@@ -23,7 +23,7 @@ from coach.domain.common.quality import Confidence, UncertaintyReason, lowest_co
 from coach.domain.common.text import clean_text
 from coach.domain.common.time import DateRange, ensure_utc
 
-REPORT_DATA_VERSION: Final = "1.0.0"
+REPORT_DATA_VERSION: Final = "1.1.0"
 
 
 class ReportKind(StrEnum):

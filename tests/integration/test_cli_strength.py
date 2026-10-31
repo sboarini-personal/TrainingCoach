@@ -272,17 +272,50 @@ def test_sets_are_imported_and_exported_with_the_sets_template(cli: Cli, tmp_pat
     code, output = cli.run("strength", "import-sets", activity, str(sheet))
     assert code == 0, output
     assert output.startswith("3 sets recorded from the file")
-    code, exported = cli.run("strength", "export-sets", activity)
-    assert code == 0, exported
-    lines = exported.splitlines()
+    # The watch's third squat has no catalogue name: the screen never shows an incomplete file.
+    assert cli.run("strength", "export-sets", activity) == (
+        2,
+        "error: 1 sets of exercises the catalogue does not name cannot be written in the "
+        "template: name them with coach strength relabel, or write the rest with --output\n",
+    )
+    out = tmp_path / "out.csv"
+    code, output = cli.run("strength", "export-sets", activity, "--output", str(out))
+    assert (code, output) == (
+        0,
+        "4 sets written to the file\n"
+        "1 sets of exercises the catalogue does not name are left out\n",
+    )
+    lines = out.read_text(encoding="utf-8").splitlines()
     assert lines[0] == "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe"
     assert "ex.back_squat,1,8,60,8,,8,60,8" in lines  # the watch's values with the entry's
     assert "ex.goblet_squat,1,12,20,6,,,," in lines
-    out = tmp_path / "out.csv"
-    code, output = cli.run("strength", "export-sets", activity, "--output", str(out))
-    assert code == 0, output
-    assert "1 sets of exercises the catalogue does not name are left out" in output
-    assert out.read_text(encoding="utf-8") == exported
+    code, output = cli.run("strength", "import-sets", activity, str(out))  # imported again
+    assert output.startswith("4 sets recorded from the file"), output
+    assert cli.run("strength", "relabel", activity, "fit:squat", "ex.front_squat")[0] == 0
+    code, exported = cli.run("strength", "export-sets", activity)
+    assert code == 0, exported
+    named = [*lines[1:], "ex.front_squat,1,12,20,,,,,"]  # the relabelled watch set joins
+    assert sorted(exported.splitlines()[1:]) == sorted(named)
+    timed = tmp_path / "timed.csv"
+    timed.write_text(
+        "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe\n"
+        "ex.plank,3,,,,,,,\n"  # a timed set as an export writes it: nothing to declare
+        "ex.plank,2,1,,5,,,,\n",
+        encoding="utf-8",
+    )
+    code, output = cli.run("strength", "import-sets", activity, str(timed))
+    assert output.startswith("1 sets recorded from the file\n1 rows without values left out\n"), (
+        output
+    )
+    timed.write_text(
+        "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe\n"
+        "ex.plank,3,,,,,,,\n",
+        encoding="utf-8",
+    )
+    assert cli.run("strength", "import-sets", activity, str(timed)) == (
+        2,
+        "error: the file states no value for any set\n",
+    )
     bad = tmp_path / "bad.csv"
     bad.write_text(
         "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe\n"

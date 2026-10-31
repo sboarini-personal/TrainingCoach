@@ -14,11 +14,13 @@ from uuid import UUID
 
 import pytest
 
+from coach.application.consent import ConsentRequiredError
 from coach.application.errors import NotFoundError
 from coach.application.executions import ExecutionService
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
+from coach.domain.consent.ledger import ConsentType
 from coach.domain.plans.execution import (
     DoneActivity,
     ExecutionLink,
@@ -271,3 +273,27 @@ def test_a_link_counts_even_when_the_period_cuts_the_week() -> None:
     whole = service.executions(SCOPE, DateRange(MONDAY, SUNDAY))
     linked = next(item for item in whole if item.planned_workout_id == tuesday.workout_id)
     assert (linked.completed_activity_ids, linked.manual) == ((thursday_run.activity_id,), True)
+    # the plan policies read the workouts done on a day as history (review of P12.8)
+    assert service.done_workouts(SCOPE, TUESDAY) == {tuesday.workout_id}
+    assert service.done_workouts(SCOPE, WEDNESDAY) == frozenset()  # planned, not done
+
+
+@pytest.mark.req("FR-PLN-007", "PRIV-CON-002")
+def test_without_the_activities_consent_nothing_counts_as_done() -> None:
+    world = PlanWorld()
+    first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
+    world.activate(first.plan_id, 1)
+
+    def refused(_scope: Any, _period: DateRange) -> list[Any]:
+        raise ConsentRequiredError((ConsentType.ACTIVITIES,))
+
+    service = ExecutionService(
+        world.service,
+        InMemoryRepository[ExecutionLink](),
+        activities=refused,
+        activity=Activities().get,
+        today=lambda _scope: SUNDAY,
+        audit=world.audit,
+        clock=world.clock,
+    )
+    assert service.done_workouts(SCOPE, TUESDAY) == frozenset()  # the policies stay strict

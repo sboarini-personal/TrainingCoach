@@ -4,6 +4,7 @@ Synthetic data only."""
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
@@ -17,8 +18,9 @@ from coach.domain.plans.plan import Generator, GeneratorKind
 from coach.infrastructure.datadir import ensure_layout
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from coach.infrastructure.sqlite.identities import SqliteIdentityDirectory
-from file_samples import fit_file, fit_session
+from file_samples import fit_file, fit_session, strength_session
 from plan_samples import MONDAY, content, easy_run, rest, week
+from schemas import validation_errors
 
 ENGINE = Generator(kind=GeneratorKind.ENGINE, engine_version="1.0.0")
 ONBOARDING = (
@@ -207,8 +209,46 @@ def test_executions_show_planned_versus_done_and_links_change_them(tmp_path: Pat
     assert (code, output) == (2, "error: plan, version, workout or activity not found\n")
     ok(cli, "consent", "revoke", "activities")
     hint = "error: grant the ACTIVITIES consent first: coach consent grant activities\n"
-    for command in (("executions",), ("link", activity_id, "none"), ("adapt",)):
+    for command in (("executions",), ("link", activity_id, "none"), ("adapt",), ("decisions",)):
         assert cli.run("plan", *command) == (2, hint), command  # activities are not read
+
+
+@pytest.mark.req("FR-ADP-002", "FR-POL-001", "SAFE-MED-001")
+def test_pain_after_the_days_strength_eases_what_is_left_through_the_policies(
+    tmp_path: Path,
+) -> None:
+    """Review of P12.8: squats at RPE 7 done on Tuesday, knee pain reported that evening. The
+    policies read the done squats as history, so the eased version is proposed, not refused."""
+    cli, runtime, scope, goal = onboarded(tmp_path)
+    ok(cli, "consent", "grant", "activities")
+    first = runtime.plans.propose(
+        scope, goal_id=goal, content=content(provisional=True), generator=ENGINE
+    )
+    ok(cli, "plan", "activate", str(first.plan_id), "1", "--revision", "1")
+    gym = tmp_path / "gym.fit"
+    tuesday = datetime(2026, 10, 27, 21, 0, tzinfo=UTC)  # 18:00 in Buenos Aires
+    gym.write_bytes(fit_file([strength_session([], start=tuesday, seconds=2700)]))
+    ok(cli, "import", str(gym))
+    cli.now = datetime(2026, 10, 27, 23, 0, tzinfo=UTC)
+    ok(cli, "checkin", "add", "--pain", "5", "--pain-location", "rodilla")
+    shown = ok(cli, "plan", "adapt")
+    assert shown.startswith("2026-10-27  REDUCE (PAIN_REPORTED; confidence MEDIUM)\n"), shown
+    assert f"proposed: plan {first.plan_id} version 2" in shown
+    proposed = runtime.plans.version(scope, first.plan_id, 2)
+    squats = first.content.on(MONDAY + timedelta(days=1))[0]
+    assert proposed.content.workout(squats.workout_id) == squats  # done: history
+    intervals = first.content.on(MONDAY + timedelta(days=3))[0]
+    assert not proposed.content.workout(intervals.workout_id).intensive  # type: ignore[union-attr]
+    # The weekly report shows the decision with its evidence and confidence (review of P12.8).
+    document = json.loads(ok(cli, "report", "week", "--week", "2026-W44", "--json"))
+    assert validation_errors("report-data", document) == []
+    changes = next(
+        item for item in document["sections"] if item["name"] == "Changes for the following week"
+    )
+    (decision,) = changes["items"]
+    assert decision["value"].startswith("REDUCE: You reported pain of 5 of 10")
+    assert [ref["kind"] for ref in decision["evidence"]] == ["DAILY_CHECKIN"]
+    assert decision["confidence"] == "MEDIUM"
 
 
 @pytest.mark.req("FR-ADP-001", "FR-ADP-004")
@@ -216,8 +256,10 @@ def test_plan_adapt_records_and_shows_the_decision(tmp_path: Path) -> None:
     cli, _runtime, _scope, _goal = onboarded(tmp_path)
     code, output = cli.run("plan", "adapt")
     assert (code, output) == (2, "error: there is no ACTIVE plan to adapt\n")
-    assert ok(cli, "plan", "decisions") == "no decisions yet\n"
+    code, output = cli.run("plan", "decisions")  # read from the activities (review of P12.8)
+    assert (code, "coach consent grant activities" in output) == (2, True)
     ok(cli, "consent", "grant", "activities")
+    assert ok(cli, "plan", "decisions") == "no decisions yet\n"
     plan_id = ok(cli, "plan", "generate").splitlines()[0].split()[1]
     ok(cli, "plan", "activate", plan_id, "1", "--revision", "1")
     cli.now = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
@@ -267,10 +309,28 @@ def test_reports_show_planned_versus_done_adherence_and_goal_progress(tmp_path: 
     assert "  current estimate for the goal distance: 0:50:00" in week  # the declared 10k race
     assert "  reason: NO_TARGET_TIME" in week
     assert "Cautious forecast: not available (NEEDS_GOAL_METRICS)" in ok(cli, "report", "month")
+    # A link to a workout on another day of the week still reports (review of P12.8).
+    sunday = next(
+        number for number, line in enumerate(executions.splitlines()) if "2026-11-01 Sun" in line
+    )
+    long_run = executions.splitlines()[sunday + 1].split()[1]
+    ok(cli, "plan", "link", activity, long_run)
+    single = ok(cli, "report", "activity", activity).splitlines()
+    planned = single.index("Planned vs Actual")
+    assert single[planned + 1 : planned + 3] == [
+        "  status: PARTIAL",
+        "  planned: ENDURANCE: 55 minutes easy (RPE 3 to 4)",
+    ]
+    ok(cli, "consent", "revoke", "activities")
+    week = ok(cli, "report", "week", "--week", "2026-W44").splitlines()
+    assert "Changes for the following week: not available (NO_CONSENT)" in week
     timed, *_ = onboarded(tmp_path / "timed", "--target-time", "48:00")
+    no_plan = ok(timed, "report", "week").splitlines()
+    assert "Changes for the following week: not available (NEEDS_PLANS)" in no_plan
     forecast = ok(timed, "report", "month").splitlines()
     start = forecast.index("Cautious forecast")
-    assert forecast[start + 3] == "  classification: LIKELY"  # 2 min in 20 weeks: 0.2 % a week
-    assert forecast[start + 1].startswith("  realistic goal: ")
-    assert forecast[start + 2] == "  minimum satisfactory goal: 0:50:00"
-    assert "never a guarantee of the outcome" in forecast[start + 4]
+    assert forecast[start + 1] == "  desired goal: 48:00"  # shown with the others (goals 4.6)
+    assert forecast[start + 2].startswith("  realistic goal: ")
+    assert forecast[start + 3] == "  minimum satisfactory goal: 0:50:00"
+    assert forecast[start + 4] == "  classification: LIKELY"  # 2 min in 20 weeks: 0.2 % a week
+    assert "never a guarantee of the outcome" in forecast[start + 5]

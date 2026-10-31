@@ -6,7 +6,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any, Final
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -424,11 +424,16 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+
+    def done_today(scope: OwnerScope, day: date) -> frozenset[UUID]:
+        return executions.done_workouts(scope, day)  # bound below; read only when checking
+
     planning_context = PlanningContextSource(
         inputs,
         recovery_assessment.prescriptions,
         today=recovery.today,
         checkins=lambda scope, until, days: recovery.checkins(scope, until=until, days=days),
+        done=done_today,
     )
     plans = PlanService(
         SqliteAggregateRepository(database, PLAN_HEADER_CODEC),
@@ -495,6 +500,7 @@ def build_runtime(
         events=events,
         clock=clock,
         ids=new_id,
+        consents=gate,
     )
     insights = InsightService(
         analytics,

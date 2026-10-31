@@ -22,6 +22,7 @@ from uuid import UUID
 
 from coach.application.audit import ActorKind, AuditEvent, AuditOutcome
 from coach.application.coaching import CoachingConditions, CoachingLifecycle
+from coach.application.consent import ConsentGate
 from coach.application.events import EventName
 from coach.application.executions import ExecutionService
 from coach.application.ownership import OwnerScope
@@ -33,6 +34,7 @@ from coach.domain.availability.availability import Availability
 from coach.domain.coaching.state import Condition, Trigger
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.time import DateRange
+from coach.domain.consent.ledger import ConsentType
 from coach.domain.onboarding.readiness import Readiness, ReadinessStatus
 from coach.domain.plans.adaptation import (
     ADAPTATION_RULES_VERSION,
@@ -77,7 +79,9 @@ class AdaptationService:
         events: EventSink,
         clock: Clock,
         ids: IdFactory,
+        consents: ConsentGate | None = None,
     ) -> None:
+        self._consents = consents
         self._plans = plans
         self._executions = executions
         self._generation = generation
@@ -97,6 +101,11 @@ class AdaptationService:
         self._ids = ids
 
     def decisions(self, scope: OwnerScope) -> list[AdaptationDecision]:
+        """The recorded decisions, oldest first. They are read from the activities (their
+        interpretations carry durations and RPE), so only with the ACTIVITIES consent, as
+        insights (review of P12.8)."""
+        if self._consents is not None:
+            self._consents.require(scope, ConsentType.ACTIVITIES)
         return sorted(self._decisions.list_all(scope), key=lambda item: item.decided_at)
 
     def run(

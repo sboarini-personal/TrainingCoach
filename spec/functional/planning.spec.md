@@ -328,11 +328,18 @@ Adaptation rules 1.0.0 (P12, precision; `coach.planning.adaptation`, `coach plan
   of the ACTIVE content (parent: the ACTIVE version; replacing a pending proposal; unchanged
   workouts keep their identifiers, so links and executions follow them; provisional when the
   readiness is PROVISIONAL); PROGRESS proposes a version regenerated from the updated history
-  (section 5.1). The proposed version's generator names the decision (`decisionId`). Every
-  proposal goes through the goal, readiness and plan-policy checks; the athlete activates or
-  rejects it. A proposal refused by them is still recorded, with PROPOSAL_REFUSED and the
+  (section 5.1). The proposed version's generator names the decision (`decisionId`). Whichever
+  rule decides, recent pain also eases the adapted content as rule 3 does (pain rules 1.0.0
+  hold for every version), with its reason, evidence and the workouts it changes (review of
+  P12.8: a recovery prescription deciding first left hard work where it hurt, and the pain
+  policy refused the version). Every proposal goes through the goal, readiness and
+  plan-policy checks; the athlete activates or rejects it. A proposal refused by them is still recorded, with PROPOSAL_REFUSED and the
   refusal's codes in the interpretation, and the plan stays as it is.
 - **Lifecycle.** A run moves TRAINING to ANALYSIS and then to TRAINING (no proposal) or
   ADAPTATION (a proposal); activating the adapted version or rejecting it returns to TRAINING. Each run
   is audited (`plan.adaptation_decided`, with the decision and reasons) and emitted
   (`plan.adaptation.decided`).
+- **Consent.** A run reads activities, and a decision's interpretation carries their numbers,
+  so runs and recorded decisions are read only with the ACTIVITIES consent, as insights
+  (`coach plan adapt`, `coach plan decisions` and the report sections show the consent hint
+  or NO_CONSENT otherwise; review of P12.8).

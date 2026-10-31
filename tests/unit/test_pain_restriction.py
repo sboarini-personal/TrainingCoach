@@ -49,6 +49,14 @@ def test_recent_pain_naming_a_region_restricts_it_for_three_days() -> None:
     assert pain_restriction([report(MONDAY, 6, "me molesta algo")], MONDAY) == PainRestriction()
     old = MONDAY - timedelta(days=3)
     assert pain_restriction([report(old, 6, "rodilla")], MONDAY) == PainRestriction()
+    # Each region ends 3 days after its own latest report (review of P12.8).
+    wednesday = MONDAY + timedelta(days=2)
+    both = pain_restriction(
+        [report(MONDAY, 5, "rodilla"), report(wednesday, 5, "hombro")], wednesday
+    )
+    assert both.applies(wednesday) == {BodyRegion.KNEES, BodyRegion.SHOULDERS}
+    assert both.applies(THURSDAY) == {BodyRegion.SHOULDERS}  # the knees are free again
+    assert both.until == wednesday + timedelta(days=3)
 
 
 @pytest.mark.req("SAFE-MED-001", "FR-POL-001", "FR-PRF-006")
@@ -98,8 +106,10 @@ def test_the_planning_context_reads_recent_check_ins() -> None:
         lambda _scope, _day: (),
         today=lambda _scope: MONDAY,
         checkins=checkins,
+        done=lambda _scope, day: {UUID(int=day.day)},  # the ACTIVE version's work done today
     )
     context = source(OwnerScope(ATHLETE))
     assert context.pain.regions == frozenset({BodyRegion.SHOULDERS})
     assert asked == [(MONDAY, 3)]
+    assert context.done == {UUID(int=MONDAY.day)}
     assert replace(context, pain=PainRestriction()).pain.regions == frozenset()

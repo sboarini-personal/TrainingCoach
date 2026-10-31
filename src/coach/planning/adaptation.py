@@ -768,6 +768,29 @@ def _with_notes(outcome: Outcome, notes: Sequence[_Note]) -> Outcome:
     )
 
 
+def _respecting_pain(outcome: Outcome, inputs: AdaptationInputs) -> Outcome:
+    """Recent pain eases the adapted content too, whichever rule changed it: the pain
+    restriction holds for every version (pain rules 1.0.0), so the plan policies would refuse
+    an adapted version that keeps hard work where it hurts."""
+    if outcome.content is None:
+        return outcome
+    found = _pain(replace(inputs, content=outcome.content))
+    if not isinstance(found, Outcome):
+        return outcome
+    return replace(
+        outcome,
+        reasons=(
+            *outcome.reasons,
+            *(item for item in found.reasons if item not in outcome.reasons),
+        ),
+        evidence=tuple(dict.fromkeys((*outcome.evidence, *found.evidence))),
+        interpretation=f"{outcome.interpretation} {found.interpretation}",
+        uncertainty=outcome.uncertainty | found.uncertainty,
+        affected=tuple(dict.fromkeys((*outcome.affected, *found.affected))),
+        content=found.content,
+    )
+
+
 def decide(inputs: AdaptationInputs) -> Outcome:
     """The decision of adaptation rules 1.0.0."""
     if inputs.safety_hold:
@@ -783,7 +806,7 @@ def decide(inputs: AdaptationInputs) -> Outcome:
     for rule in (_blocked, _pain, _interference, _deviations, _progress):
         found = rule(inputs)
         if isinstance(found, Outcome):
-            return _with_notes(found, notes)
+            return _with_notes(_respecting_pain(found, inputs), notes)
         if isinstance(found, _Note):
             notes.append(found)
     return _with_notes(_maintain(inputs), notes)

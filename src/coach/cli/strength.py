@@ -270,8 +270,11 @@ def import_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, o
         raise CommandError(str(error)) from None
     entries = []
     lines: dict[tuple[str, int], int] = {}
+    stated = [row for row in rows if any(value is not None for value in _values(row))]
+    if not stated:
+        raise CommandError("the file states no value for any set")
     now = runtime.clock()
-    for row in rows:
+    for row in stated:
         try:
             exercise_id = _exercise(runtime, scope, row.exercise)
         except CommandError:
@@ -301,8 +304,22 @@ def import_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, o
     with _translated():
         found = runtime.strength.record_all(scope, args.activity_id, entries)
     print(f"{len(entries)} sets recorded from the file", file=out)
+    if len(stated) < len(rows):  # an export's timed sets: the watch's stay as recorded
+        print(f"{len(rows) - len(stated)} rows without values left out", file=out)
     _show(found, out)
     return 0
+
+
+def _values(row: strength_csv.SetRow) -> tuple[float | int | None, ...]:
+    return (
+        row.reps,
+        row.load_kg,
+        row.rpe,
+        row.rir,
+        row.target_reps,
+        row.target_load_kg,
+        row.target_rpe,
+    )
 
 
 def export_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
@@ -329,6 +346,12 @@ def export_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, o
     text = strength_csv.export(rows)
     left_out = len(found.sets) - len(rows)
     if args.output is None:
+        if left_out:  # a note on the screen would break the file: never incomplete silently
+            raise CommandError(
+                f"{left_out} sets of exercises the catalogue does not name cannot be written in "
+                "the template: name them with coach strength relabel, or write the rest with "
+                "--output"
+            )
         out.write(text)
         return 0
     try:

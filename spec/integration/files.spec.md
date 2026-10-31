@@ -276,12 +276,18 @@ exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe
   RPE, RIR and targets are accepted. The import is all or nothing: one change of the session
   (audited `strength.session_changed`), refused whole when any row is invalid, names an
   unknown exercise or repeats the exercise and set of an earlier row. Errors name the line,
-  never its text.
+  never its text. A row that states no value (a timed set as an export writes it) declares
+  nothing: it is skipped and counted, and the watch's set stays as recorded; a file whose rows
+  state no value is refused (review of P12.8: an export with timed sets could not be imported
+  again).
 - The export writes the executed sets (the reconciled `StrengthSetResult`s) of exercises the
-  catalogue names; a set whose exercise is UNKNOWN cannot be written and is left out (the
-  command says how many). Formula-like text is protected as in the activity template, so an
-  export can be imported again; values imported from an export become the athlete's own
-  declarations for those sets.
+  catalogue names; a set whose exercise is UNKNOWN cannot be written and is left out. With
+  `--output` the command says how many; on the screen, where a note would break the file, the
+  export is refused while any set would be left out (name them with `coach strength relabel`,
+  or write the rest with `--output`), so an export is never incomplete without saying so.
+  Formula-like text is protected as in the activity template, so an export can be imported
+  again; values imported from an export become the athlete's own declarations for those
+  sets.
 
 ### 8.5 Time series
 

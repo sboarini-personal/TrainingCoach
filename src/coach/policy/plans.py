@@ -4,8 +4,9 @@ FR-PRF-006, SAFE-MED-003).
 A plan proposal or activation is checked workout by workout against what the application
 assembled from stored state (``PlanningContext``): the coaching conditions, the effective
 availability of each day, the athlete's resources and equipment, the active health
-constraints and the end of a recovery block. Only workouts from ``today`` on are checked: the
-past of a plan is history. Unknown never allows: an undefined day, a duration or an effort
+constraints and the end of a recovery block. Only workouts from ``today`` on are checked, and
+not those already done (the ACTIVE version's workouts with activities today): the past of a
+plan is history, not a prescription. Unknown never allows: an undefined day, a duration or an effort
 that is not stated, missing resources or a missing health declaration deny what they would
 have to allow. Reasons carry codes, dates and identifiers, never athlete text.
 """
@@ -59,6 +60,7 @@ class PlanningContext:
     resources: Resources | None = None
     recovery_block_until: date | None = None  # re-evaluation of the blocking prescriptions
     pain: PainRestriction = field(default_factory=PainRestriction)  # recent pain (P12)
+    done: frozenset[UUID] = frozenset()  # workouts already done today: history
     catalogue: ExerciseCatalogue = CATALOGUE
 
 
@@ -73,11 +75,13 @@ def _reason(
     return PolicyReason(policy, code, tuple(fields.items()))
 
 
-def _upcoming(content: PlanContent, today: date) -> list[PlannedWorkout]:
+def _upcoming(content: PlanContent, planning: PlanningContext) -> list[PlannedWorkout]:
     return [
         item
         for item in content.workouts
-        if item.training_day >= today and item.type is not WorkoutType.REST
+        if item.training_day >= planning.today
+        and item.type is not WorkoutType.REST
+        and item.workout_id not in planning.done
     ]
 
 
@@ -111,13 +115,13 @@ def own_tennis(content: PlanContent, resources: Resources | None) -> frozenset[U
 
 
 def safety_hold(
-    content: PlanContent, conditions: frozenset[Condition], today: date
+    content: PlanContent, conditions: frozenset[Condition], planning: PlanningContext
 ) -> list[PolicyReason]:
     if Condition.SAFETY_HOLD not in conditions:
         return []
     return [
         _reason("POL-SAFETY-HOLD", "SAFETY_HOLD_ACTIVE", item)
-        for item in _upcoming(content, today)
+        for item in _upcoming(content, planning)
         if item.intensive
     ]
 
@@ -132,7 +136,7 @@ def recovery_block(
     extra = {} if until is None else {"reevaluateAfter": until.isoformat()}
     return [
         _reason("POL-RECOVERY-BLOCK", "RECOVERY_BLOCK_ACTIVE", item, **extra)
-        for item in _upcoming(content, planning.today)
+        for item in _upcoming(content, planning)
         if item.intensive and (until is None or item.training_day < until)
     ]
 
@@ -238,7 +242,7 @@ def availability(content: PlanContent, planning: PlanningContext) -> list[Policy
     limits are unknown, so a plan placing workouts is denied (WEEKLY_PATTERN_MISSING)."""
     own = own_tennis(content, planning.resources)
     by_day: dict[date, list[PlannedWorkout]] = defaultdict(list)
-    for item in _upcoming(content, planning.today):
+    for item in _upcoming(content, planning):
         by_day[item.training_day].append(item)
     reasons: list[PolicyReason] = []
     for day in sorted(by_day):
@@ -274,7 +278,7 @@ def equipment(content: PlanContent, planning: PlanningContext) -> list[PolicyRea
         resources.bicycle is True or resources.smart_trainer is True
     )
     reasons: list[PolicyReason] = []
-    for item in _upcoming(content, planning.today):
+    for item in _upcoming(content, planning):
         for prescribed, exercise in _exercises(item, planning.catalogue):
             if exercise is None:
                 reasons.append(
@@ -385,7 +389,7 @@ def health(content: PlanContent, planning: PlanningContext) -> list[PolicyReason
     if planning.health is None:
         return [_reason("POL-HEALTH-CONSTRAINT", "HEALTH_NOT_DECLARED")]
     reasons: list[PolicyReason] = []
-    for item in _upcoming(content, planning.today):
+    for item in _upcoming(content, planning):
         for constraint in planning.health.active_constraints(on=item.training_day):
             reasons.extend(_violations(item, constraint, planning.catalogue))
         hurting = planning.pain.applies(item.training_day)
@@ -409,7 +413,7 @@ def plan_reasons(
 ) -> list[PolicyReason]:
     """Every plan policy, in a fixed order (deterministic reasons)."""
     return [
-        *safety_hold(content, conditions, planning.today),
+        *safety_hold(content, conditions, planning),
         *recovery_block(content, conditions, planning),
         *availability(content, planning),
         *equipment(content, planning),

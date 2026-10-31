@@ -2,14 +2,16 @@
 
 The athlete's availability, resources and health declaration as stored, the athlete's local
 today, the end of the recovery block (the latest re-evaluation date of the blocking
-prescriptions in force today) and the regions recent pain restricts (pain rules 1.0.0).
+prescriptions in force today), the regions recent pain restricts (pain rules 1.0.0) and the
+ACTIVE version's workouts already done today (execution rules 1.0.0), which are history.
 Nothing comes from the caller of a plan action.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import date
+from uuid import UUID
 
 from coach.application.athlete_inputs import AthleteInputsService
 from coach.application.ownership import OwnerScope
@@ -31,8 +33,10 @@ class PlanningContextSource:
         *,
         today: Callable[[OwnerScope], date],
         checkins: Callable[[OwnerScope, date, int], Sequence[DailyCheckIn]] | None = None,
+        done: Callable[[OwnerScope, date], Iterable[UUID]] | None = None,
     ) -> None:
         self._checkins = checkins
+        self._done = done
         self._inputs = inputs
         self._prescriptions = prescriptions
         self._today = today
@@ -50,4 +54,5 @@ class PlanningContextSource:
             pain=PainRestriction()
             if self._checkins is None
             else pain_restriction(self._checkins(scope, day, PAIN_RESTRICTION_DAYS), day),
+            done=frozenset() if self._done is None else frozenset(self._done(scope, day)),
         )

@@ -12,7 +12,7 @@ flags follow the safety hold.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Final
 
@@ -27,11 +27,22 @@ PAIN_RESTRICTION_DAYS: Final = 3
 
 @dataclass(frozen=True, slots=True)
 class PainRestriction:
-    regions: frozenset[BodyRegion] = field(default_factory=frozenset)
-    until: date | None = None  # the first day no longer restricted
+    """Each restricted region with the first day it is no longer restricted (3 days after
+    its own latest report)."""
+
+    ends: tuple[tuple[BodyRegion, date], ...] = ()
+
+    @property
+    def regions(self) -> frozenset[BodyRegion]:
+        return frozenset(region for region, _ in self.ends)
+
+    @property
+    def until(self) -> date | None:
+        """The first day no region is restricted."""
+        return max((end for _, end in self.ends), default=None)
 
     def applies(self, day: date) -> frozenset[BodyRegion]:
-        return self.regions if self.until is not None and day < self.until else frozenset()
+        return frozenset(region for region, end in self.ends if day < end)
 
 
 def recent_pain(checkins: Iterable[DailyCheckIn], today: date) -> list[DailyCheckIn]:
@@ -52,9 +63,12 @@ def pain_restriction(checkins: Iterable[DailyCheckIn], today: date) -> PainRestr
         for item in recent_pain(checkins, today)
         if item.pain is not None and (region := region_named(item.pain.location)) is not None
     ]
-    if not named:
-        return PainRestriction()
+    latest: dict[BodyRegion, date] = {}
+    for day, region in named:
+        latest[region] = max(day, latest.get(region, day))
     return PainRestriction(
-        frozenset(region for _, region in named),
-        max(day for day, _ in named) + timedelta(days=PAIN_RESTRICTION_DAYS),
+        tuple(
+            (region, latest[region] + timedelta(days=PAIN_RESTRICTION_DAYS))
+            for region in sorted(latest, key=lambda item: item.value)
+        )
     )

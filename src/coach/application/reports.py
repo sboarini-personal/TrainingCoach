@@ -174,6 +174,21 @@ def _unavailable(
     )
 
 
+def _decision(item: AdaptationDecision) -> ReportItem:
+    """An adaptation decision as stored: its interpretation (the numbers in it come from its
+    evidence), the evidence itself, its confidence and uncertainty (planning spec 7)."""
+    proposed = (
+        "" if item.proposed_version is None else f" (version {item.proposed_version} proposed)"
+    )
+    return ReportItem(
+        label=f"adaptation {item.training_day}",
+        value=f"{item.decision.value}: {item.interpretation}{proposed}",
+        evidence=item.evidence,
+        confidence=item.confidence,
+        reasons=item.uncertainty_reasons,
+    )
+
+
 def _ratios(item: WorkoutExecution, evidence: tuple[EvidenceRef, ...]) -> list[ReportItem]:
     return [
         ReportItem(
@@ -318,7 +333,7 @@ class ReportService:
             self._section("Trends", trends),
             Section("Alerts", tuple(alerts)),
             self._progression(scope),
-            self._changes(scope, period),
+            self._changes(scope, period, consented=activity_data),
         )
         return ReportData(
             kind=ReportKind.WEEKLY,
@@ -337,11 +352,12 @@ class ReportService:
         active = None if self._active_plan is None else self._active_plan(scope)
         if active is None or self._executions is None:
             return _unavailable(names, Unavailable.NEEDS_PLANS)
-        day = view.training_day
+        # A link may place the activity on another day of its week (planning spec 6).
+        monday = view.training_day - timedelta(days=view.training_day.weekday())
         found = next(
             (
                 item
-                for item in self._executions(scope, DateRange(day, day))
+                for item in self._executions(scope, DateRange(monday, monday + timedelta(days=6)))
                 if view.activity_id in item.completed_activity_ids
             ),
             None,
@@ -376,15 +392,7 @@ class ReportService:
                 ReportItem(label="replaced", value="another sport or type than planned that day")
             )
         impact = [
-            ReportItem(
-                label=f"adaptation {item.training_day}",
-                value=f"{item.decision.value}: {item.interpretation}"
-                + (
-                    ""
-                    if item.proposed_version is None
-                    else f" (version {item.proposed_version} proposed)"
-                ),
-            )
+            _decision(item)
             for item in ([] if self._decisions is None else self._decisions(scope))
             if any(
                 ref.kind is EvidenceKind.ACTIVITY and ref.ref_id == view.activity_id
@@ -456,20 +464,17 @@ class ReportService:
         )
         return Section("Adherence", tuple(items))
 
-    def _changes(self, scope: OwnerScope, period: DateRange) -> Section:
-        """The adaptations decided in the week that changed the plan (planning spec 7)."""
-        if self._decisions is None:
-            return Section.not_available("Changes for the following week", Unavailable.NEEDS_PLANS)
+    def _changes(self, scope: OwnerScope, period: DateRange, *, consented: bool) -> Section:
+        """The adaptations decided in the week that changed the plan (planning spec 7). They
+        are read from the activities, so only with the ACTIVITIES consent."""
+        name = "Changes for the following week"
+        active = None if self._active_plan is None else self._active_plan(scope)
+        if active is None or self._decisions is None:
+            return Section.not_available(name, Unavailable.NEEDS_PLANS)
+        if not consented:
+            return Section.not_available(name, Unavailable.NO_CONSENT)
         items = [
-            ReportItem(
-                label=f"adaptation {item.training_day}",
-                value=f"{item.decision.value}: {item.interpretation}"
-                + (
-                    ""
-                    if item.proposed_version is None
-                    else f" (version {item.proposed_version} proposed)"
-                ),
-            )
+            _decision(item)
             for item in self._decisions(scope)
             if period.start <= item.training_day <= period.end
             and item.decision is not Decision.MAINTAIN
@@ -524,13 +529,18 @@ class ReportService:
         if found is None or found.current is None or found.realistic_seconds is None:
             return Section.not_available(name, Unavailable.NEEDS_GOAL_METRICS)
         evidence = (found.current.evidence,)
-        items = [
+        estimate = frozenset({UncertaintyReason.ESTIMATED_VALUE})
+        items = []
+        if found.desired_seconds is not None:  # shown with the desired one (goals spec 4.6)
+            items.append(ReportItem(label="desired goal", value=_clock_time(found.desired_seconds)))
+        items += [
             ReportItem(
                 label="realistic goal",
                 value=round(found.realistic_seconds, 1),
                 unit="s",
                 evidence=evidence,
                 confidence=found.confidence,
+                reasons=estimate,
             ),
             ReportItem(
                 label="minimum satisfactory goal",
@@ -538,8 +548,10 @@ class ReportService:
                 unit="s",
                 evidence=evidence,
                 confidence=found.confidence,
+                reasons=estimate,
             ),
             ReportItem(label="classification", value=found.classification.value),
+            *(ReportItem(label="reason", value=reason.value) for reason in found.reasons),
             ReportItem(
                 label="assumption",
                 value=(

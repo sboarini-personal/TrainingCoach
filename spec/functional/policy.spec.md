@@ -91,8 +91,11 @@ denial is audited (`policy.evaluate`, DENIED, with the acting actor: SYSTEM, AGE
 and emitted (`security.authz.denied`). An activation is evaluated again against the current
 state.
 
-Only workouts from the athlete's today on are checked (the past of a plan is history); REST
-needs no check. Reasons carry the workout's `day` and `workoutId` and, where relevant, an
+Only workouts from the athlete's today on are checked (the past of a plan is history), and
+not the ACTIVE version's workouts already done today (with activities, execution rules
+1.0.0, planning spec 6): they are history too, not prescriptions (review of P12.8: squats
+done before a pain report made the pain policy refuse the loop's own easing). Without the
+activities consent nothing counts as done, so the check stays strict. REST needs no check. Reasons carry the workout's `day` and `workoutId` and, where relevant, an
 `exerciseId`, a `constraintId` or limits; never athlete text. They come in a fixed order:
 safety hold, recovery block, availability and duration, equipment, health.
 

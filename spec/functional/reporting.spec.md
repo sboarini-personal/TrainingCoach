@@ -88,7 +88,8 @@ Data part 1.1.0 (P12, precision): the sections that needed plans and goals.
 - **Post-activity** (from the ACTIVE plan's executions, planning spec 6):
   - Planned vs Actual: the activity's execution status, the planned workout, and the
     duration and distance done as a share of the plan (evidence: the activity and the
-    execution, `WORKOUT_EXECUTION` with the planned workout's ID);
+    execution, `WORKOUT_EXECUTION` with the planned workout's ID). The execution is looked
+    up in the activity's whole week: a link may place it on another day (review of P12.8);
   - Deviations: each measured share outside 80 % to 120 %, and a replacement;
   - Plan Impact: the adaptation decisions whose evidence names the activity, with the
     version they proposed.
@@ -101,7 +102,13 @@ Data part 1.1.0 (P12, precision): the sections that needed plans and goals.
     current estimate for the goal distance and the progression needed per week (evidence:
     the profile's race result), and the reasons;
   - Changes for the following week: the adaptation decisions of the week other than
-    MAINTAIN, with their interpretation and the version proposed.
-- **Monthly** Cautious forecast: the realistic and minimum satisfactory goals of the
-  feasibility rules (evidence: the race result), the classification, and the statement
-  that it is an estimate from the athlete's data, never a guarantee of the outcome.
+    MAINTAIN, with their interpretation and the version proposed; NEEDS_PLANS without an
+    ACTIVE plan, NO_CONSENT without the activities consent.
+  - An adaptation decision, here and in Plan Impact, is one item with the decision's own
+    evidence, confidence and uncertainty reasons (the numbers of its interpretation come from
+    that evidence; review of P12.8).
+- **Monthly** Cautious forecast: the desired goal (the athlete's target, as text; goals spec
+  4.6), the realistic and minimum satisfactory goals of the feasibility rules (evidence: the
+  race result; uncertainty ESTIMATED_VALUE), the classification, the feasibility reasons, and
+  the statement that it is an estimate from the athlete's data, never a guarantee of the
+  outcome.

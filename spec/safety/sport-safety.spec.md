@@ -78,7 +78,9 @@ persists beyond 7 days or worsens, and pain reports feed the adaptation loop.
 
 Pain rules 1.0.0 (P12, precision; `coach.domain.recovery.pain`; initial values under A-18):
 a check-in of the last 3 days reporting pain of 4 or more of 10 whose location names a body
-region exactly (region rules 1.0.0) restricts that region until 3 days after the report.
+region exactly (region rules 1.0.0) restricts that region until 3 days after the report
+(each region after its own latest report: an earlier region is not held by a later one;
+review of P12.8).
 The policy engine denies hard strength work loading it (`PAIN_REGION_RESTRICTED`, policy
 spec 5), the plan generator plans those exercises light (planning spec 5.1) and the
 adaptive loop eases the next days (planning spec 7, which also eases every intensity when
