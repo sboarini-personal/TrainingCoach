@@ -1,8 +1,9 @@
-"""Deterministic policy engine, core set 1.1.0 (FR-POL-001; spec/functional/policy.spec.md).
+"""Deterministic policy engine, set 1.2.0 (FR-POL-001; spec/functional/policy.spec.md).
 
 Pure function of an action and a context assembled by the application. Deny overrides
 confirmation, which overrides allow. Reasons are produced in a fixed order so equal inputs
-always give equal decisions.
+always give equal decisions. A plan proposal or activation carries its content, checked by
+the plan policies (``coach.policy.plans``) against the planning context.
 """
 
 from __future__ import annotations
@@ -17,8 +18,11 @@ from coach.domain.coaching.state import Condition
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.integration.capabilities import Capability
+from coach.domain.plans.plan import PlanContent
+from coach.policy.plans import PlanningContext, plan_reasons
+from coach.policy.reasons import PolicyReason as PolicyReason
 
-POLICY_SET_VERSION: Final = "1.1.0"
+POLICY_SET_VERSION: Final = "1.2.0"
 _ACTION_NAME: Final = re.compile(r"^[a-z]+(\.[a-z_]+)+$")
 
 
@@ -46,6 +50,8 @@ class Action:
     consents: frozenset[ConsentType] = frozenset()
     intensive_training: bool = False
     capabilities: frozenset[Capability] = frozenset()
+    plan: PlanContent | None = None  # the content proposed or activated
+    activates_plan: bool = False
     confirmed: bool = False
 
     def __post_init__(self) -> None:
@@ -59,13 +65,7 @@ class PolicyContext:
     granted_consents: frozenset[ConsentType]
     conditions: frozenset[Condition]
     supported_capabilities: frozenset[Capability] = frozenset()
-
-
-@dataclass(frozen=True, slots=True)
-class PolicyReason:
-    policy: str
-    code: str
-    parameters: tuple[tuple[str, str], ...] = ()
+    planning: PlanningContext | None = None  # assembled for plan actions only
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,8 +83,14 @@ def _denials(action: Action, context: PolicyContext) -> list[PolicyReason]:
         reasons.append(
             PolicyReason("POL-CONSENT", "CONSENT_REQUIRED", (("consentType", consent.value),))
         )
-    if action.intensive_training and Condition.SAFETY_HOLD in context.conditions:
+    held = Condition.SAFETY_HOLD in context.conditions
+    if held and (action.intensive_training or action.activates_plan):
         reasons.append(PolicyReason("POL-SAFETY-HOLD", "SAFETY_HOLD_ACTIVE"))
+    if action.plan is not None:
+        planning = context.planning
+        if planning is None:  # the gate assembles it for every plan action
+            raise DomainValidationError("a plan action needs a planning context")
+        reasons.extend(plan_reasons(action.plan, context.conditions, planning))
     missing = action.capabilities - context.supported_capabilities
     for capability in sorted(missing, key=lambda item: item.value):
         reasons.append(

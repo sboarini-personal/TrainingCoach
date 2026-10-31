@@ -47,6 +47,13 @@ Equipment is the vocabulary of the athlete's resources (BARBELL, DUMBBELLS, KETT
 BANDS, MACHINES, PULL_UP_BAR, BENCH, BODYWEIGHT_ONLY, OTHER); an exercise lists the equipment
 it needs, and an exercise needing none lists BODYWEIGHT_ONLY.
 
+Equipment rules 1.0.0 (P12, precision; `coach.domain.strength.equipment`): the list mixes
+alternatives and accessories (a goblet squat takes dumbbells *or* kettlebells, a bench press
+a barbell *and* a bench). BENCH is needed in addition to the rest; the other items are
+alternatives, any one of which is enough. This reads every exercise of catalogue 1.0.0
+correctly. The athlete's equipment is what they declared they can use, at home or at a gym;
+gym access is never expanded into equipment.
+
 ## 3. Exercise catalogue (FR-STR-003)
 
 `Exercise`: `exerciseId` (pattern `ex.<snake_case>`, stable), `canonicalName`,

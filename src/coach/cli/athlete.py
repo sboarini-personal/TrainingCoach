@@ -115,7 +115,9 @@ def add_profile_parsers(profile: argparse._SubParsersAction[argparse.ArgumentPar
     resources = profile.add_parser("resources", help="show or set equipment and resources")
     resources.add_argument("--gym", choices=["yes", "no"])
     resources.add_argument(
-        "--equipment", help="comma-separated: " + ",".join(item.value for item in Equipment)
+        "--equipment",
+        help="what you can use, at home or at a gym; comma-separated: "
+        + ",".join(item.value for item in Equipment),
     )
     resources.add_argument("--pool", help="pool length in metres, or none")
     resources.add_argument("--bicycle", choices=["yes", "no"])

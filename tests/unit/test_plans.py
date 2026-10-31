@@ -3,7 +3,6 @@ FR-PLN-004, AT-PLN-001, AT-PLN-002). Synthetic data only."""
 
 from __future__ import annotations
 
-import itertools
 import json
 from dataclasses import replace
 from datetime import timedelta
@@ -12,8 +11,6 @@ from uuid import UUID
 
 import pytest
 
-from activity_world import MutableClock
-from coach.application.coaching import CoachingConditions, CoachingLifecycle
 from coach.application.contracts import PLAN_HEADER_CODEC, PLAN_VERSION_CODEC
 from coach.application.contracts.plans import (
     content_hash,
@@ -24,20 +21,11 @@ from coach.application.contracts.plans import (
 )
 from coach.application.errors import ConcurrencyConflictError
 from coach.application.events import EventName
-from coach.application.ownership import OwnerScope
-from coach.application.plans import PlanService
-from coach.application.screening import SecretScreen
-from coach.domain.coaching.state import CoachingState, Condition, LifecycleState, Trigger
+from coach.application.policy_gate import PolicyDeniedError
+from coach.domain.coaching.state import Actor, Condition, LifecycleState
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.common.sport import Sport
-from coach.domain.plans.plan import (
-    Generator,
-    GeneratorKind,
-    PlanStatus,
-    PlanVersion,
-    SupersededReason,
-    TrainingPlan,
-)
+from coach.domain.plans.plan import PlanStatus, SupersededReason
 from coach.domain.plans.workout import (
     SAFETY_STOP,
     EnduranceWorkout,
@@ -46,17 +34,13 @@ from coach.domain.plans.workout import (
     StepKind,
     WorkoutType,
 )
-from coach.infrastructure.memory import InMemoryAuditLog, InMemoryRepository, RecordingEventSink
 from coach.infrastructure.sqlite.aggregates import SqliteAggregateRepository
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from plan_samples import MONDAY, content, easy_run, intervals, rest, strength, target, tennis, week
-from samples import ATHLETE
+from plan_world import ENGINE, GOAL, SCOPE, PlanWorld
 from schemas import CONTRACTS_DIR, load_json
 
-SCOPE = OwnerScope(ATHLETE)
-GOAL = UUID(int=0x601)
 PLANTED = "Zx81Qp0LmN4vB7cT2wYe9KdR"  # pragma: allowlist secret
-ENGINE = Generator(kind=GeneratorKind.ENGINE, engine_version="1.0.0")
 
 
 # --------------------------------------------------------------------------- model
@@ -142,42 +126,6 @@ def test_published_workouts_and_plan_round_trip_with_their_hash() -> None:
 # --------------------------------------------------------------------------- service
 
 
-class PlanWorld:
-    def __init__(
-        self,
-        headers: InMemoryRepository[TrainingPlan] | None = None,
-        versions: InMemoryRepository[PlanVersion] | None = None,
-        **kwargs: object,
-    ) -> None:
-        self.clock = MutableClock()
-        counter = itertools.count(1)
-        self.audit = InMemoryAuditLog()
-        self.events = RecordingEventSink()
-        states = InMemoryRepository[CoachingState]()
-        self.conditions = CoachingConditions(
-            states, audit=self.audit, events=self.events, clock=self.clock
-        )
-        self.lifecycle = CoachingLifecycle(
-            states, audit=self.audit, events=self.events, clock=self.clock
-        )
-        self.service = PlanService(
-            headers if headers is not None else InMemoryRepository[TrainingPlan](),
-            versions if versions is not None else InMemoryRepository[PlanVersion](),
-            lifecycle=self.lifecycle,
-            conditions=self.conditions,
-            screen=SecretScreen(self.events),
-            audit=self.audit,
-            events=self.events,
-            clock=self.clock,
-            ids=lambda: UUID(int=0x500 + next(counter)),
-            **kwargs,  # type: ignore[arg-type]
-        )
-
-    def to_goal_defined(self) -> None:
-        for trigger in (Trigger.CONSENT_DECISIONS_RECORDED, Trigger.REQUIRED_INPUTS_WITH_HISTORY):
-            assert self.lifecycle.advance(SCOPE, trigger)
-
-
 @pytest.mark.req("FR-PLN-002", "FR-PLN-003", "FR-ONB-006")
 @pytest.mark.acceptance("AT-PLN-001")
 def test_an_adaptation_is_a_new_version_and_activation_supersedes_the_old() -> None:
@@ -251,7 +199,7 @@ def test_a_failed_activation_writes_nothing_in_sqlite(tmp_path: Path) -> None:
     database = SqliteDatabase.open(tmp_path / "coach.sqlite3")
     headers = SqliteAggregateRepository(database, PLAN_HEADER_CODEC)
     versions = SqliteAggregateRepository(database, PLAN_VERSION_CODEC)
-    world = PlanWorld(headers, versions, batch=database.batch)  # type: ignore[arg-type]
+    world = PlanWorld(headers, versions, batch=database.batch)
     service = world.service
     first = service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
     service.activate(SCOPE, first.plan_id, 1)
@@ -278,9 +226,16 @@ def test_activation_is_blocked_during_a_safety_hold_and_proposals_can_be_rejecte
     world = PlanWorld()
     first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
     world.conditions.activate(SCOPE, Condition.SAFETY_HOLD, reason="RF_CHEST_PAIN")
-    with pytest.raises(InvalidTransitionError):
+    with pytest.raises(PolicyDeniedError) as denied:
         world.service.activate(SCOPE, first.plan_id, 1)
-    rejected = world.service.reject(SCOPE, first.plan_id, 1)
+    reasons = denied.value.decision.reasons
+    assert {item.code for item in reasons} == {"SAFETY_HOLD_ACTIVE"}
+    assert reasons[0].parameters == ()  # the activation itself, then each intensive workout
+    assert [item.parameter("day") for item in reasons[1:]] == ["2026-10-27", "2026-10-29"]
+    rejected = world.service.reject(SCOPE, first.plan_id, 1)  # rejecting is always allowed
+    world.conditions.clear(
+        SCOPE, Condition.SAFETY_HOLD, reason="CLEARED_BY_PROFESSIONAL", actor=Actor.ATHLETE
+    )
     assert (rejected.status, rejected.superseded_reason) == (
         PlanStatus.SUPERSEDED,
         SupersededReason.REJECTED,

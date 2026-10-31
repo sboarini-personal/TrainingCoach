@@ -11,8 +11,9 @@ from uuid import UUID
 
 from coach.application.errors import ConcurrencyConflictError, NotFoundError
 from coach.application.ownership import OwnerScope
-from coach.cli.activities import CommandError
-from coach.cli.runtime import Runtime
+from coach.application.policy_gate import PolicyDeniedError
+from coach.cli.activities import TIMEZONE_HINT, CommandError
+from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.plans.plan import PlanVersion
 from coach.domain.plans.workout import PlannedWorkout
@@ -114,6 +115,10 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                 )
             case _:
                 changed = plans.reject(scope, UUID(args.plan_id), args.version)
+    except PolicyDeniedError as denied:
+        raise CommandError("denied by policy: " + denial(denied)) from None
+    except TimezoneRequiredError:
+        raise CommandError(TIMEZONE_HINT) from None
     except NotFoundError:
         raise CommandError("plan or version not found") from None
     except ConcurrencyConflictError:
@@ -122,6 +127,17 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
         raise CommandError(str(error)) from None
     print(f"plan {changed.plan_id} version {changed.number} is {changed.status.value}", file=out)
     return 0
+
+
+def denial(denied: PolicyDeniedError) -> str:
+    """The reasons of a denial: codes with their day or exercise, each once."""
+    shown: list[str] = []
+    for reason in denied.decision.reasons:
+        where = [value for name in ("day", "exerciseId") if (value := reason.parameter(name))]
+        text = reason.code + (f" ({', '.join(where)})" if where else "")
+        if text not in shown:
+            shown.append(text)
+    return "; ".join(shown)
 
 
 def _selected(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace) -> PlanVersion | None:

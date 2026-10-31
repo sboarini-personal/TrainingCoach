@@ -5,7 +5,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 
 from coach.domain.athlete.resources import TennisSessionType
@@ -27,6 +27,7 @@ from coach.domain.plans.workout import (
 )
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.prescription import (
+    EffortCue,
     ExpectedInterference,
     Load,
     LoadKind,
@@ -102,9 +103,20 @@ def intervals(
 
 
 def strength(
-    day: date, *, rpe: float = 7, exercise: str = "ex.goblet_squat", order: int = 0
+    day: date,
+    *,
+    rpe: float = 7,
+    exercise: str = "ex.goblet_squat",
+    order: int = 0,
+    cue: EffortCue | None = None,
 ) -> PlannedWorkout:
+    """Three sets of one exercise at a target RPE, or at an effort cue with a fixed load."""
     found = CATALOGUE.get(exercise)
+    effort: dict[str, Any] = (
+        {"load": Load(LoadKind.RPE_BASED), "target_rpe": rpe}
+        if cue is None
+        else {"load": Load(LoadKind.ABSOLUTE_KG, 10), "effort_cue": cue}
+    )
     return PlannedWorkout(
         workout_id=next_id(),
         type=WorkoutType.STRENGTH,
@@ -124,9 +136,8 @@ def strength(
                     sets=3,
                     reps_min=8,
                     reps_max=10,
-                    load=Load(LoadKind.RPE_BASED),
-                    target_rpe=rpe,
                     rest_seconds=90,
+                    **effort,
                 ),
             ),
             progression_rule="Add repetitions before load",

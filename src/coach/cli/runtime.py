@@ -54,7 +54,9 @@ from coach.application.ids import new_id
 from coach.application.ingestion import IngestionService
 from coach.application.insights import InsightService
 from coach.application.ownership import OwnerScope
+from coach.application.planning_context import PlanningContextSource
 from coach.application.plans import PlanService
+from coach.application.policy_gate import PolicyGate
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.providers import FitnessProvider
 from coach.application.recovery import RecoveryService
@@ -411,7 +413,17 @@ def build_runtime(
         SqliteAggregateRepository(database, PLAN_HEADER_CODEC),
         SqliteAggregateRepository(database, PLAN_VERSION_CODEC),
         lifecycle=lifecycle,
-        conditions=conditions,
+        gate=PolicyGate(
+            gate,
+            SqliteAggregateRepository(database, COACHING_STATE_CODEC),
+            audit=audit,
+            events=events,
+            clock=clock,
+            integrations=SqliteAggregateRepository(database, INTEGRATION_STATUS_CODEC),
+            planning=PlanningContextSource(
+                inputs, recovery_assessment.prescriptions, today=recovery.today
+            ),
+        ),
         screen=screen,
         audit=audit,
         events=events,

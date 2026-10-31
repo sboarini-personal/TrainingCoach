@@ -35,7 +35,7 @@ def test_compliant_action_is_allowed_with_version() -> None:
         action(resource_owner=ATHLETE, consents=frozenset({ConsentType.HRV})), CONTEXT
     )
     assert (decision.outcome, decision.reasons) == (Outcome.ALLOW, ())
-    assert decision.policy_set_version == POLICY_SET_VERSION == "1.1.0"
+    assert decision.policy_set_version == POLICY_SET_VERSION == "1.2.0"
 
 
 @pytest.mark.req("FR-POL-001", "SEC-AUTHZ-001")

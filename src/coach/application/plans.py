@@ -5,8 +5,11 @@ A version is created PROPOSED with its content hash and never changes content ag
 change is a new version with its parent. Activation is the athlete's explicit action: in one
 transaction it updates the plan header (optimistic concurrency, so two concurrent activations
 cannot both succeed, AT-PLN-002), makes the version ACTIVE and the previous ACTIVE one
-SUPERSEDED. Activation is refused while SAFETY_HOLD is active (SAFE-MED-003); its reason is
-screened for disclosed secrets before it is stored (SEC-SEC-005). Proposals and
+SUPERSEDED. The policy engine decides before anything is written: a proposal is checked
+against every plan policy and a denied one is never persisted (FR-POL-002, AT-POL-001);
+an activation is checked again against the current state, and denied while SAFETY_HOLD
+is active (SAFE-MED-003). The activation reason is screened for disclosed secrets before
+it is stored (SEC-SEC-005). Proposals and
 activations are audited and emitted, and bring the coaching lifecycle forward where the state
 machine allows (GOAL_DEFINED to PLAN_READY, PLAN_READY to TRAINING).
 """
@@ -18,15 +21,16 @@ from datetime import date
 from uuid import UUID
 
 from coach.application.audit import ActorKind, AuditEvent, AuditOutcome
-from coach.application.coaching import CoachingConditions, CoachingLifecycle
+from coach.application.coaching import CoachingLifecycle
 from coach.application.contracts.plans import content_hash
 from coach.application.errors import ConcurrencyConflictError, NotFoundError
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
+from coach.application.policy_gate import PolicyGate
 from coach.application.ports import AuditLog, Batch, Clock, EventSink, IdFactory, OwnedRepository
 from coach.application.screening import SecretScreen
-from coach.domain.coaching.state import Condition, Trigger
-from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
+from coach.domain.coaching.state import Trigger
+from coach.domain.common.errors import DomainValidationError
 from coach.domain.plans.plan import (
     Generator,
     PlanContent,
@@ -36,6 +40,10 @@ from coach.domain.plans.plan import (
     TrainingPlan,
     version_id,
 )
+from coach.policy.engine import Action, ActionKind
+
+PROPOSE_ACTION = "plan.propose"
+ACTIVATE_ACTION = "plan.activate"
 
 
 class PlanService:
@@ -45,7 +53,7 @@ class PlanService:
         versions: OwnedRepository[PlanVersion],
         *,
         lifecycle: CoachingLifecycle,
-        conditions: CoachingConditions,
+        gate: PolicyGate,
         screen: SecretScreen,
         audit: AuditLog,
         events: EventSink,
@@ -56,7 +64,7 @@ class PlanService:
         self._headers = headers
         self._versions = versions
         self._lifecycle = lifecycle
-        self._conditions = conditions
+        self._gate = gate
         self._screen = screen
         self._audit = audit
         self._events = events
@@ -106,15 +114,27 @@ class PlanService:
         plan_id: UUID | None = None,
         parent: int | None = None,
         replaces: int | None = None,
+        actor: ActorKind = ActorKind.SYSTEM,
     ) -> PlanVersion:
         """A new PROPOSED version: of a new plan, or of ``plan_id`` after ``parent``.
 
-        The policy engine has already allowed the content (planning spec 2: DRAFT to PROPOSED
-        once it passed the policy engine). ``replaces`` names a PROPOSED version this one
+        The policy engine decides first (planning spec 2: DRAFT to PROPOSED once it passed
+        the policy engine); a denial raises ``PolicyDeniedError`` with its reasons and
+        writes nothing but the audited denial. ``replaces`` names a PROPOSED version this one
         replaces: it becomes SUPERSEDED (REPLACED_BY_NEWER_PROPOSAL) in the same
         transaction. Other proposals stay PROPOSED until activated or rejected."""
         if plan_id is None and (parent is not None or replaces is not None):
             raise DomainValidationError("the first version of a plan has no parent")
+        self._gate.enforce(
+            scope,
+            Action(
+                kind=ActionKind.PROPOSE,
+                name=PROPOSE_ACTION,
+                resource_owner=scope.athlete_id,
+                plan=content,
+            ),
+            actor=actor,
+        )
         now = self._clock()
         with self._batch():
             if plan_id is None:
@@ -173,7 +193,7 @@ class PlanService:
                 replaced = self._versions.update(
                     scope, superseding, expected_version=earlier.version
                 )
-        self._record(scope, "plan.proposed", proposed, ActorKind.SYSTEM)
+        self._record(scope, "plan.proposed", proposed, actor)
         self._events.emit(EventName.PLAN_GENERATED, {"generator": generator.kind.value})
         self._events.emit(EventName.PLAN_PROPOSED, {"version": str(number)})
         if replaced is not None:
@@ -193,8 +213,18 @@ class PlanService:
     ) -> PlanVersion:
         """The athlete activates a PROPOSED version; the previous ACTIVE one is superseded in
         the same transaction. ``expected_revision`` is the header revision the athlete saw."""
-        if Condition.SAFETY_HOLD in self._conditions.current(scope).conditions:
-            raise InvalidTransitionError("plan activation is blocked during SAFETY_HOLD")
+        found = self._versions.get(scope, version_id(plan_id, number))
+        found.moved(PlanStatus.ACTIVE)  # the transition is valid before policy is asked
+        self._gate.enforce(
+            scope,
+            Action(
+                kind=ActionKind.WRITE_INTERNAL,
+                name=ACTIVATE_ACTION,
+                resource_owner=found.athlete_id,
+                plan=found.content,
+                activates_plan=True,
+            ),
+        )
         if reason is not None:
             reason = self._screen.screen(reason, source="plan").text
         with self._batch():

@@ -54,7 +54,7 @@ conditions. Implemented policies and reason codes:
 | POL-EXTERNAL-WRITE | REQUIRE_CONFIRMATION for unconfirmed EXECUTE_EXTERNAL actions | `CONFIRMATION_REQUIRED` |
 | POL-DESTRUCTIVE | REQUIRE_CONFIRMATION for unconfirmed DELETE actions | `CONFIRMATION_REQUIRED` |
 
-The remaining policies need the planning model and arrive in P12. Confirmation tokens arrive
+The remaining policies need the planning model and arrive in P12 (section 5). Confirmation tokens arrive
 with the first external write or deletion workflow; until then nothing sets `confirmed`.
 
 Added in P7 (`policySetVersion` 1.1.0): an `Action` also states the provider capabilities it
@@ -76,3 +76,68 @@ needs, and the `PolicyContext` holds the capabilities that are SUPPORTED (from t
 
 AT-POL-001 verifies that a proposal violating availability, a health constraint or
 SAFETY_HOLD is denied even when the agent insists.
+
+## 5. Plan policies (P12, `policySetVersion` 1.2.0)
+
+An `Action` may carry the plan content it proposes or activates (`plan`) and whether it
+activates a plan (`activatesPlan`). For such an action the `PolicyContext` also holds the
+**planning context**, assembled by the application from stored state, never from the caller:
+the athlete's local today, the effective availability (profile spec 4), the declared
+resources and health constraints, and the end of the recovery block (the latest
+`reevaluateAfter` of the blocking prescriptions in force today, recovery spec 4). A plan
+proposal is evaluated before anything is written; a denied one is never persisted, its
+denial is audited (`policy.evaluate`, DENIED, with the acting actor: SYSTEM, AGENT or USER)
+and emitted (`security.authz.denied`). An activation is evaluated again against the current
+state.
+
+Only workouts from the athlete's today on are checked (the past of a plan is history); REST
+needs no check. Reasons carry the workout's `day` and `workoutId` and, where relevant, an
+`exerciseId`, a `constraintId` or limits; never athlete text. They come in a fixed order:
+safety hold, recovery block, availability and duration, equipment, health.
+
+| Policy | Outcome | Reason code (parameters) |
+|---|---|---|
+| POL-SAFETY-HOLD | DENY any plan activation while SAFETY_HOLD is active | `SAFETY_HOLD_ACTIVE` |
+| POL-SAFETY-HOLD | DENY each intensive workout (planning spec 3) while SAFETY_HOLD is active | `SAFETY_HOLD_ACTIVE` (day, workoutId) |
+| POL-RECOVERY-BLOCK | DENY each intensive workout before the block's re-evaluation date, or any intensive workout when that date is unknown, while RECOVERY_BLOCK is active | `RECOVERY_BLOCK_ACTIVE` (day, workoutId, reevaluateAfter) |
+| POL-AVAILABILITY | DENY a workout on a day that is not plannable (no exception, pattern or default) | `DAY_NOT_PLANNABLE` |
+| POL-AVAILABILITY | DENY a workout on an unavailable day (an exception or a preferred rest day) | `DAY_UNAVAILABLE` |
+| POL-AVAILABILITY | DENY a workout whose sport the day does not allow | `SPORT_NOT_ALLOWED` (sport) |
+| POL-AVAILABILITY | DENY more than one session on a day unless double sessions are allowed | `DOUBLE_SESSION_NOT_ALLOWED` (day, sessions) |
+| POL-AVAILABILITY | DENY a week with more training days than the recurring pattern allows | `TOO_MANY_TRAINING_DAYS` (weekStart, trainingDays, maximumDays) |
+| POL-MAX-DURATION | DENY a day whose planned duration exceeds its maximum (the windows' total length when the day has windows) | `DAY_DURATION_EXCEEDED` (day, plannedMinutes, maximumMinutes) |
+| POL-MAX-DURATION | DENY a week over the recurring maximum hours | `WEEK_DURATION_EXCEEDED` (weekStart, plannedHours, maximumHours) |
+| POL-MAX-DURATION | DENY a workout whose duration is not stated (it cannot be checked) | `DURATION_UNKNOWN` |
+| POL-EQUIPMENT | DENY a strength exercise the athlete's equipment does not allow (equipment rules 1.0.0, strength spec 2), or one not in the catalogue | `EQUIPMENT_MISSING`, `EXERCISE_UNKNOWN` (exerciseId) |
+| POL-EQUIPMENT | DENY swimming without declared pool access, cycling without a bicycle or a smart trainer | `POOL_REQUIRED`, `BICYCLE_REQUIRED` |
+| POL-HEALTH-CONSTRAINT | DENY any plan when the health declaration is missing (never assumed to be "none") | `HEALTH_NOT_DECLARED` |
+| POL-HEALTH-CONSTRAINT | DENY what an active constraint's restrictions name (below) | `SPORT_RESTRICTED`, `RPE_ABOVE_LIMIT`, `IMPACT_RESTRICTED`, `OVERHEAD_RESTRICTED`, `HEAVY_LOWER_BODY_RESTRICTED`, `REGION_RESTRICTED` (constraintId, exerciseId, maxRpe, region) |
+
+Precisions:
+
+- **Unknown never allows.** No availability makes every day not plannable; no resources
+  allow only bodyweight exercises and no swimming or cycling; an unstated duration or effort
+  is denied where it would have to be checked.
+- **Activation and SAFETY_HOLD.** Planning spec 2 allows activation only without SAFETY_HOLD,
+  so any activation is denied during a hold, whatever the plan's intensity (the stricter
+  reading of AT-SAFE-001 and safety spec 3). A proposal without intensive workouts may be
+  PROPOSED during a hold and activated after the athlete releases it.
+- **Time windows.** Planned workouts have no clock time in V1, so a day with windows allows
+  their total length.
+- **Sports.** A day's allowed sports restrict workouts of a known sport; a recovery session
+  without a sport (mobility) is not restricted by them.
+- **The athlete's own tennis.** A tennis session on a weekday of the declared tennis schedule,
+  no longer than the declared slot, is the athlete's own commitment: the plan counts it as load
+  (estimated load, interference, adaptation) but does not place it, so availability and
+  duration checks other than an availability exception for that date do not apply to it
+  (it is neither a double session nor a training day of the pattern). Safety, recovery and
+  health policies apply to it.
+- **Health restrictions.** A constraint applies to the sports it lists (all sports when it
+  lists none) on the days it is active; NO_SPORT applies to its sport. MAX_RPE(n): a workout
+  whose highest target RPE exceeds n, or whose effort is not stated. NO_IMPACT: running and
+  tennis, and strength exercises tagged HIGH_IMPACT. NO_OVERHEAD: swimming and tennis, and
+  strength exercises tagged OVERHEAD. NO_HEAVY_LOWER_BODY: a lower-body-pattern exercise at a
+  hard target (strength spec 8: RIR 4 or less, else RPE 6 or more, or the HARD cue). Affected
+  regions: a strength exercise loading the region (region rules 1.0.0) at a hard target.
+  OTHER is free text: code does not check it; the plan generator states it as an
+  assumption for the athlete to review.

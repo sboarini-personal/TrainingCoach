@@ -42,6 +42,13 @@ def test_the_athlete_reviews_activates_and_rejects_plan_versions(tmp_path: Path)
     cli = Cli(tmp_path / "coach-data")
     assert cli.run("init")[0] == 0
     assert ok(cli, "plan", "list") == "no plans yet\n"
+    for command in (
+        ("profile", "timezone", "America/Argentina/Buenos_Aires"),
+        ("profile", "health", "none"),
+        ("profile", "resources", "--gym", "yes", "--equipment", "dumbbells,bench", "--no-tennis"),
+        ("availability", "default", "--minutes", "240"),
+    ):
+        ok(cli, *command)
     runtime, scope = opened(cli)
     first = runtime.plans.propose(
         scope, goal_id=GOAL, content=content(provisional=True), generator=ENGINE
@@ -78,3 +85,28 @@ def test_the_athlete_reviews_activates_and_rejects_plan_versions(tmp_path: Path)
     assert f"plan {plan_id} version 1: SUPERSEDED" in shown
     assert "version 2 (from version 1): ACTIVE" in ok(cli, "plan", "show")
     assert cli.run("plan", "activate", plan_id, "9")[1] == "error: plan or version not found\n"
+
+
+@pytest.mark.req("SAFE-MED-003", "FR-POL-001")
+@pytest.mark.acceptance("AT-SAFE-001")
+def test_activation_is_denied_with_reasons_while_a_hold_is_active(tmp_path: Path) -> None:
+    cli = Cli(tmp_path / "coach-data")
+    assert cli.run("init")[0] == 0
+    for command in (
+        ("profile", "timezone", "America/Argentina/Buenos_Aires"),
+        ("profile", "health", "none"),
+        ("profile", "resources", "--gym", "yes", "--equipment", "dumbbells,bench", "--no-tennis"),
+        ("availability", "default", "--minutes", "240"),
+    ):
+        ok(cli, *command)
+    runtime, scope = opened(cli)
+    first = runtime.plans.propose(scope, goal_id=GOAL, content=content(), generator=ENGINE)
+    cli.run("checkin", "add", "--notes", "me duele el pecho desde ayer")
+    code, output = cli.run("plan", "activate", str(first.plan_id), "1")
+    assert (code, output) == (
+        2,
+        "error: denied by policy: SAFETY_HOLD_ACTIVE; SAFETY_HOLD_ACTIVE (2026-10-27); "
+        "SAFETY_HOLD_ACTIVE (2026-10-29)\n",
+    )
+    ok(cli, "safety", "release", "--cleared-by-professional")
+    assert ok(cli, "plan", "activate", str(first.plan_id), "1").endswith("is ACTIVE\n")
