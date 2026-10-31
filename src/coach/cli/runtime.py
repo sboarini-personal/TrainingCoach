@@ -54,6 +54,7 @@ from coach.application.ids import new_id
 from coach.application.ingestion import IngestionService
 from coach.application.insights import InsightService
 from coach.application.ownership import OwnerScope
+from coach.application.plan_generation import PlanGenerationService, weekly_minutes_from
 from coach.application.planning_context import PlanningContextSource
 from coach.application.plans import PlanService
 from coach.application.policy_gate import PolicyGate
@@ -170,6 +171,7 @@ class Runtime:
     insights: InsightService
     inputs: AthleteInputsService
     plans: PlanService
+    generation: PlanGenerationService
     reports: ReportService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
@@ -409,6 +411,9 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+    planning_context = PlanningContextSource(
+        inputs, recovery_assessment.prescriptions, today=recovery.today
+    )
     plans = PlanService(
         SqliteAggregateRepository(database, PLAN_HEADER_CODEC),
         SqliteAggregateRepository(database, PLAN_VERSION_CODEC),
@@ -422,9 +427,7 @@ def build_runtime(
             events=events,
             clock=clock,
             integrations=SqliteAggregateRepository(database, INTEGRATION_STATUS_CODEC),
-            planning=PlanningContextSource(
-                inputs, recovery_assessment.prescriptions, today=recovery.today
-            ),
+            planning=planning_context,
         ),
         screen=screen,
         audit=audit,
@@ -432,6 +435,13 @@ def build_runtime(
         clock=clock,
         ids=new_id,
         batch=database.batch,
+    )
+    generation = PlanGenerationService(
+        inputs,
+        plans,
+        planning=planning_context,
+        conditions=conditions,
+        weekly_minutes=weekly_minutes_from(analytics),
     )
     reports = ReportService(
         activities=activities,
@@ -518,6 +528,7 @@ def build_runtime(
         reports=reports,
         inputs=inputs,
         plans=plans,
+        generation=generation,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

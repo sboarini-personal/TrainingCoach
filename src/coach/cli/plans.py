@@ -11,10 +11,12 @@ from uuid import UUID
 
 from coach.application.errors import ConcurrencyConflictError, NotFoundError
 from coach.application.ownership import OwnerScope
+from coach.application.plans import PlanNotReadyError
 from coach.application.policy_gate import PolicyDeniedError
 from coach.cli.activities import TIMEZONE_HINT, CommandError
 from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
+from coach.domain.onboarding.readiness import LABELS
 from coach.domain.plans.plan import PlanVersion
 from coach.domain.plans.workout import PlannedWorkout
 
@@ -23,6 +25,10 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     plan = commands.add_parser("plan", help="training plans").add_subparsers(
         dest="action", required=True
     )
+    generate = plan.add_parser(
+        "generate", help="propose a plan version for your goal (generator rules 1.0.0)"
+    )
+    generate.add_argument("--goal", help="the goal ID; default: your primary goal")
     plan.add_parser("list", help="your plans and their versions")
     show = plan.add_parser("show", help="a plan version (default: the ACTIVE one)")
     show.add_argument("plan_id", nargs="?")
@@ -101,6 +107,17 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                             file=out,
                         )
                 return 0
+            case "generate":
+                made = runtime.generation.generate(
+                    scope, None if args.goal is None else UUID(args.goal)
+                )
+                _show(made, out)
+                print(
+                    f"review it, then: coach plan activate {made.plan_id} {made.number} "
+                    f"--revision {runtime.plans.plan(scope, made.plan_id).version}",
+                    file=out,
+                )
+                return 0
             case "show":
                 found = _selected(runtime, scope, args)
                 if found is None:
@@ -118,6 +135,11 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                 )
             case _:
                 changed = plans.reject(scope, UUID(args.plan_id), args.version)
+    except PlanNotReadyError as missing:
+        names = ", ".join(LABELS[item] for item in missing.missing)
+        raise CommandError(
+            f"not ready for a plan; missing: {names} (see coach readiness)"
+        ) from None
     except PolicyDeniedError as denied:
         raise CommandError("denied by policy: " + denial(denied)) from None
     except TimezoneRequiredError:

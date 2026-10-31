@@ -111,6 +111,89 @@ training history and tolerance of past load increases, recent load, recovery sta
 goal priority, execution history and interference. Each week's load change carries its
 rationale.
 
+### 5.1 Generator rules 1.0.0 (P12, precision of sections 1 to 5)
+
+`coach.planning.generator` (pure and deterministic: the same inputs give the same content,
+workout identifiers included), run by `coach plan generate [--goal]`
+(`PlanGenerationService`). The proposal goes through `PlanService`, so the goal, readiness
+and every plan policy are checked again; the rules are written so that the policies allow
+what they produce. Initial values under A-18.
+
+- **Inputs** (from stored state): the athlete's local today; the goal (the primary one by
+  default); readiness and its missing preferred inputs; the lifecycle state; availability,
+  resources and the health declaration; strength experience; years of experience in the goal
+  sport; its minutes in each of the last 8 complete weeks (Monday to Sunday, ACTIVE activities,
+  none without the activities consent); SAFETY_HOLD and RECOVERY_BLOCK with its end.
+- **Refused**: NOT_READY (no version, AT-ONB-002); a goal sport other than running, cycling or
+  swimming; a goal date before the plan could start; an active constraint excluding the goal
+  sport; swimming without pool access; cycling without a bicycle or smart trainer.
+- **Kind and dates.** The plan starts on the next Monday (today when it is one). In
+  BASELINE_COLLECTION it is a 2-week ADAPTATION block with one submaximal assessment a week
+  (`eval.submaximal_<sport>`: 10 minutes easy then 20 minutes at RPE 4 to 5, recording heart
+  rate; 30 minutes; never maximal, since no opt-in exists), provisional (FR-ONB-005,
+  AT-ONB-004). Otherwise it runs to the week of the target date, at most 26 weeks (a longer
+  horizon is stated as an assumption). The target date and the 6 days after carry nothing;
+  the day before is a REST day; the goal's week has no long session.
+- **Phases** over N weeks: TAPER the last 2 weeks when N is 8 or more, the last week when N
+  is 4 to 7; ADAPTATION the first 2 weeks when the history is insufficient (no activity in 8
+  weeks, or under a year of experience) and at least 6 weeks remain; the rest is BASE (half,
+  rounded up), BUILD (three tenths) and SPECIFIC (the remainder, at least 1); 1 week is
+  SPECIFIC, 2 are BUILD and SPECIFIC. A practical rule, not a published standard.
+- **Volume** (the goal sport's weekly minutes): it starts at the mean of the last 4 complete
+  weeks when any is above zero, else 90 minutes. The step is the athlete's largest
+  week-to-week increase over the last 8 weeks (at least 5 and at most 30 minutes; 10 without
+  one), halved (in multiples of 5, at least 5) for a provisional plan, under a year of
+  experience or unknown, or an active health constraint for the sport. Loading weeks add the
+  step up to the **peak**: the highest recent week plus three steps. Every 4th week is an
+  unloading week back to the starting volume. With SAFETY_HOLD or RECOVERY_BLOCK the first 2
+  weeks hold the volume. The taper is 65% then 45% of the last loading week (two weeks) or
+  55% (one week), intensity and frequency kept: Bosquet L, Montpetit J, Arvisais D, Mujika I.
+  Effects of tapering on performance: a meta-analysis. Med Sci Sports Exerc.
+  2007;39(8):1358-1365 (PMID 17762369). Each week's primary goal states its minutes and the
+  rationale of the change.
+- **Sessions.** Endurance sessions: the week's minutes over 45, rounded, from 2 to 5. In order
+  of priority, within the available days and the pattern's days a week (one session a day):
+  the long session (an easy one in the goal's week), a strength session, the key session (none
+  in ADAPTATION; the assessment in a baseline block), easy sessions, a second strength session
+  (when two a week were declared, not while tapering). Days are the athlete's: a day is used
+  when plannable, available, at least 20 minutes long and allowing the sport. The long session
+  goes on the longest day (the latest on a tie), the key one far from it (and not the day
+  after the athlete's tennis), strength not the day before the long or key session and
+  preferably the day after the key one, easy sessions spread out. Each session fits its day;
+  the week fits the pattern's hours (shorter sessions first, then fewer easy ones, then no key
+  one).
+- **Workouts**, intensity by RPE only (heart-rate, pace and power targets need reliable
+  anchors these rules do not read; stated as an assumption, FR-PLN-005, AT-CYC-001): easy and
+  long sessions at RPE 3 to 4; the key session is a steady one in BASE (RPE 5 to 6 between an
+  easy warm-up and cool-down), intervals in BUILD and TAPER (4 minutes at RPE 7 to 8 with 2
+  minutes easy, 3 to 6 times; 3 while tapering) and sustained work in SPECIFIC (8 minutes at
+  RPE 6 to 7 with 2 minutes easy, 2 to 4 times). With a safety hold, before a recovery
+  block's re-evaluation (any day when its end is unknown) or under a MAX_RPE below 7, the key
+  session is the steady one; MAX_RPE caps every target.
+- **Strength** (strength spec 1 and 4): 45 minutes (30 while tapering); the first session of
+  the week works the lower body, a pull and the core, the second the upper body and the core.
+  Each exercise slot takes the first catalogue exercise the athlete can do (equipment rules
+  1.0.0; no HIGH_IMPACT or OVERHEAD exercise; without RPE or RIR familiarity, only exercises
+  against the body's resistance or with a declared load). Target RPE 6 in ADAPTATION and
+  TAPER, 7 otherwise, 6 at most during a recovery block, 5 for a lower-body exercise under
+  NO_HEAVY_LOWER_BODY or one loading an affected region, capped by MAX_RPE; RIR is 10 minus
+  that RPE for an athlete familiar with RIR only; otherwise EASY (below RPE 5) or MODERATE.
+  Strength is not planned during a safety hold, under a constraint restricting strength, or
+  under a MAX_RPE below 3, and the plan says so (AT-STR-002). A heavy lower-body session that
+  the interference rules (strength spec 7) assess as HIGH or VERY_HIGH with another planned
+  session is replaced by the upper-body session (AT-STR-001); each strength session states
+  the worst level it is part of.
+- **The athlete's tennis**: each declared slot becomes a tennis session (expected RPE 7 for a
+  match or an unknown type, 5 for practice) unless an availability exception marks the date
+  unavailable, a health constraint restricts tennis, or it is hard while intensity is paused
+  (then the plan says so: if the athlete plays, the session is recorded and counts as load).
+  Planned sessions do not use the tennis days.
+- **Assumptions** state the baseline block, each missing preferred input and how it is
+  handled, a horizon longer than 26 weeks, a health constraint with a free-text restriction,
+  intensity by RPE only, and what was left out.
+- **Versions.** A goal keeps one plan: a new generation is a new version whose parent is the
+  ACTIVE version (else the latest), replacing a pending proposal.
+
 ## 6. Workout execution (FR-PLN-007)
 
 `WorkoutExecution`: `plannedWorkoutId` (null for UNPLANNED), `completedActivityIds[]`,

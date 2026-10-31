@@ -126,3 +126,37 @@ def test_activation_is_denied_with_reasons_while_a_hold_is_active(tmp_path: Path
     ok(cli, "safety", "release", "--cleared-by-professional")
     activated = ok(cli, "plan", "activate", str(first.plan_id), "1", "--revision", "1")
     assert activated.endswith("is ACTIVE\n")
+
+
+@pytest.mark.req("FR-ONB-003", "FR-ONB-005", "FR-PLN-002", "FR-STR-001")
+@pytest.mark.acceptance("AT-ONB-002", "AT-ONB-004")
+def test_plan_generate_follows_readiness_and_the_baseline_block(tmp_path: Path) -> None:
+    cli = Cli(tmp_path / "coach-data")
+    assert cli.run("init")[0] == 0
+    ok(cli, "profile", "timezone", "America/Argentina/Buenos_Aires")
+    code, output = cli.run("plan", "generate")
+    assert code == 2
+    assert output.startswith("error: not ready for a plan; missing: ")
+    assert "weekly availability" in output
+    assert ok(cli, "plan", "list") == "no plans yet\n"  # no version created (AT-ONB-002)
+
+    cli, _runtime, _scope, goal = onboarded(tmp_path / "second")
+    ok(cli, "consent", "decline", "ai-processing")
+    assert "coaching state: BASELINE_COLLECTION" in ok(cli, "readiness")  # no history yet
+    shown = ok(cli, "plan", "generate")
+    first = shown.splitlines()[0]
+    plan_id = first.split()[1]
+    assert first == f"plan {plan_id} version 1: PROPOSED"
+    assert "PROVISIONAL: built on assumptions" in shown
+    assert "  assumption: Baseline collection: few recent running activities" in shown
+    assert shown.count("EVALUATION RUNNING 30 min [key]: 10 minutes easy, then 20 minutes") == 2
+    assert "STRENGTH STRENGTH 45 min" in shown
+    assert f"review it, then: coach plan activate {plan_id} 1 --revision 1" in shown
+    ok(cli, "plan", "activate", plan_id, "1", "--revision", "1")
+    second = ok(cli, "plan", "generate").splitlines()[0]
+    assert second.endswith("version 2 (from version 1): PROPOSED")
+    third = ok(cli, "plan", "generate").splitlines()[0]
+    assert third.endswith("version 3 (from version 1): PROPOSED")
+    listed = ok(cli, "plan", "list")
+    assert f"{plan_id}  goal {goal}  revision 4  active version 1" in listed
+    assert "  version 2  SUPERSEDED" in listed  # replaced by the newer proposal
