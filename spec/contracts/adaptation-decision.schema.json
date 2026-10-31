@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:adaptation-decision:1",
+  "title": "AdaptationDecision",
+  "description": "A decision of the adaptive loop (adaptation rules 1.0.0, P12), recorded whatever it is: its trigger, the decision, reason codes, the evidence it rests on, an interpretation whose numbers come from that evidence, uncertainty and confidence, the planned workouts it changes and the plan version it proposed (none for MAINTAIN). A proposed version names it as its generator's decisionId (FR-ADP-004, NFR-EXP-001, AT-EXP-001). Texts are the system's, never athlete text. version is the storage revision. Owner spec: spec/functional/planning.spec.md section 7.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "decisionId",
+    "athleteId",
+    "decidedAt",
+    "trainingDay",
+    "trigger",
+    "decision",
+    "reasons",
+    "evidence",
+    "interpretation",
+    "uncertaintyReasons",
+    "confidence",
+    "affectedWorkoutIds",
+    "planId",
+    "fromVersion",
+    "proposedVersion",
+    "rulesVersion",
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "decisionId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "decidedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "trainingDay": { "$ref": "urn:coach:schema:common:1#/$defs/localDate" },
+    "trigger": {
+      "enum": ["COMPLETED_WORKOUT", "RECOVERY_ASSESSMENT", "WEEKLY_REVIEW", "ATHLETE_REQUEST"]
+    },
+    "decision": { "enum": ["MAINTAIN", "PROGRESS", "REDUCE", "RESCHEDULE", "REPLACE", "REST"] },
+    "reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "NO_SIGNAL",
+          "ISOLATED_DEVIATION",
+          "DEVIATIONS_WITHOUT_RECOVERY_SIGNAL",
+          "DEVIATIONS_WITH_RECOVERY_SIGNAL",
+          "SAFETY_HOLD_ACTIVE",
+          "RECOVERY_PRESCRIPTION",
+          "PAIN_REPORTED",
+          "UNPLANNED_LOAD_INTERFERENCE",
+          "INTERFERENCE_ASSESSED",
+          "CONSISTENT_COMPLETION",
+          "NOTHING_TO_CHANGE"
+        ]
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
+    },
+    "interpretation": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "uncertaintyReasons": {
+      "type": "array",
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/uncertaintyReason" },
+      "uniqueItems": true
+    },
+    "confidence": { "$ref": "urn:coach:schema:common:1#/$defs/confidence" },
+    "affectedWorkoutIds": {
+      "type": "array",
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/id" }
+    },
+    "planId": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "fromVersion": { "type": ["integer", "null"], "minimum": 1 },
+    "proposedVersion": { "type": ["integer", "null"], "minimum": 1 },
+    "rulesVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "version": { "type": "integer", "minimum": 1 }
+  }
+}

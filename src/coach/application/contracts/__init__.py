@@ -26,6 +26,7 @@ from coach.application.contracts.coaching import (
 )
 from coach.application.contracts.codecs import (
     ACTIVITY_CODEC,
+    ADAPTATION_DECISION_CODEC,
     ALL_CODECS,
     AVAILABILITY_CODEC,
     CHECKIN_CODEC,
@@ -77,6 +78,7 @@ from coach.application.contracts.raw import raw_source_from_contract, raw_source
 
 __all__ = [
     "ACTIVITY_CODEC",
+    "ADAPTATION_DECISION_CODEC",
     "ALL_CODECS",
     "AVAILABILITY_CODEC",
     "CHECKIN_CODEC",

@@ -266,3 +266,50 @@ Evidence rules (initial, versioned):
 Explanation (FR-ADP-004, NFR-EXP-001): every decision other than MAINTAIN, and every load
 reduction, records evidence references, interpretation, decision, uncertainty reasons and
 confidence (AT-EXP-001), as an AdaptationDecision linked to its insights.
+
+Adaptation rules 1.0.0 (P12, precision; `coach.planning.adaptation`, `coach plan adapt
+[--trigger]`, `coach plan decisions`; thresholds are initial values under A-18):
+
+- **Inputs** (from stored state): the ACTIVE version; the executions and their activities of
+  the last 14 days (section 6); the recovery assessment in force (today's, else yesterday's)
+  and the prescriptions in force today; the check-ins of the last 7 days; availability; the
+  coaching conditions.
+- **Rules**, the first that applies decides:
+  1. SAFETY_HOLD: MAINTAIN; nothing is adapted until the athlete releases the hold.
+  2. A blocking prescription (REST, ACTIVE_RECOVERY) with planned workouts that conflict before
+     its `reevaluateAfter`: REST (a REST prescription; those days become rest days) or REDUCE
+     (their intensity is taken out; the athlete's hard tennis is taken out too).
+  3. Pain of 4 or more of 10 reported in the last 3 days: REDUCE: intensity out of the next 3
+     days, and strength light (RPE 5, at most 2 sets) where it loads a region the pain
+     location names exactly (region rules 1.0.0), or everywhere when it names none. The
+     explanation suggests a professional evaluation if the pain lasts more than 7 days or
+     worsens (safety spec 5), never a diagnosis. Nothing to change: MAINTAIN.
+  4. Unplanned load of the last 2 days (UNPLANNED executions; completed strength without its
+     sets is taken as possibly heavy) assessed by the interference rules (strength spec 7)
+     with the planned sessions of the next 3 days: HIGH or VERY_HIGH moves an endurance
+     session with intensity to a free, available day of its week at least 2 days after that
+     load (RESCHEDULE) or takes its intensity out (REPLACE), and makes heavy legs light.
+     Assessed but not severe: MAINTAIN, with the load as evidence (AT-UNP-001).
+  5. Two or more deviated sessions in 14 days (below 80% of the planned duration, or a
+     session RPE 2 or more above the workout's highest target) with a recovery assessment of
+     REDUCE or REST: REDUCE, the intensity of the next 7 days taken out.
+  6. Four or more planned workouts of the last 14 days done, all COMPLETE, none deviated, a
+     NORMAL recovery assessment and no pain in 7 days: PROGRESS.
+  7. Otherwise MAINTAIN: one deviated session (AT-ADP-001), several without a recovery
+     signal (watched), or no signal.
+- **Outcome.** Every run records an AdaptationDecision
+  ([../contracts/adaptation-decision.schema.json](../contracts/adaptation-decision.schema.json)):
+  trigger, decision, reason codes, evidence, an interpretation whose numbers come from the
+  evidence (durations, RPE, dates, ratios of the referenced activities, counts of the workouts
+  named), uncertainty, confidence, the workouts changed, the plan and versions. MAINTAIN
+  creates no version (FR-ADP-003). REST, REDUCE, RESCHEDULE and REPLACE propose a new version
+  of the ACTIVE content (parent: the ACTIVE version; replacing a pending proposal; unchanged
+  workouts keep their identifiers, so links and executions follow them; provisional when the
+  readiness is PROVISIONAL); PROGRESS proposes a version regenerated from the updated history
+  (section 5.1). The proposed version's generator names the decision (`decisionId`). Every
+  proposal goes through the goal, readiness and plan-policy checks; the athlete activates or
+  rejects it.
+- **Lifecycle.** A run moves TRAINING to ANALYSIS and then to TRAINING (MAINTAIN) or ADAPTATION
+  (a proposal); activating the adapted version or rejecting it returns to TRAINING. Each run
+  is audited (`plan.adaptation_decided`, with the decision and reasons) and emitted
+  (`plan.adaptation.decided`).

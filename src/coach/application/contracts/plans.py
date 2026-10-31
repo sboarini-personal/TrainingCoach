@@ -14,7 +14,9 @@ from coach.application.contracts._json import (
     SCHEMA_VERSION,
     Document,
     Json,
+    evidence,
     instant,
+    parse_evidence,
     parse_instant,
     parse_optional_uuid,
 )
@@ -24,7 +26,14 @@ from coach.application.contracts.strength import (
 )
 from coach.domain.athlete.resources import TennisSessionType
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
+from coach.domain.plans.adaptation import (
+    AdaptationDecision,
+    AdaptationReason,
+    AdaptationTrigger,
+    Decision,
+)
 from coach.domain.plans.execution import ExecutionLink
 from coach.domain.plans.plan import (
     EstimatedLoad,
@@ -439,6 +448,53 @@ def plan_version_from_contract(document: Document) -> PlanVersion:
         content=content,
         content_hash=document["contentHash"],
         version=document.get("revision", 1),
+    )
+
+
+def adaptation_decision_to_contract(decision: AdaptationDecision) -> Json:
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "decisionId": str(decision.decision_id),
+        "athleteId": str(decision.athlete_id),
+        "decidedAt": instant(decision.decided_at),
+        "trainingDay": decision.training_day.isoformat(),
+        "trigger": decision.trigger.value,
+        "decision": decision.decision.value,
+        "reasons": [item.value for item in decision.reasons],
+        "evidence": [evidence(item) for item in decision.evidence],
+        "interpretation": decision.interpretation,
+        "uncertaintyReasons": sorted(item.value for item in decision.uncertainty_reasons),
+        "confidence": decision.confidence.value,
+        "affectedWorkoutIds": [str(item) for item in decision.affected_workouts],
+        "planId": None if decision.plan_id is None else str(decision.plan_id),
+        "fromVersion": decision.from_version,
+        "proposedVersion": decision.proposed_version,
+        "rulesVersion": decision.rules_version,
+        "version": decision.version,
+    }
+
+
+def adaptation_decision_from_contract(document: Document) -> AdaptationDecision:
+    return AdaptationDecision(
+        decision_id=UUID(document["decisionId"]),
+        athlete_id=UUID(document["athleteId"]),
+        decided_at=parse_instant(document["decidedAt"]),
+        training_day=date.fromisoformat(document["trainingDay"]),
+        trigger=AdaptationTrigger(document["trigger"]),
+        decision=Decision(document["decision"]),
+        reasons=tuple(AdaptationReason(item) for item in document["reasons"]),
+        evidence=tuple(parse_evidence(item) for item in document["evidence"]),
+        interpretation=document["interpretation"],
+        uncertainty_reasons=frozenset(
+            UncertaintyReason(item) for item in document["uncertaintyReasons"]
+        ),
+        confidence=Confidence(document["confidence"]),
+        affected_workouts=tuple(UUID(item) for item in document["affectedWorkoutIds"]),
+        plan_id=parse_optional_uuid(document["planId"]),
+        from_version=document["fromVersion"],
+        proposed_version=document["proposedVersion"],
+        rules_version=document["rulesVersion"],
+        version=document["version"],
     )
 
 

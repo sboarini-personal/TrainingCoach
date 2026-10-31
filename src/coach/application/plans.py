@@ -274,7 +274,8 @@ class PlanService:
                 scope, replace(header, active_number=number), expected_version=header.version
             )
             stored = self._versions.update(scope, active, expected_version=target.version)
-            self._lifecycle.advance(scope, Trigger.PLAN_ACTIVATED)
+            if not self._lifecycle.advance(scope, Trigger.PLAN_ACTIVATED):
+                self._lifecycle.advance(scope, Trigger.ADAPTED_VERSION_ACTIVATED)
         self._record(scope, "plan.activated", stored, ActorKind.USER)
         self._events.emit(EventName.PLAN_ACTIVATED, {"version": str(number)})
         for item in superseded:
@@ -292,6 +293,8 @@ class PlanService:
         )
         self._record(scope, "plan.rejected", rejected, ActorKind.USER)
         self._events.emit(EventName.PLAN_SUPERSEDED, {"version": str(number)})
+        if rejected.generator.decision_id is not None:  # an adaptation the athlete refused
+            self._lifecycle.advance(scope, Trigger.ADAPTATION_REJECTED)
         return rejected
 
     def _record(

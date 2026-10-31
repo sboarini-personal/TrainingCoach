@@ -196,3 +196,20 @@ def test_executions_show_planned_versus_done_and_links_change_them(tmp_path: Pat
     assert "duration " in linked  # 40 minutes against the planned duration
     code, output = cli.run("plan", "link", "00000000-0000-0000-0000-000000000999", workout_id)
     assert (code, output) == (2, "error: plan, version, workout or activity not found\n")
+
+
+@pytest.mark.req("FR-ADP-001", "FR-ADP-004")
+def test_plan_adapt_records_and_shows_the_decision(tmp_path: Path) -> None:
+    cli, _runtime, _scope, _goal = onboarded(tmp_path)
+    code, output = cli.run("plan", "adapt")
+    assert (code, output) == (2, "error: there is no ACTIVE plan to adapt\n")
+    assert ok(cli, "plan", "decisions") == "no decisions yet\n"
+    ok(cli, "consent", "grant", "activities")
+    plan_id = ok(cli, "plan", "generate").splitlines()[0].split()[1]
+    ok(cli, "plan", "activate", plan_id, "1", "--revision", "1")
+    cli.now = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)
+    shown = ok(cli, "plan", "adapt", "--trigger", "weekly-review")
+    assert shown.startswith("2026-10-29  MAINTAIN (NO_SIGNAL; confidence MEDIUM)\n")
+    assert "the plan stays" in shown
+    assert "proposed:" not in shown  # MAINTAIN proposes no version
+    assert ok(cli, "plan", "decisions") == shown

@@ -18,8 +18,11 @@ from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.common.time import DateRange
 from coach.domain.onboarding.readiness import LABELS
+from coach.domain.plans.adaptation import AdaptationDecision, AdaptationTrigger
 from coach.domain.plans.plan import PlanVersion
 from coach.domain.plans.workout import PlannedWorkout
+
+TRIGGERS = {item.value.lower().replace("_", "-"): item for item in AdaptationTrigger}
 
 
 def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -51,6 +54,14 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     done.add_argument(
         "--week", type=date.fromisoformat, help="any date of the week; default: this week"
     )
+    adapt = plan.add_parser("adapt", help="run the adaptive loop on your ACTIVE plan")
+    adapt.add_argument(
+        "--trigger",
+        default="athlete-request",
+        choices=sorted(TRIGGERS),
+        help="what prompted it (default: your request)",
+    )
+    plan.add_parser("decisions", help="the adaptive loop's decisions and their reasons")
     link = plan.add_parser("link", help="link an activity to a planned workout")
     link.add_argument("activity_id")
     link.add_argument("workout_id", help="a workout of the ACTIVE plan, or none (unplanned)")
@@ -114,6 +125,25 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                             f"{item.content.start} to {item.content.end}",
                             file=out,
                         )
+                return 0
+            case "adapt":
+                result = runtime.adaptation.run(scope, TRIGGERS[args.trigger])
+                _decision(result.decision, out)
+                if result.proposed is not None:
+                    plan_id, number = result.proposed.plan_id, result.proposed.number
+                    revision = runtime.plans.plan(scope, plan_id).version
+                    print(
+                        f"proposed: plan {plan_id} version {number}; review it, then: "
+                        f"coach plan activate {plan_id} {number} --revision {revision}",
+                        file=out,
+                    )
+                return 0
+            case "decisions":
+                history = runtime.adaptation.decisions(scope)
+                if not history:
+                    print("no decisions yet", file=out)
+                for decision in history:
+                    _decision(decision, out)
                 return 0
             case "executions":
                 return _executions(runtime, scope, args.week, out)
@@ -179,6 +209,22 @@ def denial(denied: PolicyDeniedError) -> str:
         if text not in shown:
             shown.append(text)
     return "; ".join(shown)
+
+
+def _decision(item: AdaptationDecision, out: TextIO) -> None:
+    reasons = ", ".join(reason.value for reason in item.reasons)
+    print(
+        f"{item.training_day}  {item.decision.value} ({reasons}; confidence "
+        f"{item.confidence.value})",
+        file=out,
+    )
+    print(f"  {item.interpretation}", file=out)
+    if item.uncertainty_reasons:
+        uncertain = ", ".join(sorted(reason.value for reason in item.uncertainty_reasons))
+        print(f"  uncertainty: {uncertain}", file=out)
+    for ref in item.evidence:
+        note = "" if ref.note is None else f" ({ref.note})"
+        print(f"  evidence: {ref.kind.value} {ref.ref_id}{note}", file=out)
 
 
 def _executions(runtime: Runtime, scope: OwnerScope, week: date | None, out: TextIO) -> int:

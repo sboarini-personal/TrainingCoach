@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 from coach.application.activities import ActivityService, ActivityStores
 from coach.application.activity_metrics import ActivityMetricsEngine
+from coach.application.adaptation import AdaptationService
 from coach.application.analytics import AnalyticsService
 from coach.application.athlete_inputs import AthleteInputsService
 from coach.application.authentication import (
@@ -24,6 +25,7 @@ from coach.application.authorization import AuthorizationService
 from coach.application.coaching import CoachingConditions, CoachingLifecycle
 from coach.application.consent import ConsentGate, ConsentRequiredError, ConsentService
 from coach.application.contracts import (
+    ADAPTATION_DECISION_CODEC,
     AVAILABILITY_CODEC,
     CHECKIN_CODEC,
     COACHING_STATE_CODEC,
@@ -175,6 +177,7 @@ class Runtime:
     plans: PlanService
     generation: PlanGenerationService
     executions: ExecutionService
+    adaptation: AdaptationService
     reports: ReportService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
@@ -455,6 +458,26 @@ def build_runtime(
         conditions=conditions,
         weekly_minutes=weekly_minutes_from(analytics),
     )
+    adaptation = AdaptationService(
+        plans,
+        executions,
+        generation,
+        SqliteAggregateRepository(database, ADAPTATION_DECISION_CODEC),
+        assessments=lambda scope, until, days: recovery_assessment.history(
+            scope, until=until, days=days
+        ),
+        prescriptions=recovery_assessment.prescriptions,
+        checkins=lambda scope, until, days: recovery.checkins(scope, until=until, days=days),
+        availability=inputs.availability,
+        readiness=lambda scope: inputs.readiness(scope).readiness,
+        conditions=conditions,
+        lifecycle=lifecycle,
+        today=recovery.today,
+        audit=audit,
+        events=events,
+        clock=clock,
+        ids=new_id,
+    )
     reports = ReportService(
         activities=activities,
         analytics=analytics,
@@ -542,6 +565,7 @@ def build_runtime(
         plans=plans,
         generation=generation,
         executions=executions,
+        adaptation=adaptation,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

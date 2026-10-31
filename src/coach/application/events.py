@@ -57,6 +57,7 @@ class EventName(StrEnum):
     PLAN_PROPOSED = "plan.proposed"
     PLAN_ACTIVATED = "plan.activated"
     PLAN_SUPERSEDED = "plan.superseded"
+    ADAPTATION_DECIDED = "plan.adaptation.decided"
     SAFETY_HOLD_ACTIVATED = "safety.hold.activated"
     SAFETY_HOLD_RELEASED = "safety.hold.released"
     CHECKIN_RECORDED = "recovery.checkin.recorded"

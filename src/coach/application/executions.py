@@ -67,6 +67,12 @@ class ExecutionService:
 
     def executions(self, scope: OwnerScope, period: DateRange) -> list[WorkoutExecution]:
         """The executions of the period: its planned workouts and its activities."""
+        return self.recent(scope, period)[0]
+
+    def recent(
+        self, scope: OwnerScope, period: DateRange
+    ) -> tuple[list[WorkoutExecution], dict[UUID, DoneActivity]]:
+        """The executions of the period and the activities they read."""
         active = self._plans.active(scope)
         planned = (
             []
@@ -79,7 +85,8 @@ class ExecutionService:
         )
         views = [done(view) for view in self._activities(scope, period)]
         links = {item.activity_id: item for item in self._links.list_all(scope)}
-        return executions(planned, views, links, today=self._today(scope))
+        found = executions(planned, views, links, today=self._today(scope))
+        return found, {item.activity_id: item for item in views}
 
     def link(self, scope: OwnerScope, activity_id: UUID, workout_id: UUID | None) -> ExecutionLink:
         """The athlete links an activity to a planned workout, or to none (UNPLANNED)."""

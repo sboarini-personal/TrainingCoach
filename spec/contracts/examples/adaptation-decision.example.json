@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0.0",
+  "decisionId": "0193b2a0-0000-7000-8000-000000000a01",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "decidedAt": "2026-10-29T10:00:00Z",
+  "trainingDay": "2026-10-29",
+  "trigger": "COMPLETED_WORKOUT",
+  "decision": "RESCHEDULE",
+  "reasons": ["UNPLANNED_LOAD_INTERFERENCE"],
+  "evidence": [{ "kind": "ACTIVITY", "id": "0193b2a0-0000-7000-8000-000000000201" }],
+  "interpretation": "Unplanned load (tennis on Wed 2026-10-28, 120 min, RPE 8) interferes with the next days of the plan: TENNIS_INTERVALS_HEAVY_LEGS (VERY_HIGH). 2 planned workouts are moved or eased.",
+  "uncertaintyReasons": [],
+  "confidence": "MEDIUM",
+  "affectedWorkoutIds": [
+    "0193b2a0-0000-7000-8000-000000000701",
+    "0193b2a0-0000-7000-8000-000000000702"
+  ],
+  "planId": "0193b2a0-0000-7000-8000-000000000501",
+  "fromVersion": 12,
+  "proposedVersion": 13,
+  "rulesVersion": "1.0.0",
+  "version": 1
+}

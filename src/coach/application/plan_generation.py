@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, timedelta
 from uuid import UUID
 
@@ -91,8 +92,11 @@ class PlanGenerationService:
         self._conditions = conditions
         self._weekly = weekly_minutes
 
-    def generate(self, scope: OwnerScope, goal_id: UUID | None = None) -> PlanVersion:
-        """A PROPOSED version for the goal (the primary one by default)."""
+    def generate(
+        self, scope: OwnerScope, goal_id: UUID | None = None, *, decision_id: UUID | None = None
+    ) -> PlanVersion:
+        """A PROPOSED version for the goal (the primary one by default); ``decision_id``
+        names the adaptation decision it implements (PROGRESS)."""
         report = self._inputs.readiness(scope)
         ready = report.readiness
         if ready.status is ReadinessStatus.NOT_READY:
@@ -125,17 +129,18 @@ class PlanGenerationService:
                 recovery_block_until=context.recovery_block_until,
             )
         )
+        generator = replace(GENERATOR, decision_id=decision_id)
         existing = self._plans.latest_plan(scope, goal.goal_id)
         if existing is None:
             return self._plans.propose(
-                scope, goal_id=goal.goal_id, content=content, generator=GENERATOR
+                scope, goal_id=goal.goal_id, content=content, generator=generator
             )
         latest = self._plans.version(scope, existing.plan_id, existing.latest_number)
         return self._plans.propose(
             scope,
             goal_id=goal.goal_id,
             content=content,
-            generator=GENERATOR,
+            generator=generator,
             plan_id=existing.plan_id,
             parent=existing.active_number or existing.latest_number,
             replaces=latest.number if latest.status is PlanStatus.PROPOSED else None,
