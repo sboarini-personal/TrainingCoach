@@ -52,6 +52,7 @@ class EventName(StrEnum):
     EXTERNAL_WRITE_REFUSED = "external_write.refused"
     CONDITION_ACTIVATED = "coaching.condition.activated"
     CONDITION_CLEARED = "coaching.condition.cleared"
+    COACHING_STATE_CHANGED = "coaching.state.changed"
     SAFETY_HOLD_ACTIVATED = "safety.hold.activated"
     SAFETY_HOLD_RELEASED = "safety.hold.released"
     CHECKIN_RECORDED = "recovery.checkin.recorded"

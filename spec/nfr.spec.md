@@ -72,6 +72,7 @@ Structured (JSON) events are emitted for at least:
 | Strength | `strength.session.changed` (the kind of change only: RECORDED, REMOVED, RELABELLED, WATCH_SETS_USED, WATCH_SETS_IGNORED; P10) |
 | Deduplication | `dedup.linked`, `dedup.ambiguous`, `dedup.merged`, `dedup.kept_separate`, `dedup.split` |
 | Data quality | `quality.issue.raised`, `quality.issue.resolved` |
+| Coaching | `coaching.condition.activated`, `coaching.condition.cleared`, `coaching.state.changed` (from, to and trigger codes; P12) |
 | Planning | `plan.generated`, `plan.proposed`, `plan.activated`, `plan.superseded` |
 | External writes | `external_write.proposed`, `.confirmed`, `.executed`, `.refused` |
 | Consent | `consent.granted`, `consent.revoked`, `consent.declined` |

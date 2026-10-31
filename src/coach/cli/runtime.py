@@ -6,6 +6,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, Final
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -13,20 +14,23 @@ from zoneinfo import ZoneInfo
 from coach.application.activities import ActivityService, ActivityStores
 from coach.application.activity_metrics import ActivityMetricsEngine
 from coach.application.analytics import AnalyticsService
+from coach.application.athlete_inputs import AthleteInputsService
 from coach.application.authentication import (
     AuthenticationService,
     FailedAuthLockout,
     LocalTokenAuthenticator,
 )
 from coach.application.authorization import AuthorizationService
-from coach.application.coaching import CoachingConditions
-from coach.application.consent import ConsentGate, ConsentService
+from coach.application.coaching import CoachingConditions, CoachingLifecycle
+from coach.application.consent import ConsentGate, ConsentRequiredError, ConsentService
 from coach.application.contracts import (
+    AVAILABILITY_CODEC,
     CHECKIN_CODEC,
     COACHING_STATE_CODEC,
     CONSENT_LEDGER_CODEC,
     CREDENTIAL_RECORD_CODEC,
     DATA_QUALITY_ISSUE_CODEC,
+    GOAL_CODEC,
     INSIGHT_CODEC,
     INTEGRATION_STATUS_CODEC,
     LAPS_CODEC,
@@ -36,11 +40,12 @@ from coach.application.contracts import (
     RECOVERY_OBSERVATION_CODEC,
     RECOVERY_PRESCRIPTION_CODEC,
     SETS_CODEC,
+    SPORT_EVENT_CODEC,
     STRENGTH_SESSION_CODEC,
     TIME_SERIES_CODEC,
     DocumentCodec,
 )
-from coach.application.credentials import CredentialService
+from coach.application.credentials import CredentialKind, CredentialService
 from coach.application.derived_metrics import DerivedMetricService
 from coach.application.errors import ApplicationError, NotFoundError
 from coach.application.ids import new_id
@@ -62,8 +67,15 @@ from coach.domain.activity.issues import DataQualityIssue
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.athlete.settings import AnalysisSettings
 from coach.domain.coaching.state import Condition
-from coach.domain.common.time import parse_timezone
+from coach.domain.common.sport import Sport
+from coach.domain.common.time import DateRange, parse_timezone
 from coach.domain.integration.status import IntegrationStatus
+from coach.domain.onboarding.readiness import (
+    BASELINE_DAYS,
+    HISTORY_WEEKS,
+    RECOVERY_DAYS,
+    HistoryFacts,
+)
 from coach.infrastructure.blobs import BlobIntegrityError, FileBlobStore
 from coach.infrastructure.datadir import DataLayout
 from coach.infrastructure.events import LoggingEventSink
@@ -151,6 +163,7 @@ class Runtime:
     recovery_sync: RecoverySyncService
     recovery_assessment: RecoveryAssessmentService
     insights: InsightService
+    inputs: AthleteInputsService
     reports: ReportService
     screen: SecretScreen
     integrations: SqliteAggregateRepository[IntegrationStatus]
@@ -184,6 +197,39 @@ def garmin_providers(
         return adapter
 
     return build
+
+
+def planning_history(
+    analytics: AnalyticsService, recovery: RecoveryService, credentials: CredentialService
+) -> Callable[[OwnerScope, Sport | None], HistoryFacts]:
+    """What readiness counts from the athlete's data (onboarding spec 2 and 3)."""
+
+    def facts(scope: OwnerScope, sport: Sport | None) -> HistoryFacts:
+        kind = CredentialKind.GARMIN_PERSONAL_API_KEY
+        connected = any(item.kind is kind for item in credentials.status(scope))
+        try:
+            today = recovery.today(scope)
+        except TimezoneRequiredError:  # training days cannot be counted yet
+            return HistoryFacts(0, 0, 0, 0, connected)
+        try:
+            weeks = DateRange(today - timedelta(weeks=HISTORY_WEEKS) + timedelta(days=1), today)
+            views = analytics.activities(scope, weeks)
+        except ConsentRequiredError:
+            views = []
+        recent = today - timedelta(days=BASELINE_DAYS - 1)
+        of_sport = [view for view in views if sport is not None and view.sport is sport]
+        checkins = recovery.checkins(scope, until=today, days=RECOVERY_DAYS)
+        days = {item.training_day for item in checkins}
+        days |= set(recovery.daily(scope, until=today, days=RECOVERY_DAYS))
+        return HistoryFacts(
+            activities=len(views),
+            goal_sport_activities=len(of_sport),
+            goal_sport_recent=sum(1 for view in of_sport if view.training_day >= recent),
+            recovery_days=len(days),
+            garmin_connected=connected,
+        )
+
+    return facts
 
 
 def build_runtime(
@@ -338,6 +384,24 @@ def build_runtime(
         clock=clock,
         ids=new_id,
     )
+    inputs = AthleteInputsService(
+        profiles,
+        SqliteAggregateRepository(database, AVAILABILITY_CODEC),
+        SqliteAggregateRepository(database, GOAL_CODEC),
+        SqliteAggregateRepository(database, SPORT_EVENT_CODEC),
+        consents=consents,
+        lifecycle=CoachingLifecycle(
+            SqliteAggregateRepository(database, COACHING_STATE_CODEC),
+            audit=audit,
+            events=events,
+            clock=clock,
+        ),
+        screen=screen,
+        history=planning_history(analytics, recovery, credentials),
+        today=recovery.today,
+        clock=clock,
+        ids=new_id,
+    )
     reports = ReportService(
         activities=activities,
         analytics=analytics,
@@ -421,6 +485,7 @@ def build_runtime(
         recovery_assessment=recovery_assessment,
         insights=insights,
         reports=reports,
+        inputs=inputs,
         screen=screen,
         integrations=integrations,
         conditions=conditions,

@@ -108,6 +108,10 @@ PROFESSIONAL_ADVICE_DECLARED).
 - The policy engine denies proposals that violate an active constraint (POL-HEALTH-CONSTRAINT,
   AT-POL-001).
 - An explicit "no constraints" declaration is stored, so the REQUIRED input is satisfied.
+- (P12) `affectedRegions` are body regions named exactly as in the strength spec
+  (section 2; for example "rodilla" is KNEES): a name that is not one is refused, never
+  interpreted. The description is screened for disclosed secrets before it is stored, as
+  are availability restrictions and an event's name, place and conditions (SEC-SEC-005).
 
 ## 6. Language (FR-PRF-007, PROPOSED)
 

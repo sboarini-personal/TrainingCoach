@@ -15,7 +15,14 @@ from coach.application.errors import NotFoundError
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
 from coach.application.ports import AuditLog, Clock, EventSink, OwnedRepository
-from coach.domain.coaching.state import Actor, CoachingState, CoachingStateChanged, Condition
+from coach.domain.coaching.state import (
+    TRANSITIONS,
+    Actor,
+    CoachingState,
+    CoachingStateChanged,
+    Condition,
+    Trigger,
+)
 from coach.domain.common.errors import DomainValidationError
 
 _CODE: Final = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
@@ -104,3 +111,66 @@ class CoachingConditions:
                 else EventName.SAFETY_HOLD_RELEASED
             )
             self._events.emit(safety, {"reason": fields["reason"]})
+
+
+class CoachingLifecycle:
+    """Lifecycle transitions of the coaching state (onboarding spec 4.1), audited like the
+    conditions. ``advance`` applies a trigger only when the state machine allows it from the
+    current state and reports whether it did; an invalid transition is never forced."""
+
+    def __init__(
+        self,
+        states: OwnedRepository[CoachingState],
+        *,
+        audit: AuditLog,
+        events: EventSink,
+        clock: Clock,
+    ) -> None:
+        self._states = states
+        self._audit = audit
+        self._events = events
+        self._clock = clock
+
+    def current(self, scope: OwnerScope) -> CoachingState:
+        try:
+            return self._states.get(scope, scope.athlete_id)
+        except NotFoundError:
+            return CoachingState.new(scope.athlete_id)
+
+    def advance(self, scope: OwnerScope, trigger: Trigger, *, actor: Actor = Actor.SYSTEM) -> bool:
+        if actor not in _ACTORS:
+            raise DomainValidationError("the agent does not change the lifecycle through this path")
+        stored: CoachingState | None
+        try:
+            stored = self._states.get(scope, scope.athlete_id)
+        except NotFoundError:
+            stored = None
+        state = stored or CoachingState.new(scope.athlete_id)
+        if (state.lifecycle, trigger) not in TRANSITIONS:
+            return False
+        changed, event = state.apply(trigger, actor=actor, at=self._clock())
+        if stored is None:
+            self._states.add(scope, changed)
+        else:
+            self._states.update(scope, changed, expected_version=stored.version)
+        self._audit.append(
+            AuditEvent(
+                occurred_at=event.at,
+                actor=_ACTORS[actor],
+                action="coaching.state_changed",
+                outcome=AuditOutcome.SUCCESS,
+                athlete_id=scope.athlete_id,
+                target_type="LIFECYCLE",
+                target_id=event.to_state.value,
+                reason_codes=(trigger.value,),
+            )
+        )
+        self._events.emit(
+            EventName.COACHING_STATE_CHANGED,
+            {
+                "from": event.from_state.value,
+                "to": event.to_state.value,
+                "trigger": trigger.value,
+            },
+        )
+        return True

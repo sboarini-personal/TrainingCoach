@@ -29,6 +29,7 @@ from coach.application.ports import Clock, CredentialProvider
 from coach.application.secrets import SecretValue
 from coach.cli import activities as activity_commands
 from coach.cli import analytics as analytics_commands
+from coach.cli import athlete as athlete_commands
 from coach.cli import garmin as garmin_commands
 from coach.cli import insights as insight_commands
 from coach.cli import recovery as recovery_commands
@@ -75,7 +76,7 @@ def _parser() -> argparse.ArgumentParser:
         dest="action", required=True
     )
     consent.add_parser("list", help="consent status per type")
-    for action in ("grant", "revoke"):
+    for action in ("grant", "revoke", "decline"):
         change = consent.add_parser(action, help=f"{action} a consent")
         change.add_argument("type", choices=sorted(activity_commands.CONSENT_TYPES))
     profile = commands.add_parser("profile", help="athlete profile").add_subparsers(
@@ -119,6 +120,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     birth = profile.add_parser("birth-date", help="show or set the birth date")
     birth.add_argument("date", nargs="?", type=date.fromisoformat, help="YYYY-MM-DD")
+    athlete_commands.add_profile_parsers(profile)
     upload = commands.add_parser("import", help="import FIT, TCX, GPX, CSV or ZIP files")
     upload.add_argument("paths", nargs="+", type=Path)
     activity = commands.add_parser("activity", help="activities").add_subparsers(
@@ -224,6 +226,7 @@ def _parser() -> argparse.ArgumentParser:
         "--stroke", choices=["BACKSTROKE", "BREASTSTROKE", "BUTTERFLY", "FREESTYLE"]
     )
     recovery_commands.add_parsers(commands)
+    athlete_commands.add_parsers(commands)
     insight_commands.add_parsers(commands)
     report_commands.add_parsers(commands)
     garmin = commands.add_parser("garmin", help="Garmin Personal API").add_subparsers(
@@ -441,6 +444,22 @@ def main(
                 return report_commands.week(runtime, _session(runtime), args, stream)
             case ("report", "month"):
                 return report_commands.month(runtime, _session(runtime), args, stream)
+            case ("profile", "name"):
+                return athlete_commands.name(runtime, _session(runtime), args, stream)
+            case ("profile", "health"):
+                return athlete_commands.health(runtime, _session(runtime), args, stream)
+            case ("profile", "resources"):
+                return athlete_commands.resources(runtime, _session(runtime), args, stream)
+            case ("profile", "experience"):
+                return athlete_commands.experience(runtime, _session(runtime), args, stream)
+            case ("availability", _):
+                return athlete_commands.availability(runtime, _session(runtime), args, stream)
+            case ("event", _):
+                return athlete_commands.event(runtime, _session(runtime), args, stream)
+            case ("goal", _):
+                return athlete_commands.goal(runtime, _session(runtime), args, stream)
+            case ("readiness", _):
+                return athlete_commands.readiness(runtime, _session(runtime), stream)
             case ("safety", "status"):
                 return recovery_commands.status(runtime, _session(runtime), stream)
             case ("safety", "release"):

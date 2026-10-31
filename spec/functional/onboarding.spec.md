@@ -86,6 +86,35 @@ Readiness result (pure function, versioned):
   `provisional = true` and an explicit `assumptions[]` list may be created.
 - `READY`: all REQUIRED and PREFERRED present.
 
+Readiness rules 1.0.0 (P12, precision; `coach.domain.onboarding.readiness`, `coach readiness`):
+
+- **REQUIRED inputs** are judged with the onboarding planner's field states and freshness
+  windows; a field recorded as UNKNOWN within its window counts. The fields are:
+  - profile: display name, timezone, birth date or age;
+  - primary goal: a priority-A goal in DRAFT or ACTIVE, with its target date;
+  - current level: the goal sport's experience, or one of its activities in the last 8 weeks;
+  - weekly availability: the recurring pattern;
+  - health constraints: the declaration, re-confirmed every 30 days;
+  - resources, strength experience, and tennis (its experience; 0 sessions a week is an
+    explicit "none").
+- **PREFERRED inputs** are counted from the data, never declared:
+  - recent activity history: an ACTIVE activity in the last 8 weeks;
+  - recovery history: a check-in or daily recovery data in the last 14 days;
+  - Garmin integration: a stored Garmin key.
+- **Lifecycle:** asking for readiness brings the lifecycle forward where the state machine
+  allows it. An AI_PROCESSING decision (grant or decline, `coach consent decline`) moves
+  NEW_USER to ONBOARDING. With every REQUIRED input present, the history sufficiency of
+  section 3 chooses BASELINE_COLLECTION or GOAL_DEFINED, and BASELINE_COLLECTION moves to
+  GOAL_DEFINED once the history is sufficient. Every transition is audited
+  (`coaching.state_changed`) and emitted (`coaching.state.changed`).
+- **Inputs:**
+  - `coach profile name`, `coach profile health` (show, none, add, remove, confirm),
+    `coach profile resources`, `coach profile experience <sport>` (`--unknown` answers "I do
+    not know");
+  - `coach availability` (show, set, default, exception, clear);
+  - `coach event` (add, list);
+  - `coach goal` (add, list, activate, close).
+
 ## 3. Baseline collection (FR-ONB-005)
 
 History is **insufficient** for the goal sport when either holds (proposed thresholds,
@@ -104,6 +133,13 @@ sessions**:
 - maximal or threshold tests only when the athlete has relevant experience, no active health
   constraint for that sport, no SAFETY_HOLD, and explicitly opts in;
 - no physiological threshold is inferred from age formulas or invented (FR-PRF-002).
+
+Precision (P12): a reliable intensity anchor is any of:
+
+- a known maximum heart rate that is not derived;
+- a zone model that is not age-predicted;
+- a running race result within 12 months;
+- for cycling, an FTP measured within 6 months (it anchors cycling only).
 
 ## 4. Coaching state machine (FR-ONB-006)
 

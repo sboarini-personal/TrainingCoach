@@ -75,11 +75,14 @@ def change_consent(
     try:
         if args.action == "grant":
             runtime.consents.grant(scope, consent_type, purpose=PURPOSES[consent_type])
+        elif args.action == "decline":
+            runtime.consents.decline(scope, consent_type, purpose=PURPOSES[consent_type])
         else:
             runtime.consents.revoke(scope, consent_type)
     except DomainValidationError as error:
         raise CommandError(str(error)) from None
-    print(f"{args.type}: {'granted' if args.action == 'grant' else 'revoked'}", file=out)
+    done = {"grant": "granted", "decline": "declined", "revoke": "revoked"}[args.action]
+    print(f"{args.type}: {done}", file=out)
     return 0
 
 
