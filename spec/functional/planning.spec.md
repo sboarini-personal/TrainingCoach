@@ -42,8 +42,20 @@ Contract: [../contracts/training-plan.schema.json](../contracts/training-plan.sc
   header with optimistic concurrency (its `version` is the storage revision) in the same
   transaction as the versions, so version numbers are never given twice and two activations
   made from the same reading cannot both succeed (AT-PLN-002). The athlete activates with
-  the header revision they reviewed (`coach plan list` shows it); a stale revision fails with
-  CONCURRENCY_CONFLICT and nothing is written.
+  the header revision they reviewed, which is required (`coach plan list` shows it); a
+  stale revision fails with CONCURRENCY_CONFLICT and nothing is written. The policy engine
+  decides before the transaction (an audited denial) and again inside it, so a safety hold
+  arriving meanwhile fails the activation with CONCURRENCY_CONFLICT.
+- **One ACTIVE version per athlete.** Activating a version supersedes the athlete's ACTIVE
+  version, of the same plan or of another one (ACTIVATED_NEWER_VERSION; the other plan's
+  header no longer has an ACTIVE version), so the plan in force is never ambiguous and its
+  load is the whole planned load.
+- **Proposals need the Definition of Ready.** A proposal names the athlete's own open goal
+  (DRAFT or ACTIVE; another athlete's goal is not found). While readiness is NOT_READY no
+  version is created (onboarding spec 2, AT-ONB-002); while it is PROVISIONAL only a
+  provisional one is.
+- **Rejecting.** Only a PROPOSED version is rejected or replaced; an ACTIVE version is
+  superseded only by activating another one.
 - **Revision.** A version's `revision` (storage revision) changes only with its status; its
   content never changes.
 - **Canonical hash.** The canonical JSON has sorted keys, no whitespace, UTF-8, and whole
@@ -68,9 +80,9 @@ Contract: [../contracts/training-plan.schema.json](../contracts/training-plan.sc
 Precision (P12): `keyWorkouts`, `strengthSessions`, `tennisSessions` and `recoveryDays` are
 derived from `days`, never set separately. A recovery day is a day whose planned workouts are
 all REST or RECOVERY (a day with nothing planned is free, not a recovery day). A workout is
-**intensive** when its highest prescribed RPE is 7 or more (strength: the target RPE, else
-10 minus the target RIR, else the effort cue EASY 3, MODERATE 5, HARD 8); the policy engine
-and the interference rules use this.
+**intensive** when its highest prescribed RPE is 7 or more (strength: the harder of the
+target RPE and 10 minus the target RIR, else the effort cue EASY 3, MODERATE 5, HARD 8), a
+maximal evaluation, or an effort that is not stated; the policy engine uses this.
 
 ## 4. Endurance workouts (FR-PLN-005)
 

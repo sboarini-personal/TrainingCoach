@@ -105,6 +105,7 @@ safety hold, recovery block, availability and duration, equipment, health.
 | POL-AVAILABILITY | DENY a workout whose sport the day does not allow | `SPORT_NOT_ALLOWED` (sport) |
 | POL-AVAILABILITY | DENY more than one session on a day unless double sessions are allowed | `DOUBLE_SESSION_NOT_ALLOWED` (day, sessions) |
 | POL-AVAILABILITY | DENY a week with more training days than the recurring pattern allows | `TOO_MANY_TRAINING_DAYS` (weekStart, trainingDays, maximumDays) |
+| POL-AVAILABILITY | DENY a plan placing workouts when the recurring weekly pattern is unknown (its weekly limits cannot be checked) | `WEEKLY_PATTERN_MISSING` |
 | POL-MAX-DURATION | DENY a day whose planned duration exceeds its maximum (the windows' total length when the day has windows) | `DAY_DURATION_EXCEEDED` (day, plannedMinutes, maximumMinutes) |
 | POL-MAX-DURATION | DENY a week over the recurring maximum hours | `WEEK_DURATION_EXCEEDED` (weekStart, plannedHours, maximumHours) |
 | POL-MAX-DURATION | DENY a workout whose duration is not stated (it cannot be checked) | `DURATION_UNKNOWN` |
@@ -127,7 +128,9 @@ Precisions:
 - **Sports.** A day's allowed sports restrict workouts of a known sport; a recovery session
   without a sport (mobility) is not restricted by them.
 - **The athlete's own tennis.** A tennis session on a weekday of the declared tennis schedule,
-  no longer than the declared slot, is the athlete's own commitment: the plan counts it as load
+  no longer than the declared slot, is the athlete's own commitment; a slot covers one session
+  (the shortest slot that fits; any other tennis is placed by the plan and checked like any
+  workout). The plan counts the athlete's own tennis as load
   (estimated load, interference, adaptation) but does not place it, so availability and
   duration checks other than an availability exception for that date do not apply to it
   (it is neither a double session nor a training day of the pattern). Safety, recovery and
@@ -137,7 +140,9 @@ Precisions:
   whose highest target RPE exceeds n, or whose effort is not stated. NO_IMPACT: running and
   tennis, and strength exercises tagged HIGH_IMPACT. NO_OVERHEAD: swimming and tennis, and
   strength exercises tagged OVERHEAD. NO_HEAVY_LOWER_BODY: a lower-body-pattern exercise at a
-  hard target (strength spec 8: RIR 4 or less, else RPE 6 or more, or the HARD cue). Affected
-  regions: a strength exercise loading the region (region rules 1.0.0) at a hard target.
+  hard target (strength spec 8: RIR 4 or less or RPE 6 or more, either one, or the HARD
+  cue). Affected regions: a strength exercise loading the region (region rules 1.0.0) at a
+  hard target. The RPE of a strength exercise is the harder of its target RPE and 10 minus
+  its target RIR (planning spec 3).
   OTHER is free text: code does not check it; the plan generator states it as an
   assumption for the athlete to review.

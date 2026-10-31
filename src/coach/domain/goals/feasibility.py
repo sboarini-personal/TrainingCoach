@@ -211,13 +211,7 @@ def assess_feasibility(
         classification = Classification.POSSIBLE
     else:
         classification = Classification.UNLIKELY
-    if (
-        hours is not None
-        and hours < MIN_HOURS
-        and classification is Classification.LIKELY
-        and gap is not None
-        and gap > 0
-    ):
+    if hours is not None and hours < MIN_HOURS and classification is Classification.LIKELY:
         classification = Classification.POSSIBLE
         reasons.append(FeasibilityReason.FEW_HOURS)
     realistic = minimum = None

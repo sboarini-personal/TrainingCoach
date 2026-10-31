@@ -281,6 +281,10 @@ class PlanVersion:
             )
         fixed = _TRANSITIONS[(self.status, status)]
         if status is PlanStatus.SUPERSEDED:
+            if fixed is not None and reason not in (None, fixed):
+                raise InvalidTransitionError(
+                    "an ACTIVE version is superseded only by activating another one"
+                )
             reason = fixed or reason
             allowed = {SupersededReason.REJECTED, SupersededReason.REPLACED_BY_NEWER_PROPOSAL}
             if reason is None or (fixed is None and reason not in allowed):

@@ -31,7 +31,10 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     activate.add_argument("plan_id")
     activate.add_argument("version", type=int)
     activate.add_argument(
-        "--revision", type=int, help="the plan revision you reviewed (from plan list)"
+        "--revision",
+        type=int,
+        required=True,
+        help="the plan revision you reviewed (from plan list)",
     )
     activate.add_argument("--reason", help="why you activate it (optional)")
     reject = plan.add_parser("reject", help="reject a PROPOSED version")

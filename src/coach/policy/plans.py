@@ -17,6 +17,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Final
+from uuid import UUID
 
 from coach.domain.athlete.health import HealthConstraint, HealthDeclaration, RestrictionKind
 from coach.domain.athlete.resources import Resources
@@ -78,16 +79,30 @@ def _upcoming(content: PlanContent, today: date) -> list[PlannedWorkout]:
     ]
 
 
-def _own_tennis(workout: PlannedWorkout, resources: Resources | None) -> bool:
-    """A tennis session of the athlete's declared schedule: their own commitment, which the
-    plan counts as load but does not place (policy spec 5)."""
-    if workout.tennis is None or resources is None:
-        return False
-    weekday = Weekday.of(workout.training_day)
-    return any(
-        slot.weekday is weekday and workout.tennis.duration_seconds <= slot.duration_minutes * 60
-        for slot in resources.tennis_schedule
-    )
+def own_tennis(content: PlanContent, resources: Resources | None) -> frozenset[UUID]:
+    """The tennis sessions of the athlete's declared schedule: their own commitment, which
+    the plan counts as load but does not place (policy spec 5). A declared slot covers one
+    session on its weekday, no longer than the slot (the shortest slot that fits)."""
+    if resources is None or not resources.tennis_schedule:
+        return frozenset()
+    found: set[UUID] = set()
+    for week in content.weeks:
+        for workouts in week.days:
+            sessions = [(item, item.tennis) for item in workouts if item.tennis is not None]
+            if not sessions:
+                continue
+            weekday = Weekday.of(sessions[0][0].training_day)
+            slots = sorted(
+                slot.duration_minutes * 60
+                for slot in resources.tennis_schedule
+                if slot.weekday is weekday
+            )
+            for item, tennis in sessions:
+                fitting = next((s for s in slots if tennis.duration_seconds <= s), None)
+                if fitting is not None:
+                    slots.remove(fitting)
+                    found.add(item.workout_id)
+    return frozenset(found)
 
 
 # --------------------------------------------------------------------------- conditions
@@ -128,13 +143,15 @@ def _effective(planning: PlanningContext, day: date) -> EffectiveAvailability | 
 
 
 def _day_availability(
-    day: date, workouts: Sequence[PlannedWorkout], planning: PlanningContext
+    day: date,
+    workouts: Sequence[PlannedWorkout],
+    planning: PlanningContext,
+    own: frozenset[UUID],
 ) -> Iterator[PolicyReason]:
     found = _effective(planning, day)
     explicit = found is not None and found.basis is AvailabilityBasis.EXCEPTION
     for item in workouts:
-        exempt = _own_tennis(item, planning.resources) and not explicit
-        if exempt:
+        if item.workout_id in own and not explicit:
             continue
         if found is None or not found.plannable:
             yield _reason("POL-AVAILABILITY", "DAY_NOT_PLANNABLE", item)
@@ -146,7 +163,7 @@ def _day_availability(
             and item.sport not in found.allowed_sports
         ):
             yield _reason("POL-AVAILABILITY", "SPORT_NOT_ALLOWED", item, sport=item.sport.value)
-    placed = [item for item in workouts if not _own_tennis(item, planning.resources)]
+    placed = [item for item in workouts if item.workout_id not in own]
     recurring = None if planning.availability is None else planning.availability.recurring
     doubles = recurring is not None and recurring.double_sessions_allowed
     if len(placed) > 1 and not doubles:
@@ -159,12 +176,15 @@ def _day_availability(
 
 
 def _day_duration(
-    day: date, workouts: Sequence[PlannedWorkout], planning: PlanningContext
+    day: date,
+    workouts: Sequence[PlannedWorkout],
+    planning: PlanningContext,
+    own: frozenset[UUID],
 ) -> Iterator[PolicyReason]:
     found = _effective(planning, day)
     if found is None or not found.plannable or not found.available:
         return  # already denied by POL-AVAILABILITY
-    placed = [item for item in workouts if not _own_tennis(item, planning.resources)]
+    placed = [item for item in workouts if item.workout_id not in own]
     for item in placed:
         if item.planned_seconds is None:
             yield _reason("POL-MAX-DURATION", "DURATION_UNKNOWN", item)
@@ -179,7 +199,9 @@ def _day_duration(
         )
 
 
-def _week_limits(week: TrainingWeek, planning: PlanningContext) -> Iterator[PolicyReason]:
+def _week_limits(
+    week: TrainingWeek, planning: PlanningContext, own: frozenset[UUID]
+) -> Iterator[PolicyReason]:
     recurring = None if planning.availability is None else planning.availability.recurring
     if recurring is None or week.end < planning.today:
         return
@@ -187,7 +209,7 @@ def _week_limits(week: TrainingWeek, planning: PlanningContext) -> Iterator[Poli
         item
         for day in week.days
         for item in day
-        if item.type is not WorkoutType.REST and not _own_tennis(item, planning.resources)
+        if item.type is not WorkoutType.REST and item.workout_id not in own
     ]
     days = len({item.training_day for item in placed})
     if days > recurring.days_per_week:
@@ -210,17 +232,23 @@ def _week_limits(week: TrainingWeek, planning: PlanningContext) -> Iterator[Poli
 
 
 def availability(content: PlanContent, planning: PlanningContext) -> list[PolicyReason]:
-    """POL-AVAILABILITY and POL-MAX-DURATION."""
+    """POL-AVAILABILITY and POL-MAX-DURATION. Without a recurring weekly pattern the weekly
+    limits are unknown, so a plan placing workouts is denied (WEEKLY_PATTERN_MISSING)."""
+    own = own_tennis(content, planning.resources)
     by_day: dict[date, list[PlannedWorkout]] = defaultdict(list)
     for item in _upcoming(content, planning.today):
         by_day[item.training_day].append(item)
     reasons: list[PolicyReason] = []
     for day in sorted(by_day):
-        reasons.extend(_day_availability(day, by_day[day], planning))
+        reasons.extend(_day_availability(day, by_day[day], planning, own))
+    recurring = None if planning.availability is None else planning.availability.recurring
+    placed = any(item.workout_id not in own for items in by_day.values() for item in items)
+    if recurring is None and placed:
+        reasons.append(_reason("POL-AVAILABILITY", "WEEKLY_PATTERN_MISSING"))
     for day in sorted(by_day):
-        reasons.extend(_day_duration(day, by_day[day], planning))
+        reasons.extend(_day_duration(day, by_day[day], planning, own))
     for week in content.weeks:
-        reasons.extend(_week_limits(week, planning))
+        reasons.extend(_week_limits(week, planning, own))
     return reasons
 
 
@@ -269,11 +297,15 @@ def equipment(content: PlanContent, planning: PlanningContext) -> list[PolicyRea
 
 
 def _hard_target(item: PrescribedExercise) -> bool:
-    """A planned exercise read at its target (strength spec 8); unknown effort may be hard."""
+    """A planned exercise read at its target (strength spec 8), hard when either its RIR or
+    its RPE target is; an unknown effort may be hard."""
+    readings = []
     if item.target_rir is not None:
-        return item.target_rir <= HARD_SET_MAX_RIR
+        readings.append(item.target_rir <= HARD_SET_MAX_RIR)
     if item.target_rpe is not None:
-        return item.target_rpe >= HARD_SET_MIN_RPE
+        readings.append(item.target_rpe >= HARD_SET_MIN_RPE)
+    if readings:
+        return any(readings)
     return item.effort_cue is None or item.effort_cue is EffortCue.HARD
 
 

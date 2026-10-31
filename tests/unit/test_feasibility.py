@@ -143,3 +143,9 @@ def test_what_rules_1_0_0_cannot_assess_is_insufficient_data() -> None:
         Classification.POSSIBLE,
         (FeasibilityReason.FEW_HOURS,),
     )
+    met = assess_feasibility(goal(target=3100), profile, hours(1.0), today=TODAY)
+    assert (met.gap_seconds, met.classification, met.reasons) == (
+        -100.0,  # already faster than the target
+        Classification.POSSIBLE,  # at most POSSIBLE with fewer than 2 hours (goals spec 4.5)
+        (FeasibilityReason.FEW_HOURS,),
+    )

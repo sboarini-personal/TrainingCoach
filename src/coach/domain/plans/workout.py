@@ -253,12 +253,15 @@ class EvaluationSession:
     submaximal: bool
     requires_opt_in: bool
     safety_notes: tuple[str, ...]
+    duration_seconds: int | None = None  # contract 1.2.0
 
     def __post_init__(self) -> None:
         if not _PROTOCOL.match(self.protocol_id):
             raise DomainValidationError("an evaluation protocol is eval.<name>")
         if not self.submaximal and not self.requires_opt_in:
             raise DomainValidationError("a maximal test needs the athlete's opt-in (FR-ONB-005)")
+        if self.duration_seconds is not None and not 60 <= self.duration_seconds <= 14_400:
+            raise DomainValidationError("an evaluation lasts 1 minute to 4 hours")
         if not self.safety_notes:
             raise DomainValidationError("an evaluation states its safety notes")
         object.__setattr__(
@@ -270,11 +273,18 @@ _CUE_RPE: Final = {EffortCue.EASY: 3.0, EffortCue.MODERATE: 5.0, EffortCue.HARD:
 
 
 def _exercise_rpe(item: PrescribedExercise) -> float | None:
-    """The effort targeted: RPE, else 10 minus RIR, else the effort cue."""
-    if item.target_rpe is not None:
-        return item.target_rpe
-    if item.target_rir is not None:
-        return 10.0 - item.target_rir
+    """The effort targeted: the harder of the target RPE and 10 minus the target RIR, else
+    the effort cue."""
+    readings = [
+        value
+        for value in (
+            item.target_rpe,
+            None if item.target_rir is None else 10.0 - item.target_rir,
+        )
+        if value is not None
+    ]
+    if readings:
+        return max(readings)
     return None if item.effort_cue is None else _CUE_RPE[item.effort_cue]
 
 
@@ -341,6 +351,8 @@ class PlannedWorkout:
             return float(self.tennis.duration_seconds)
         if self.recovery is not None:
             return float(self.recovery.duration_seconds)
+        if self.evaluation is not None and self.evaluation.duration_seconds is not None:
+            return float(self.evaluation.duration_seconds)
         return 0.0 if self.type is WorkoutType.REST else None
 
     @property

@@ -213,6 +213,11 @@ def workout_to_contract(workout: PlannedWorkout) -> Json:
             "submaximal": evaluation.submaximal,
             "requiresOptIn": evaluation.requires_opt_in,
             "safetyNotes": list(evaluation.safety_notes),
+            **(
+                {}
+                if evaluation.duration_seconds is None
+                else {"durationSeconds": evaluation.duration_seconds}
+            ),
         }
     return document
 
@@ -258,6 +263,7 @@ def workout_from_contract(document: Document) -> PlannedWorkout:
             submaximal=evaluation["submaximal"],
             requires_opt_in=evaluation["requiresOptIn"],
             safety_notes=tuple(evaluation["safetyNotes"]),
+            duration_seconds=evaluation.get("durationSeconds"),
         ),
     )
 

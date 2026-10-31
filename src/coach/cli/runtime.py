@@ -412,6 +412,8 @@ def build_runtime(
     plans = PlanService(
         SqliteAggregateRepository(database, PLAN_HEADER_CODEC),
         SqliteAggregateRepository(database, PLAN_VERSION_CODEC),
+        goals=SqliteAggregateRepository(database, GOAL_CODEC),
+        readiness=lambda scope: inputs.readiness(scope).readiness,
         lifecycle=lifecycle,
         gate=PolicyGate(
             gate,

@@ -65,6 +65,11 @@ class PolicyGate:
             raise ConfirmationRequiredError(decision)
         return decision
 
+    def allows(self, scope: OwnerScope, action: Action) -> bool:
+        """The decision without side effects (no audit, no event): for re-checking inside a
+        transaction what ``enforce`` already decided and recorded."""
+        return evaluate(action, self._context(scope, action)).outcome is Outcome.ALLOW
+
     def _context(self, scope: OwnerScope, action: Action) -> PolicyContext:
         try:
             conditions: frozenset[Condition] = self._states.get(scope, scope.athlete_id).conditions

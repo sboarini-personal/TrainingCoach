@@ -56,7 +56,7 @@ from coach.policy.engine import Action, ActionKind, Outcome, PolicyContext, eval
 from coach.policy.plans import PlanningContext, equipment, health, plan_reasons
 from coach.policy.reasons import PolicyReason
 from plan_samples import MONDAY, content, easy_run, next_id, rest, strength, tennis, week
-from plan_world import DECLARED, ENGINE, GOAL, SCOPE, PlanWorld, open_planning
+from plan_world import DECLARED, ENGINE, GOAL, PATTERN, SCOPE, PlanWorld, open_planning
 from samples import ATHLETE, BUENOS_AIRES
 
 TUESDAY, WEDNESDAY, THURSDAY = (MONDAY + timedelta(days=offset) for offset in (1, 2, 3))
@@ -188,8 +188,14 @@ def test_days_windows_and_weekly_limits_bound_the_plan() -> None:
         ("DAY_UNAVAILABLE", "2026-10-29"),
     ]
     unknown = plan_reasons(content(), frozenset(), open_planning(availability=None))
-    assert {item.code for item in unknown} == {"DAY_NOT_PLANNABLE"}
-    assert len(unknown) == 4
+    assert [item.code for item in unknown] == ["DAY_NOT_PLANNABLE"] * 4 + [
+        "WEEKLY_PATTERN_MISSING"  # no weekly limits known: unknown never allows
+    ]
+    defaults_only = Availability.new(ATHLETE, defaults=DayDefaults(240))
+    assert [
+        item.code
+        for item in plan_reasons(content(), frozenset(), open_planning(availability=defaults_only))
+    ] == ["WEEKLY_PATTERN_MISSING"]
 
 
 @pytest.mark.req("FR-PRF-005")
@@ -200,7 +206,9 @@ def test_exceptions_double_sessions_and_unknown_durations_are_denied() -> None:
         maximum_duration_minutes=60,
         allowed_sports=frozenset({Sport.RUNNING}),
     )
-    defaults = Availability.new(ATHLETE, defaults=DayDefaults(240)).with_exception(running_only)
+    defaults = Availability.new(
+        ATHLETE, recurring=PATTERN, defaults=DayDefaults(240)
+    ).with_exception(running_only)
     reasons = plan_reasons(content(), frozenset(), open_planning(availability=defaults))
     assert found(reasons, "day", "sport") == [("SPORT_NOT_ALLOWED", "2026-10-27", "STRENGTH")]
     double = one_week({2: [easy_run(WEDNESDAY), strength(WEDNESDAY, order=1)]})
@@ -468,7 +476,7 @@ def test_chest_pain_blocks_intensive_proposals_and_activation_until_the_athlete_
     with pytest.raises(PolicyDeniedError):  # an intensive recommendation
         world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
     with pytest.raises(PolicyDeniedError):  # any plan activation
-        world.service.activate(SCOPE, plan.plan_id, 1)
+        world.activate(plan.plan_id, 1)
     easy = one_week({2: [easy_run(WEDNESDAY)]})
     proposed = world.service.propose(
         SCOPE, goal_id=GOAL, content=easy, generator=ENGINE, plan_id=plan.plan_id
@@ -477,4 +485,40 @@ def test_chest_pain_blocks_intensive_proposals_and_activation_until_the_athlete_
     world.conditions.clear(
         SCOPE, Condition.SAFETY_HOLD, reason="CLEARED_BY_PROFESSIONAL", actor=Actor.ATHLETE
     )
-    assert world.service.activate(SCOPE, plan.plan_id, 1).status is PlanStatus.ACTIVE
+    assert world.activate(plan.plan_id, 1).status is PlanStatus.ACTIVE
+
+
+@pytest.mark.req("FR-PRF-005", "FR-TEN-001")
+def test_a_declared_tennis_slot_covers_one_session_only() -> None:
+    slot = TennisSlot(Weekday.THURSDAY, 19 * 60, 90, TennisSessionType.PRACTICE)
+    recurring = WeeklyAvailability(
+        days_per_week=1, maximum_hours_per_week=1, preferred_rest_days=frozenset({Weekday.THURSDAY})
+    )
+    planning = open_planning(
+        availability=Availability.new(ATHLETE, recurring=recurring, defaults=DayDefaults(60)),
+        resources=Resources(tennis_schedule=(slot,)),
+    )
+    twice = one_week({3: [tennis(THURSDAY, minutes=90), tennis(THURSDAY, minutes=90)]})
+    reasons = plan_reasons(twice, frozenset(), planning)
+    assert [item.code for item in reasons] == ["DAY_UNAVAILABLE", "WEEK_DURATION_EXCEEDED"]
+    second = twice.weeks[0].days[3][1]
+    assert reasons[0].parameter("workoutId") == str(second.workout_id)
+
+
+@pytest.mark.req("FR-PRF-006", "SAFE-MED-003")
+def test_a_strength_target_is_read_at_the_harder_of_rpe_and_rir() -> None:
+    base = strength(TUESDAY, rpe=5)
+    exercise = base.strength.exercises[0]  # type: ignore[union-attr]
+    hard = replace(
+        base,
+        strength=replace(  # type: ignore[type-var]
+            base.strength, exercises=(replace(exercise, target_rir=0),)
+        ),
+    )
+    plan = one_week({1: [hard]})
+    capped = open_planning(health=constraint(Restriction(RestrictionKind.MAX_RPE, max_rpe=6)))
+    assert [item.code for item in health(plan, capped)] == ["RPE_ABOVE_LIMIT"]
+    knees = open_planning(health=constraint(affected_regions=("KNEES",)))
+    assert [item.code for item in health(plan, knees)] == ["REGION_RESTRICTED"]
+    held = plan_reasons(plan, frozenset({Condition.SAFETY_HOLD}), open_planning())
+    assert [item.code for item in held] == ["SAFETY_HOLD_ACTIVE"]

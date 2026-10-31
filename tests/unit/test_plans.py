@@ -4,6 +4,8 @@ FR-PLN-004, AT-PLN-001, AT-PLN-002). Synthetic data only."""
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -19,12 +21,16 @@ from coach.application.contracts.plans import (
     workout_from_contract,
     workout_to_contract,
 )
-from coach.application.errors import ConcurrencyConflictError
+from coach.application.errors import ConcurrencyConflictError, NotFoundError
 from coach.application.events import EventName
+from coach.application.ownership import OwnerScope
+from coach.application.plans import PlanNotReadyError
 from coach.application.policy_gate import PolicyDeniedError
 from coach.domain.coaching.state import Actor, Condition, LifecycleState
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.common.sport import Sport
+from coach.domain.goals.goal import GoalStatus
+from coach.domain.onboarding.readiness import Readiness, ReadinessInput, ReadinessStatus
 from coach.domain.plans.plan import PlanStatus, SupersededReason
 from coach.domain.plans.workout import (
     SAFETY_STOP,
@@ -37,7 +43,8 @@ from coach.domain.plans.workout import (
 from coach.infrastructure.sqlite.aggregates import SqliteAggregateRepository
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from plan_samples import MONDAY, content, easy_run, intervals, rest, strength, target, tennis, week
-from plan_world import ENGINE, GOAL, SCOPE, PlanWorld
+from plan_world import ENGINE, GOAL, SCOPE, PlanWorld, goal
+from samples import OTHER_ATHLETE
 from schemas import CONTRACTS_DIR, load_json
 
 PLANTED = "Zx81Qp0LmN4vB7cT2wYe9KdR"  # pragma: allowlist secret
@@ -135,7 +142,7 @@ def test_an_adaptation_is_a_new_version_and_activation_supersedes_the_old() -> N
     first = service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
     assert (first.number, first.status, first.parent_number) == (1, PlanStatus.PROPOSED, None)
     assert world.lifecycle.current(SCOPE).lifecycle is LifecycleState.PLAN_READY
-    service.activate(SCOPE, first.plan_id, 1)
+    world.activate(first.plan_id, 1)
     assert world.lifecycle.current(SCOPE).lifecycle is LifecycleState.TRAINING
     before = service.version(SCOPE, first.plan_id, 1)
     adapted = content(week(MONDAY, {0: [rest(MONDAY)], 2: [easy_run(MONDAY + timedelta(days=2))]}))
@@ -150,7 +157,7 @@ def test_an_adaptation_is_a_new_version_and_activation_supersedes_the_old() -> N
         PlanStatus.ACTIVE,
     )
     reason = f"Adaptation accepted, api_key={PLANTED}"
-    activated = service.activate(SCOPE, first.plan_id, 2, reason=reason)
+    activated = world.activate(first.plan_id, 2, reason=reason)
     assert activated.activation_reason is not None
     assert PLANTED not in activated.activation_reason  # screened before it is stored
     statuses = [
@@ -173,7 +180,7 @@ def test_two_activations_from_the_same_reading_cannot_both_succeed() -> None:
     world = PlanWorld()
     service = world.service
     first = service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
-    service.activate(SCOPE, first.plan_id, 1)
+    world.activate(first.plan_id, 1)
     for _ in range(2):
         service.propose(
             SCOPE,
@@ -202,7 +209,7 @@ def test_a_failed_activation_writes_nothing_in_sqlite(tmp_path: Path) -> None:
     world = PlanWorld(headers, versions, batch=database.batch)
     service = world.service
     first = service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
-    service.activate(SCOPE, first.plan_id, 1)
+    world.activate(first.plan_id, 1)
     for _ in range(2):
         service.propose(
             SCOPE,
@@ -227,7 +234,7 @@ def test_activation_is_blocked_during_a_safety_hold_and_proposals_can_be_rejecte
     first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
     world.conditions.activate(SCOPE, Condition.SAFETY_HOLD, reason="RF_CHEST_PAIN")
     with pytest.raises(PolicyDeniedError) as denied:
-        world.service.activate(SCOPE, first.plan_id, 1)
+        world.activate(first.plan_id, 1)
     reasons = denied.value.decision.reasons
     assert {item.code for item in reasons} == {"SAFETY_HOLD_ACTIVE"}
     assert reasons[0].parameters == ()  # the activation itself, then each intensive workout
@@ -272,6 +279,7 @@ def test_activation_is_blocked_during_a_safety_hold_and_proposals_can_be_rejecte
             replaces=1,
         )
     assert len(world.service.versions(SCOPE, first.plan_id)) == 3  # nothing was written
+    world.goals.add(SCOPE, goal(UUID(int=0x602)))
     with pytest.raises(DomainValidationError):  # a plan keeps its goal
         world.service.propose(
             SCOPE,
@@ -281,3 +289,102 @@ def test_activation_is_blocked_during_a_safety_hold_and_proposals_can_be_rejecte
             plan_id=third.plan_id,
         )
     assert plan_version_from_contract(plan_version_to_contract(rejected)) == rejected
+
+
+@pytest.mark.req("FR-PLN-002", "FR-PLN-003")
+def test_only_a_proposal_can_be_rejected_or_replaced() -> None:
+    world = PlanWorld()
+    first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
+    world.activate(first.plan_id, 1)
+    with pytest.raises(InvalidTransitionError):  # the ACTIVE version stays ACTIVE
+        world.service.reject(SCOPE, first.plan_id, 1)
+    with pytest.raises(InvalidTransitionError):
+        world.service.propose(
+            SCOPE,
+            goal_id=GOAL,
+            content=content(),
+            generator=ENGINE,
+            plan_id=first.plan_id,
+            replaces=1,
+        )
+    assert world.service.version(SCOPE, first.plan_id, 1).status is PlanStatus.ACTIVE
+    second = world.service.propose(
+        SCOPE, goal_id=GOAL, content=content(), generator=ENGINE, plan_id=first.plan_id, parent=1
+    )
+    assert world.activate(first.plan_id, second.number).status is PlanStatus.ACTIVE
+    assert world.service.active(SCOPE) == world.service.version(SCOPE, first.plan_id, 2)
+
+
+@pytest.mark.req("FR-ONB-003", "FR-ONB-004", "SEC-AUTHZ-001")
+@pytest.mark.acceptance("AT-ONB-002")
+def test_a_proposal_needs_an_owned_open_goal_and_the_definition_of_ready() -> None:
+    world = PlanWorld()
+    with pytest.raises(NotFoundError):  # unknown
+        world.service.propose(SCOPE, goal_id=UUID(int=0x699), content=content(), generator=ENGINE)
+    world.goals.add(
+        OwnerScope(OTHER_ATHLETE), replace(goal(UUID(int=0x698)), athlete_id=OTHER_ATHLETE)
+    )
+    with pytest.raises(NotFoundError):  # another athlete's goal
+        world.service.propose(SCOPE, goal_id=UUID(int=0x698), content=content(), generator=ENGINE)
+    world.goals.add(SCOPE, goal(UUID(int=0x697), status=GoalStatus.ACHIEVED))
+    with pytest.raises(DomainValidationError):  # a closed goal
+        world.service.propose(SCOPE, goal_id=UUID(int=0x697), content=content(), generator=ENGINE)
+    world.ready = Readiness(ReadinessStatus.NOT_READY, (ReadinessInput.WEEKLY_AVAILABILITY,), ())
+    with pytest.raises(PlanNotReadyError) as missing:
+        world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
+    assert missing.value.missing == (ReadinessInput.WEEKLY_AVAILABILITY,)
+    world.ready = Readiness(ReadinessStatus.PROVISIONAL, (), (ReadinessInput.ACTIVITY_HISTORY,))
+    with pytest.raises(DomainValidationError):  # only a provisional plan
+        world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
+    assert world.versions.list_all(SCOPE) == []
+    made = world.service.propose(
+        SCOPE, goal_id=GOAL, content=content(provisional=True), generator=ENGINE
+    )
+    assert made.content.provisional
+
+
+@pytest.mark.req("FR-PLN-003")
+def test_an_athlete_has_one_active_version_across_plans() -> None:
+    world = PlanWorld()
+    first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
+    world.activate(first.plan_id, 1)
+    world.goals.add(SCOPE, goal(UUID(int=0x602)))
+    other = world.service.propose(
+        SCOPE, goal_id=UUID(int=0x602), content=content(), generator=ENGINE
+    )
+    world.activate(other.plan_id, 1)
+    old = world.service.version(SCOPE, first.plan_id, 1)
+    assert (old.status, old.superseded_reason) == (
+        PlanStatus.SUPERSEDED,
+        SupersededReason.ACTIVATED_NEWER_VERSION,
+    )
+    assert world.service.plan(SCOPE, first.plan_id).active_number is None
+    assert world.service.active(SCOPE) == world.service.version(SCOPE, other.plan_id, 1)
+
+
+@pytest.mark.req("SAFE-MED-003", "FR-PLN-003")
+def test_a_hold_arriving_during_an_activation_is_not_bypassed() -> None:
+    @contextmanager
+    def hold_arrives() -> Iterator[None]:
+        world.conditions.activate(SCOPE, Condition.SAFETY_HOLD, reason="RF_CHEST_PAIN")
+        yield
+
+    world = PlanWorld()
+    first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
+    world.service._batch = hold_arrives  # the hold lands after the first decision
+    with pytest.raises(ConcurrencyConflictError):
+        world.activate(first.plan_id, 1)
+    assert world.service.version(SCOPE, first.plan_id, 1).status is PlanStatus.PROPOSED
+    assert world.service.plan(SCOPE, first.plan_id).active_number is None
+
+
+@pytest.mark.req("SAFE-MED-003", "FR-STR-004")
+def test_the_harder_of_rpe_and_rir_is_the_effort_of_a_strength_exercise() -> None:
+    workout = strength(MONDAY, rpe=5)
+    exercise = workout.strength.exercises[0]  # type: ignore[union-attr]
+    to_failure = replace(exercise, target_rir=0)  # RPE 5 and no repetition in reserve
+    contradictory = replace(
+        workout,
+        strength=replace(workout.strength, exercises=(to_failure,)),  # type: ignore[type-var]
+    )
+    assert (contradictory.max_rpe, contradictory.intensive) == (10.0, True)
