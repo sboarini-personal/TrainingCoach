@@ -65,6 +65,17 @@ Domain packages (P2): `common` (errors, time, units, quality, provenance, sport,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
 `onboarding`; `raw` (P3); `activity` (P5); `ingestion` (P6).
 
+P12 additions:
+
+| Package | Content |
+|---|---|
+| `coach.domain` | `onboarding.readiness` (Definition of Ready, readiness rules 1.0.0), `goals.feasibility` (feasibility rules 1.0.0, Riegel), `plans.workout` (planned workouts, safety stop, highest RPE, intensive flag; workout contract 1.2.0), `plans.plan` (TrainingPlan header, immutable PlanVersion, content hash), `plans.execution` (execution rules 1.0.0, ExecutionLink), `plans.adaptation` (AdaptationDecision), `recovery.pain` (pain rules 1.0.0), `strength.equipment` (equipment rules 1.0.0) |
+| `coach.policy` | `plans` (plan policies over a PlanningContext), `reasons`; policy set 1.2.0 |
+| `coach.planning` | `generator` (generator rules 1.0.0), `execution` (matching and compliance), `adaptation` (adaptation rules 1.0.0), `patterns` 1.1.0 (ADHERENCE, PLANNED_VS_ACTUAL, PLATEAU) |
+| `coach.application` | `athlete_inputs` (profile, health, resources, experience, availability, events, goals, readiness), `PlanService` (propose, activate with the reviewed revision, reject), `PolicyGate` planning context (`planning_context`), `PlanGenerationService`, `ExecutionService`, `AdaptationService`; plan sections of `ReportService`; `StrengthService.record_all`; codecs for plan headers, versions, execution links and adaptation decisions |
+| `coach.integrations.files` | `strength_csv` (strength sets template 1.0.0) |
+| `coach.cli` | `profile name/health/resources/experience`, `availability`, `event`, `goal`, `readiness`, `plan generate/list/show/activate/reject/executions/link/adapt/decisions`, `strength import-sets/export-sets` |
+
 P11 additions:
 
 | Package | Content |
@@ -253,9 +264,21 @@ reason codes and evidence.
    and check-ins.
 5. `coach report` assembles the evidence-backed data part of the reports.
 
-**Adaptive loop:** activity ingested -> workout execution matching -> metrics -> recovery
-assessment -> insights -> decision (code thresholds plus AI interpretation) -> policy engine
--> new PROPOSED plan version (if not MAINTAIN) -> athlete activation.
+**Plans and the adaptive loop (P12, ADR-034):**
+
+1. The athlete declares what planning needs (`profile`, `availability`, `event`, `goal`);
+   `coach readiness` answers the Definition of Ready.
+2. `coach plan generate` runs generator rules 1.0.0 over the goal, the weekly history and the
+   declarations, and proposes an immutable version through `PlanService`. Every plan policy
+   is checked first, and a denied proposal is never stored.
+3. `coach plan activate --revision` activates the version the athlete reviewed, re-checking
+   the policies in the same transaction.
+4. `coach plan executions` matches the ACTIVE version's workouts with the activities and the
+   athlete's links (execution rules 1.0.0).
+5. `coach plan adapt` reads executions, recovery, check-ins and availability, decides by
+   adaptation rules 1.0.0, records the decision with its evidence and, when it is not
+   MAINTAIN, proposes a new version through the same policies. The athlete activates or
+   rejects it. In P13 the AI coach will explain these decisions; it will not make them.
 
 **Chat message:** consent check -> secret redaction -> red-flag detection -> context
 assembly with untrusted-data wrapping -> LLM with typed tools -> output validation -> policy
@@ -301,8 +324,11 @@ size, calf-intensive size, long-run duration, hard run and swim RPE, region tabl
 exercise mapping, progression RPE overshoot, and the P11 parameters: the 28-day baseline and its
 7 readings, standard-deviation floors, check-in anchors, decision groups and 3-day persistence,
 prescription durations, red-flag phrase lists 1.0.0, monotony computation, and the pattern rule
-thresholds of the insights spec section 5) are initial, versioned values to be reviewed with real
-data | Proposed |
+thresholds of the insights spec section 5, and the P12 parameters: readiness baseline
+sufficiency, feasibility thresholds, generator volume start, step bounds, peak, unloading and
+taper fractions, session sizes, compliance band and grace day, adaptation windows, deviation,
+pain and progression thresholds, pain restriction days) are initial, versioned values to be
+reviewed with real data | Proposed |
 | A-19 | At most one ACTIVE priority-A goal | Proposed |
 | A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
 
@@ -325,8 +351,8 @@ Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md
 | P9 | Laps, pool lengths and power sensors from files with re-normalisation (ADR-029); running, cycling, swimming analytics and tennis load as stream analyses (ADR-030); measured power attribution; per-stroke dimension; qualifying-only work total; comparable groups and trends; CLI `activity reprocess`, `activity correct`, `profile sensor`, `profile ftp`, `analysis trend` | Done |
 | P10 | Exercise catalogue 1.0.0 and athlete aliases; FIT strength sets (SETS stream, normalisation rules 1.2.0) and StrengthSession reconciliation; volume load and weekly hard sets per muscle group (MUSCLE dimension); progression rules 1.0.0; strength prescription rules 1.0.0 (workout contract 1.1.0); interference engine rules 1.0.0 (ADR-031); CLI `strength` | Done |
 | P11 | Daily check-in with fail-safe red flags and phrase detection; daily recovery metrics from Garmin by consent with minimised RAW (ADR-032); recovery assessment and prescription rules 1.0.0 with RECOVERY_BLOCK; training monotony and strain; pattern rules 1.0.0 into insights; report data parts (ADR-033); CLI `checkin`, `safety`, `recovery`, `insights`, `report` | Done |
-| P12 | Policy engine (full), planning, versioning, execution, adaptive loop | Next |
-| P13 | AI coach: tools, prompts, LLM adapter, agent evaluations, UI | |
+| P12 | Planning inputs and Definition of Ready (readiness rules 1.0.0); goal feasibility rules 1.0.0; immutable plan versions with content hash and header concurrency; plan policies (policy set 1.2.0, equipment rules 1.0.0); generator rules 1.0.0; execution rules 1.0.0 and manual links; adaptation rules 1.0.0 and AdaptationDecision; pain rules 1.0.0; pattern rules 1.1.0 and report data 1.1.0 plan sections; strength sets CSV template 1.0.0 (ADR-034); CLI `availability`, `event`, `goal`, `readiness`, `plan` | Done |
+| P13 | AI coach: tools, prompts, LLM adapter, agent evaluations, UI | Next |
 | P14 | Garmin workout publication | Deferred: needs a tier with `trainingPublish` |
 | P15 | Hardening, deletion workflow, observability, end-to-end verification | |
 

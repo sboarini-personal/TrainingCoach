@@ -2,8 +2,8 @@
 
 Spec-driven, data-driven coaching for running, cycling, swimming, strength and tennis.
 
-> Status: P11 complete (activities, metrics, sport analytics, strength, recovery, insights and
-> report data). Planning and the AI coach come next. See
+> Status: P12 complete (activities, metrics, sport analytics, strength, recovery, insights,
+> report data, plans and the adaptive loop). The AI coach comes next. See
 > [docs/architecture.md](docs/architecture.md#8-delivery-phases).
 
 ## What it is
@@ -139,6 +139,39 @@ Recovery (P11):
   - sleep and running efficiency, reported as an association, never a cause.
 - **Reports.** `coach report activity|week|month` prints the data part of the reports. Every
   number has its evidence; what needs plans or the AI coach says so.
+
+Plans (P12):
+
+- **What planning needs.** You declare it once and keep it current:
+  - `coach profile health` (constraints, or `none`; re-confirmed every 30 days),
+    `coach profile resources` and `coach profile experience`;
+  - `coach availability set` (your weekly days, hours and rest day);
+  - `coach event add` and `coach goal add` (at most one active A goal).
+
+  `coach readiness` says whether a plan can be made, and what is missing.
+- **Generate.** `coach plan generate` proposes a plan from your goal, your last weeks and
+  your declarations: phases to the goal date, a weekly volume that grows from what you have
+  been doing, every 4th week lighter, a taper, intensity by RPE, strength every week and your
+  tennis counted as load.
+  - Every plan passes the policies first: availability, hours, equipment, health
+    constraints, recovery block and safety hold.
+  - A refused plan is never stored, and the command shows why.
+- **Activate.** Nothing changes until you activate a version you reviewed:
+  `coach plan show`, then `coach plan activate <plan> <version> --revision <n>`. Versions
+  are never edited: a change is a new version, which you activate or `reject`.
+- **Execution.** `coach plan executions [--week]` shows each planned workout as complete,
+  partial, skipped, replaced or unplanned. `coach plan link` fixes a wrong match.
+- **Adaptation.** `coach plan adapt` looks at the last two weeks and your recovery:
+  - one poor session changes nothing;
+  - pain, a recovery prescription, heavy unplanned load or repeated deviations with a
+    recovery signal propose a lighter or rescheduled version;
+  - consistent completion proposes progress.
+
+  Every decision is kept with its evidence (`coach plan decisions`), and you decide whether
+  to activate it.
+- **Strength sets from a file.** `coach strength import-sets <activity> <file.csv>` records a
+  whole session of sets at once; `export-sets` writes them back in the same template
+  (`exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe`).
 
 These are training-load decisions, not medical advice.
 

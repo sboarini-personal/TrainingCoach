@@ -103,8 +103,8 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P11 are done. Next: P12 (full policy engine, planning, plan versions, execution, the
-adaptive loop). See `docs/architecture.md` section 8.
+P0 to P12 are done. Next: P13 (AI coach: tools, prompts, LLM adapter, agent evaluations). See
+`docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 `AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
@@ -191,4 +191,29 @@ evidence is refused by `ReportItem`, and a section the data cannot fill is
 `Section.not_available` with its reason. Tests: `tests/unit/test_recovery_assessment.py`
 (series and check-in builders), `tests/unit/test_insight_service.py` and
 `tests/unit/test_reports.py` (World plus in-memory recovery services).
+
+Plans and the adaptive loop (P12, ADR-034):
+
+- **Inputs.** Planning inputs go through `coach.application.athlete_inputs`; the Definition
+  of Ready is `Readiness` (NOT_READY refuses a plan with `PlanNotReadyError`, PROVISIONAL
+  allows only provisional content).
+- **Versions.** Plans change only through `PlanService`: `propose` (the athlete's open goal,
+  readiness, every plan policy through `PolicyGate`; a denied proposal is never stored) and
+  `activate(..., expected_revision)` (the revision the athlete reviewed, policies re-checked
+  in the transaction). `PlanVersion` is immutable, with a canonical content hash checked on
+  read; a change is a new version with its parent.
+- **Policies.** Plan policies read a `PlanningContext` (`coach.policy.plans`, policy set
+  1.2.0), assembled from stored state by `PlanningContextSource`. Reasons are
+  `PolicyReason` codes; UNKNOWN never allows.
+- **Rules.** Generator, execution, adaptation, pain and pattern rules are pure and versioned
+  in `coach.planning` (`generator`, `execution`, `adaptation`, `patterns`) and
+  `coach.domain.recovery.pain`. Executions are a read model (`ExecutionService`; only
+  `ExecutionLink`s are stored). Every adaptation run is an `AdaptationDecision` with
+  evidence (`AdaptationService.run`); it proposes, never activates.
+- **Activity reads.** Every activity read needs the ACTIVITIES consent: a reader wired into
+  a service checks it, and the CLI turns `ConsentRequiredError` into the consent hint.
+- **Tests.** `tests/plan_world.py` (`PlanWorld`: open planning, goal, readiness, `activate`)
+  and `tests/plan_samples.py` (weeks and content). The CLI tests use
+  `onboarded(tmp_path, *goal)` in `tests/integration/test_cli_plans.py`. Strength set files
+  use the sets template (`coach.integrations.files.strength_csv`).
 
