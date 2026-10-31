@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TextIO
 
 from coach.application.consent import ConsentRequiredError
@@ -23,6 +24,7 @@ from coach.domain.strength.exercise import Exercise, ExerciseAlias, normalise_al
 from coach.domain.strength.progression import PROGRESSION_RULES_VERSION, Reason
 from coach.domain.strength.session import SetEntry, SetSource, StrengthSetResult
 from coach.domain.strength.vocabulary import MovementPattern
+from coach.integrations.files import strength_csv
 from coach.planning.interference import INTERFERENCE_RULES_VERSION
 
 
@@ -251,6 +253,91 @@ def log(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Text
             )
             found = runtime.strength.record(scope, args.activity_id, entry)
     _show(found, out)
+    return 0
+
+
+def import_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """Record the sets of a file in the strength sets template, all or nothing (files spec
+    8.4): each row as `coach strength log` would take it."""
+    path = Path(args.file)
+    try:
+        if path.stat().st_size > strength_csv.MAX_BYTES:
+            raise CommandError("the file is larger than 64 KiB")
+        rows = strength_csv.parse(path.read_bytes())
+    except OSError:
+        raise CommandError("the file cannot be read") from None
+    except strength_csv.TemplateError as error:
+        raise CommandError(str(error)) from None
+    entries = []
+    lines: dict[tuple[str, int], int] = {}
+    now = runtime.clock()
+    for row in rows:
+        try:
+            exercise_id = _exercise(runtime, scope, row.exercise)
+        except CommandError:
+            raise CommandError(
+                f"line {row.line}: unknown exercise: see coach strength exercises"
+            ) from None
+        earlier = lines.setdefault((exercise_id, row.set_number), row.line)
+        if earlier != row.line:
+            raise CommandError(f"line {row.line}: the same exercise and set as line {earlier}")
+        try:
+            entries.append(
+                SetEntry(
+                    exercise_id=exercise_id,
+                    set_number=row.set_number,
+                    recorded_at=now,
+                    completed_reps=row.reps,
+                    actual_load_kg=row.load_kg,
+                    actual_rpe=row.rpe,
+                    actual_rir=row.rir,
+                    target_reps=row.target_reps,
+                    target_load_kg=row.target_load_kg,
+                    target_rpe=row.target_rpe,
+                )
+            )
+        except DomainValidationError as error:
+            raise CommandError(f"line {row.line}: {error}") from None
+    with _translated():
+        found = runtime.strength.record_all(scope, args.activity_id, entries)
+    print(f"{len(entries)} sets recorded from the file", file=out)
+    _show(found, out)
+    return 0
+
+
+def export_sets(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """The executed sets in the strength sets template (files spec 8.4); sets of an exercise
+    the catalogue does not name cannot be written in it and are left out."""
+    with _translated():
+        found = runtime.strength.sets(scope, args.activity_id)
+    rows = [
+        strength_csv.SetRow(
+            line=0,
+            exercise=item.exercise_id,
+            set_number=item.set_number,
+            reps=item.completed_reps,
+            load_kg=item.actual_load_kg,
+            rpe=item.actual_rpe,
+            rir=item.actual_rir,
+            target_reps=item.target_reps,
+            target_load_kg=item.target_load_kg,
+            target_rpe=item.target_rpe,
+        )
+        for item in found.sets
+        if item.exercise_id is not None
+    ]
+    text = strength_csv.export(rows)
+    left_out = len(found.sets) - len(rows)
+    if args.output is None:
+        out.write(text)
+        return 0
+    try:
+        Path(args.output).write_text(text, encoding="utf-8", newline=chr(10))
+    except OSError:
+        raise CommandError("the file cannot be written") from None
+    print(f"{len(rows)} sets written to the file", file=out)
+    if left_out:
+        print(f"{left_out} sets of exercises the catalogue does not name are left out", file=out)
     return 0
 
 

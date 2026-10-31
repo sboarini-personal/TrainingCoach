@@ -256,3 +256,48 @@ def test_interference_of_heavy_legs_before_intervals(cli: Cli, tmp_path: Path) -
     assert "STRENGTH ->" in lines[1]
     assert lines[1].endswith("RUNNING")
     assert "KNEES" in lines[2]
+
+
+@pytest.mark.req("INT-FIL-001", "INT-FIL-004", "FR-STR-005", "SEC-INJ-004")
+def test_sets_are_imported_and_exported_with_the_sets_template(cli: Cli, tmp_path: Path) -> None:
+    activity = _imported_workout(cli, tmp_path)
+    sheet = tmp_path / "sets.csv"
+    sheet.write_text(
+        "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe\n"
+        "ex.back_squat,1,,,8,,8,60,8\n"  # corrects the watch's first squat set
+        "Sentadilla goblet,1,12,20,6,,,,\n"  # a set of its own, by its Spanish name
+        "ex.plank,1,1,,4,,,,\n",
+        encoding="utf-8",
+    )
+    code, output = cli.run("strength", "import-sets", activity, str(sheet))
+    assert code == 0, output
+    assert output.startswith("3 sets recorded from the file")
+    code, exported = cli.run("strength", "export-sets", activity)
+    assert code == 0, exported
+    lines = exported.splitlines()
+    assert lines[0] == "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe"
+    assert "ex.back_squat,1,8,60,8,,8,60,8" in lines  # the watch's values with the entry's
+    assert "ex.goblet_squat,1,12,20,6,,,," in lines
+    out = tmp_path / "out.csv"
+    code, output = cli.run("strength", "export-sets", activity, "--output", str(out))
+    assert code == 0, output
+    assert "1 sets of exercises the catalogue does not name are left out" in output
+    assert out.read_text(encoding="utf-8") == exported
+    bad = tmp_path / "bad.csv"
+    bad.write_text(
+        "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe\n"
+        "ex.plank,2,1,,4,,,,\n"
+        "no such exercise,1,1,,,,,,\n",
+        encoding="utf-8",
+    )
+    code, output = cli.run("strength", "import-sets", activity, str(bad))
+    assert (code, output) == (2, "error: line 3: unknown exercise: see coach strength exercises\n")
+    assert "ex.plank 2" not in cli.run("strength", "sets", activity)[1]  # all or nothing
+    bad.write_text(
+        "exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe\n"
+        "ex.goblet_squat,2,10,20,,,,,\n"
+        "Sentadilla goblet,2,12,20,,,,,\n",
+        encoding="utf-8",
+    )
+    code, output = cli.run("strength", "import-sets", activity, str(bad))
+    assert (code, output) == (2, "error: line 3: the same exercise and set as line 2\n")

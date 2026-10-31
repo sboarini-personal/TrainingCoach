@@ -10,7 +10,7 @@ only, and the activity's metrics are recomputed (its volume load, strength spec 
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Final
@@ -25,6 +25,7 @@ from coach.application.ownership import OwnerScope
 from coach.application.ports import AuditLog, Batch, Clock, EventSink, OwnedRepository
 from coach.domain.activity.activity import Activity, ActivityStatus
 from coach.domain.activity.fields import STREAM_KEYS, StreamKind
+from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.sport import Sport
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.strength.catalogue import CATALOGUE
@@ -123,6 +124,23 @@ class StrengthService:
         """Add or replace the athlete's entry for one set (same exercise and set number)."""
         self._known(entry.exercise_id)
         return self._change(scope, activity_id, "RECORDED", lambda s: s.record(entry))
+
+    def record_all(
+        self, scope: OwnerScope, activity_id: UUID, entries: Sequence[SetEntry]
+    ) -> SessionSets:
+        """Add every entry in one change, all or nothing (the sets template, files spec
+        8.4); an entry replaces an earlier one of the same exercise and set number."""
+        if not entries:
+            raise DomainValidationError("no sets to record")
+        for entry in entries:
+            self._known(entry.exercise_id)
+
+        def apply(session: StrengthSession) -> StrengthSession:
+            for entry in entries:
+                session = session.record(entry)
+            return session
+
+        return self._change(scope, activity_id, "RECORDED", apply)
 
     def remove(
         self, scope: OwnerScope, activity_id: UUID, exercise_id: str, set_number: int

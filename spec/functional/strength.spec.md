@@ -159,7 +159,9 @@ Reconciliation (P10, precision of this section):
   workout its activity is matched or linked to, `coach plan executions`); it is not stored
   on the session, so a relink or a new plan version never leaves a stale copy. Progression
   keeps reading the targets the athlete recorded with the sets. Commands: `coach strength sets`,
-  `log`, `relabel` and `watch-sets`. Changes are audited (`strength.session_changed`) with
+  `log`, `relabel` and `watch-sets`; P12 adds `import-sets` and `export-sets`, the strength
+  sets template 1.0.0 (files spec 8.4: one file of set entries recorded all or nothing, and
+  the executed sets written back). Changes are audited (`strength.session_changed`) with
   identifiers only.
 
 ## 6. Progression (FR-STR-006)

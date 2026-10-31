@@ -252,9 +252,36 @@ start_time_utc,utc_offset,sport,subtype,elapsed_seconds,moving_seconds,distance_
   removes one leading quote when the rest of the cell starts with `=`, `+`, `-`, `@`, tab or
   carriage return, so an export can be imported again. The cell stays data either way.
 
-Strength sets get their own template with the strength domain. Deferred from P10 to P12
-(execution capture): in P10 the athlete enters sets with `coach strength log` (strength spec
-section 5).
+#### Strength sets template 1.0.0 (precision, P12)
+
+Strength sets have their own template, for one strength activity named on the command line
+(`coach strength import-sets ACTIVITY_ID FILE`, `coach strength export-sets ACTIVITY_ID
+[--output FILE]`; strength spec section 5). The header row must equal, exactly (a UTF-8
+byte-order mark is ignored):
+
+```
+exercise,set,reps,load_kg,rpe,rir,target_reps,target_load_kg,target_rpe
+```
+
+- One row is one set entry, as `coach strength log --set` takes it. Comma separator, UTF-8,
+  no NUL bytes, at most 64 KiB and 200 rows. The file is parsed in-process with the standard
+  library's `csv` module (no sandbox: it is text under fixed limits and only typed cells are
+  read); nothing is evaluated.
+- `exercise` (an exercise ID, a catalogue name or an own alias, resolved exactly, never by
+  similarity) and `set` (whole number) are required; an empty cell means the value is not
+  provided. `reps`, `rir` and `target_reps` are whole numbers; `load_kg`, `rpe`,
+  `target_load_kg` and `target_rpe` are numbers with a dot as decimal separator. Blank rows
+  are skipped.
+- The rows are the athlete's own declarations (ATHLETE entries of the strength session), so
+  RPE, RIR and targets are accepted. The import is all or nothing: one change of the session
+  (audited `strength.session_changed`), refused whole when any row is invalid, names an
+  unknown exercise or repeats the exercise and set of an earlier row. Errors name the line,
+  never its text.
+- The export writes the executed sets (the reconciled `StrengthSetResult`s) of exercises the
+  catalogue names; a set whose exercise is UNKNOWN cannot be written and is left out (the
+  command says how many). Formula-like text is protected as in the activity template, so an
+  export can be imported again; values imported from an export become the athlete's own
+  declarations for those sets.
 
 ### 8.5 Time series
 

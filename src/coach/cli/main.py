@@ -192,6 +192,16 @@ def _parser() -> argparse.ArgumentParser:
     logging.add_argument("--target-load", type=float)
     logging.add_argument("--target-rpe", type=float)
     logging.add_argument("--remove", action="store_true", help="forget your entry for this set")
+    importing = strength.add_parser(
+        "import-sets", help="record sets from a file in the strength sets template"
+    )
+    importing.add_argument("activity_id", type=UUID)
+    importing.add_argument("file", help="a CSV file in the strength sets template")
+    exporting = strength.add_parser(
+        "export-sets", help="the executed sets in the strength sets template"
+    )
+    exporting.add_argument("activity_id", type=UUID)
+    exporting.add_argument("--output", help="a file to write; default: the screen")
     relabelling = strength.add_parser(
         "relabel", help="name an exercise the watch recorded wrongly or did not recognise"
     )
@@ -398,6 +408,10 @@ def main(
                 return strength_commands.sets(runtime, _session(runtime), args, stream)
             case ("strength", "log"):
                 return strength_commands.log(runtime, _session(runtime), args, stream)
+            case ("strength", "import-sets"):
+                return strength_commands.import_sets(runtime, _session(runtime), args, stream)
+            case ("strength", "export-sets"):
+                return strength_commands.export_sets(runtime, _session(runtime), args, stream)
             case ("strength", "relabel"):
                 return strength_commands.relabel(runtime, _session(runtime), args, stream)
             case ("strength", "progress"):
