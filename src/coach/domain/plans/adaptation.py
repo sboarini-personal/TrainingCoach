@@ -51,6 +51,7 @@ class AdaptationReason(StrEnum):
     INTERFERENCE_ASSESSED = "INTERFERENCE_ASSESSED"
     CONSISTENT_COMPLETION = "CONSISTENT_COMPLETION"
     NOTHING_TO_CHANGE = "NOTHING_TO_CHANGE"
+    PROPOSAL_REFUSED = "PROPOSAL_REFUSED"  # the adapted version could not be proposed
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

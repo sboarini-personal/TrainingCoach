@@ -478,6 +478,9 @@ def build_runtime(
         checkins=lambda scope, until, days: recovery.checkins(scope, until=until, days=days),
         availability=inputs.availability,
         readiness=lambda scope: inputs.readiness(scope).readiness,
+        goal_date=lambda scope, goal_id: next(
+            (item.target_date for item in inputs.goals(scope) if item.goal_id == goal_id), None
+        ),
         conditions=conditions,
         lifecycle=lifecycle,
         today=recovery.today,

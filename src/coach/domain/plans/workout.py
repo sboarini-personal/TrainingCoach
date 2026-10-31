@@ -254,6 +254,7 @@ class EvaluationSession:
     requires_opt_in: bool
     safety_notes: tuple[str, ...]
     duration_seconds: int | None = None  # contract 1.2.0
+    target_rpe: RpeRange | None = None  # contract 1.2.0: the effort it asks for
 
     def __post_init__(self) -> None:
         if not _PROTOCOL.match(self.protocol_id):
@@ -357,7 +358,8 @@ class PlannedWorkout:
 
     @property
     def max_rpe(self) -> float | None:
-        """The highest RPE targeted; ``None`` when no RPE is stated (rest, evaluation)."""
+        """The highest RPE targeted; ``None`` when no RPE is stated (rest, an evaluation
+        without one)."""
         if self.endurance is not None:
             return self.endurance.max_rpe
         if self.strength is not None:
@@ -368,6 +370,8 @@ class PlannedWorkout:
             return self.tennis.expected_rpe
         if self.recovery is not None:
             return 3.0  # recovery and mobility are easy by definition
+        if self.evaluation is not None and self.evaluation.target_rpe is not None:
+            return self.evaluation.target_rpe.high
         return None
 
     @property
@@ -375,7 +379,10 @@ class PlannedWorkout:
         """Intensive training: an RPE target of 7 or more, a maximal test, or an unknown
         effort that may be hard (planning spec 4; policy POL-SAFETY-HOLD)."""
         if self.evaluation is not None:
-            return not self.evaluation.submaximal
+            target = self.evaluation.target_rpe
+            return not self.evaluation.submaximal or (
+                target is not None and target.high >= INTENSIVE_RPE
+            )
         if self.type in (WorkoutType.REST, WorkoutType.RECOVERY):
             return False
         rpe = self.max_rpe

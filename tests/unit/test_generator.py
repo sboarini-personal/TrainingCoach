@@ -34,6 +34,7 @@ from coach.domain.athlete.resources import (
 )
 from coach.domain.availability.availability import (
     Availability,
+    AvailabilityException,
     DayDefaults,
     TimeWindow,
     WeeklyAvailability,
@@ -412,3 +413,85 @@ def test_goals_the_rules_cannot_plan_are_refused() -> None:
     far = allowed(inputs(target_date=START + timedelta(weeks=40)))
     assert len(far.weeks) == 26
     assert any("more than 26 weeks away" in note for note in far.assumptions)
+
+
+# --------------------------------------------------------------------------- review of P12.5
+
+
+@pytest.mark.req("FR-ONB-005", "FR-PRF-006", "FR-POL-001")
+@pytest.mark.acceptance("AT-ONB-004")
+def test_a_baseline_block_states_its_effort_so_a_max_rpe_allows_it() -> None:
+    capped = constraint(
+        Restriction(RestrictionKind.MAX_RPE, max_rpe=9), affected_sports=frozenset({Sport.RUNNING})
+    )
+    content = allowed(inputs(baseline=True, health=capped))
+    evaluations = [item for item in content.workouts if item.evaluation is not None]
+    assert evaluations
+    assert all(item.max_rpe == 5 and not item.intensive for item in evaluations)
+    low = allowed(
+        inputs(baseline=True, health=constraint(Restriction(RestrictionKind.MAX_RPE, max_rpe=4)))
+    )
+    assert all(item.max_rpe == 4 for item in low.workouts if item.evaluation is not None)
+
+
+@pytest.mark.req("FR-TEN-001", "FR-PRF-005")
+def test_two_tennis_slots_on_one_day_are_two_sessions() -> None:
+    slots = (
+        TennisSlot(Weekday.SATURDAY, 9 * 60, 60, TennisSessionType.PRACTICE),
+        TennisSlot(Weekday.SATURDAY, 17 * 60, 90, TennisSessionType.MATCH),
+    )
+    content = allowed(inputs(resources=replace(RESOURCES, tennis_schedule=slots)))
+    first = content.weeks[0]
+    assert len([item for item in first.workouts if item.tennis is not None]) == 2
+
+
+@pytest.mark.req("FR-ONB-005", "FR-PRF-005")
+def test_the_assessment_keeps_its_minutes_within_the_weekly_hours() -> None:
+    few = replace(PATTERN, days_per_week=3, maximum_hours_per_week=2)
+    allowed(
+        inputs(
+            baseline=True,
+            availability=Availability.new(ATHLETE, recurring=few, defaults=DayDefaults(120)),
+        )
+    )
+
+
+@pytest.mark.req("FR-PRF-005", "FR-TEN-001")
+def test_an_exception_that_excludes_tennis_leaves_the_athletes_tennis_out() -> None:
+    slot = TennisSlot(Weekday.WEDNESDAY, 19 * 60, 90, TennisSessionType.PRACTICE)
+    running_only = AvailabilityException(
+        day=START + timedelta(days=2),
+        available=True,
+        maximum_duration_minutes=90,
+        allowed_sports=frozenset({Sport.RUNNING}),
+    )
+    availability = Availability.new(
+        ATHLETE, recurring=PATTERN, defaults=DayDefaults(120)
+    ).with_exception(running_only)
+    content = allowed(
+        inputs(availability=availability, resources=replace(RESOURCES, tennis_schedule=(slot,)))
+    )
+    assert not [item for item in content.on(START + timedelta(days=2)) if item.tennis is not None]
+    assert [item for item in content.on(START + timedelta(days=9)) if item.tennis is not None]
+
+
+@pytest.mark.req("FR-STR-001", "FR-PLN-008")
+@pytest.mark.acceptance("AT-STR-002")
+def test_few_hours_keep_the_goal_sport_first_and_say_when_strength_goes() -> None:
+    one_hour = replace(PATTERN, maximum_hours_per_week=1)
+    content = allowed(
+        inputs(
+            availability=Availability.new(ATHLETE, recurring=one_hour, defaults=DayDefaults(120))
+        )
+    )
+    assert all(any(item.sport is Sport.RUNNING for item in week.workouts) for week in content.weeks)
+    assert any("weekly hours leave no room" in note for note in content.assumptions)
+
+
+@pytest.mark.req("FR-PLN-001")
+def test_the_goal_week_states_what_is_planned_before_the_goal_and_a_close_goal_is_refused() -> None:
+    monday_goal = date(2027, 3, 8)  # a Monday: the goal's week has nothing before the goal
+    content = allowed(inputs(target_date=monday_goal))
+    assert "The goal's week: 0 min planned before the goal." in content.weeks[-1].primary_goal
+    with pytest.raises(DomainValidationError):
+        generate(inputs(target_date=START + timedelta(days=1)))

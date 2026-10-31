@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:workout:1",
   "title": "PlannedWorkout",
-  "description": "A workout inside a training plan version (FR-PLN-004, FR-PLN-005, FR-PLN-008, FR-STR-004, FR-TEN-001). Exactly one detail block matching 'type' is present. Version 1.1.0 (P10): expected interference names body regions (strength spec 2) and a strength exercise may state a plain-language effortCue instead of RPE or RIR (strength spec 4). Version 1.2.0 (P12): an evaluation session may state its planned duration (durationSeconds), so availability and duration policies can check it.",
+  "description": "A workout inside a training plan version (FR-PLN-004, FR-PLN-005, FR-PLN-008, FR-STR-004, FR-TEN-001). Exactly one detail block matching 'type' is present. Version 1.1.0 (P10): expected interference names body regions (strength spec 2) and a strength exercise may state a plain-language effortCue instead of RPE or RIR (strength spec 4). Version 1.2.0 (P12): an evaluation session may state its planned duration (durationSeconds) and the effort it asks for (targetRpe), so the availability, duration and effort policies can check it.",
   "type": "object",
   "required": ["schemaVersion", "id", "type", "trainingDay", "order", "isKeyWorkout", "objective", "explanation"],
   "additionalProperties": false,
@@ -401,6 +401,16 @@
         "description": { "type": "string", "maxLength": 1000 },
         "submaximal": { "type": "boolean" },
         "requiresOptIn": { "type": "boolean" },
+        "targetRpe": {
+          "description": "Added in 1.2.0: the effort the protocol asks for.",
+          "type": "object",
+          "required": ["min", "max"],
+          "additionalProperties": false,
+          "properties": {
+            "min": { "type": "number", "minimum": 0, "maximum": 10 },
+            "max": { "type": "number", "minimum": 0, "maximum": 10 }
+          }
+        },
         "durationSeconds": {
           "description": "Added in 1.2.0: the planned duration.",
           "type": "integer",

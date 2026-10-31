@@ -159,7 +159,7 @@ def test_plan_generate_follows_readiness_and_the_baseline_block(tmp_path: Path) 
     assert first == f"plan {plan_id} version 1: PROPOSED"
     assert "PROVISIONAL: built on assumptions" in shown
     assert "  assumption: Baseline collection: few recent running activities" in shown
-    assert shown.count("EVALUATION RUNNING 30 min [key]: 10 minutes easy, then 20 minutes") == 2
+    assert shown.count("EVALUATION RUNNING 30 min up to RPE 5 [key]: 10 minutes easy, then 20") == 2
     assert "STRENGTH STRENGTH 45 min" in shown
     assert f"review it, then: coach plan activate {plan_id} 1 --revision 1" in shown
     ok(cli, "plan", "activate", plan_id, "1", "--revision", "1")

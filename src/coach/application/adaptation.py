@@ -26,7 +26,8 @@ from coach.application.events import EventName
 from coach.application.executions import ExecutionService
 from coach.application.ownership import OwnerScope
 from coach.application.plan_generation import PlanGenerationService
-from coach.application.plans import PlanService
+from coach.application.plans import PlanNotReadyError, PlanService
+from coach.application.policy_gate import PolicyDeniedError
 from coach.application.ports import AuditLog, Clock, EventSink, IdFactory, OwnedRepository
 from coach.domain.availability.availability import Availability
 from coach.domain.coaching.state import Condition, Trigger
@@ -36,6 +37,7 @@ from coach.domain.onboarding.readiness import Readiness, ReadinessStatus
 from coach.domain.plans.adaptation import (
     ADAPTATION_RULES_VERSION,
     AdaptationDecision,
+    AdaptationReason,
     AdaptationTrigger,
     Decision,
 )
@@ -67,6 +69,7 @@ class AdaptationService:
         checkins: Callable[[OwnerScope, date, int], Sequence[DailyCheckIn]],
         availability: Callable[[OwnerScope], Availability | None],
         readiness: Callable[[OwnerScope], Readiness],
+        goal_date: Callable[[OwnerScope, UUID], date | None],
         conditions: CoachingConditions,
         lifecycle: CoachingLifecycle,
         today: Callable[[OwnerScope], date],
@@ -84,6 +87,7 @@ class AdaptationService:
         self._checkins = checkins
         self._availability = availability
         self._readiness = readiness
+        self._goal_date = goal_date
         self._conditions = conditions
         self._lifecycle = lifecycle
         self._today = today
@@ -116,15 +120,31 @@ class AdaptationService:
                 checkins=tuple(self._checkins(scope, today, PAIN_FREE_DAYS)),
                 availability=self._availability(scope),
                 safety_hold=Condition.SAFETY_HOLD in self._conditions.current(scope).conditions,
+                goal_date=self._goal_date(scope, active.goal_id),
             )
         )
         self._lifecycle.advance(scope, Trigger.ANALYSIS_STARTED)
         decision_id = self._ids()
         proposed = None
-        if outcome.decision is Decision.PROGRESS:
-            proposed = self._generation.generate(scope, active.goal_id, decision_id=decision_id)
-        elif outcome.decision is not Decision.MAINTAIN and outcome.content is not None:
-            proposed = self._propose(scope, active, outcome.content, decision_id)
+        try:
+            if outcome.decision is Decision.PROGRESS:
+                proposed = self._generation.generate(scope, active.goal_id, decision_id=decision_id)
+            elif outcome.decision is not Decision.MAINTAIN and outcome.content is not None:
+                proposed = self._propose(scope, active, outcome.content, decision_id)
+        except (PolicyDeniedError, PlanNotReadyError, DomainValidationError) as refused:
+            codes = (
+                [reason.code for reason in refused.decision.reasons]
+                if isinstance(refused, PolicyDeniedError)
+                else ["NOT_READY" if isinstance(refused, PlanNotReadyError) else "INVALID"]
+            )
+            outcome = replace(
+                outcome,
+                reasons=(*outcome.reasons, AdaptationReason.PROPOSAL_REFUSED),
+                interpretation=outcome.interpretation
+                + " The adapted version could not be proposed ("
+                + ", ".join(dict.fromkeys(codes))
+                + "): the plan stays as it is for now.",
+            )
         self._lifecycle.advance(
             scope, Trigger.DECISION_MAINTAIN if proposed is None else Trigger.DECISION_ADAPT
         )

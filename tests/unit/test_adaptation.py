@@ -36,7 +36,7 @@ from coach.domain.recovery.assessment import (
     RecoveryStatus,
 )
 from coach.domain.recovery.checkin import CheckInPain, DailyCheckIn
-from coach.planning.adaptation import AdaptationInputs, decide
+from coach.planning.adaptation import AdaptationInputs, Outcome, decide
 from coach.policy.plans import plan_reasons
 from plan_samples import MONDAY, content, easy_run, intervals, rest, strength, week
 from plan_world import PATTERN, open_planning
@@ -339,3 +339,135 @@ def test_consistent_completion_with_normal_recovery_progresses() -> None:
     assert found.interpretation.startswith("4 planned workouts of the last 14 days")
     unknown = decide(inputs(plan, today=today, executions=executions, done={}, assessment=None))
     assert unknown.decision is Decision.MAINTAIN  # unknown recovery never progresses
+
+
+# --------------------------------------------------------------------------- review of P12.7
+
+SUNDAY = MONDAY + timedelta(days=6)
+
+
+def race_week(*, done_thursday: bool) -> tuple[PlanContent, AdaptationInputs]:
+    plan = content(
+        week(
+            MONDAY,
+            {
+                3: [intervals(THURSDAY)],
+                4: [easy_run(FRIDAY)],
+                5: [rest(SATURDAY)],
+            },
+        )
+    )
+    lift = done(WEDNESDAY, Sport.STRENGTH, 45)  # unplanned, its sets unknown: possibly heavy
+    executions = [executed(plan, WEDNESDAY, ExecutionStatus.UNPLANNED, lift)]
+    activities = {lift.activity_id: lift}
+    if done_thursday:
+        run = done(THURSDAY, Sport.RUNNING, 60, rpe=8)
+        executions.append(executed(plan, THURSDAY, ExecutionStatus.COMPLETE, run, ratio=1.0))
+        activities[run.activity_id] = run
+    return plan, inputs(
+        plan,
+        today=THURSDAY,
+        executions=tuple(executions),
+        done=activities,
+        goal_date=SUNDAY,
+    )
+
+
+@pytest.mark.req("FR-ADP-001", "FR-STR-007")
+def test_a_reschedule_never_lands_on_a_rest_day_or_the_goal_and_never_moves_done_work() -> None:
+    plan, given = race_week(done_thursday=False)
+    found = decide(given)
+    assert found.decision is Decision.REPLACE  # Friday busy, Saturday rest, Sunday the goal
+    assert found.content is not None
+    eased_run = found.content.workout(plan.on(THURSDAY)[0].workout_id)
+    assert eased_run is not None
+    assert (eased_run.training_day, eased_run.intensive) == (THURSDAY, False)
+    _plan, already = race_week(done_thursday=True)
+    assert decide(already).decision is Decision.MAINTAIN  # the intervals are done: history
+
+
+@pytest.mark.req("FR-ADP-002", "FR-ADP-004")
+def test_an_assessed_load_never_hides_a_needed_reduction() -> None:
+    plan = content()
+    short = done(TUESDAY, Sport.STRENGTH, 20)
+    slow = done(WEDNESDAY, Sport.RUNNING, 10)
+    swim = done(WEDNESDAY, Sport.SWIMMING, 30, rpe=3, number=1)  # unplanned and easy
+    found = decide(
+        inputs(
+            plan,
+            today=THURSDAY,
+            executions=(
+                executed(plan, TUESDAY, ExecutionStatus.PARTIAL, short, ratio=0.44),
+                executed(plan, WEDNESDAY, ExecutionStatus.PARTIAL, slow, ratio=0.25),
+                executed(plan, WEDNESDAY, ExecutionStatus.UNPLANNED, swim),
+            ),
+            done={item.activity_id: item for item in (short, slow, swim)},
+            assessment=assessment(RecoveryStatus.REDUCE, THURSDAY),
+        )
+    )
+    assert found.decision is Decision.REDUCE
+    assert found.reasons == (
+        AdaptationReason.INTERFERENCE_ASSESSED,
+        AdaptationReason.DEVIATIONS_WITH_RECOVERY_SIGNAL,
+    )
+    assert found.interpretation.startswith("Unplanned load (swimming on Wed 2026-10-28")
+
+
+@pytest.mark.req("FR-ADP-002", "FR-PLN-006")
+def test_progress_needs_known_effort_and_room_before_the_goal() -> None:
+    plan = content(week(MONDAY), week(MONDAY + timedelta(weeks=1), index=2))
+    today = MONDAY + timedelta(weeks=1)
+    days = [TUESDAY, WEDNESDAY, THURSDAY, SATURDAY]
+    sports = [Sport.STRENGTH, Sport.RUNNING, Sport.RUNNING, Sport.RUNNING]
+
+    def run(rpe: float | None, goal: date | None) -> Outcome:
+        activities = [
+            done(day, sport, 45, rpe=rpe) for day, sport in zip(days, sports, strict=True)
+        ]
+        return decide(
+            inputs(
+                plan,
+                today=today,
+                executions=tuple(
+                    executed(plan, day, ExecutionStatus.COMPLETE, item, ratio=1.0)
+                    for day, item in zip(days, activities, strict=True)
+                ),
+                done={item.activity_id: item for item in activities},
+                assessment=assessment(RecoveryStatus.NORMAL, today),
+                goal_date=goal,
+            )
+        )
+
+    assert run(4, date(2027, 3, 14)).decision is Decision.PROGRESS
+    unknown = run(None, date(2027, 3, 14))
+    assert unknown.reasons == (AdaptationReason.NO_SIGNAL,)  # unknown effort never progresses
+    close = run(4, today + timedelta(weeks=3))
+    assert (close.decision, close.reasons) == (
+        Decision.MAINTAIN,
+        (AdaptationReason.CONSISTENT_COMPLETION,),
+    )
+    assert "within 6 weeks of the goal" in close.interpretation
+
+
+@pytest.mark.req("FR-ADP-004", "NFR-EXP-001")
+@pytest.mark.acceptance("AT-EXP-001")
+def test_maintain_explanations_say_what_recovery_shows() -> None:
+    plan = content(week(MONDAY, {1: [easy_run(TUESDAY)], 2: [easy_run(WEDNESDAY)]}))
+    first = done(TUESDAY, Sport.RUNNING, 10)
+    second = done(WEDNESDAY, Sport.RUNNING, 10)
+    common: dict[str, Any] = {
+        "today": THURSDAY,
+        "executions": (
+            executed(plan, TUESDAY, ExecutionStatus.PARTIAL, first, ratio=0.25),
+            executed(plan, WEDNESDAY, ExecutionStatus.PARTIAL, second, ratio=0.25),
+        ),
+        "done": {first.activity_id: first, second.activity_id: second},
+    }
+    unknown = decide(inputs(plan, assessment=None, **common))
+    assert "no recovery assessment says whether recovery deviates" in unknown.interpretation
+    tired = decide(inputs(plan, assessment=assessment(RecoveryStatus.REDUCE, THURSDAY), **common))
+    assert tired.reasons == (
+        AdaptationReason.DEVIATIONS_WITH_RECOVERY_SIGNAL,
+        AdaptationReason.NOTHING_TO_CHANGE,
+    )
+    assert "recovery is below your baseline" in tired.interpretation

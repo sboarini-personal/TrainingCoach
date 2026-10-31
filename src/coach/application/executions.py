@@ -74,7 +74,10 @@ class ExecutionService:
     def recent(
         self, scope: OwnerScope, period: DateRange
     ) -> tuple[list[WorkoutExecution], dict[UUID, DoneActivity]]:
-        """The executions of the period and the activities they read."""
+        """The executions of the period and the activities they read. Matching runs over
+        whole training weeks, so an activity linked to a workout of its week counts there
+        even when the period cuts the week (links stay within a week)."""
+        weeks = DateRange(_monday(period.start), _monday(period.end) + timedelta(days=6))
         active = self._plans.active(scope)
         planned = (
             []
@@ -82,13 +85,21 @@ class ExecutionService:
             else [
                 item
                 for item in active.content.workouts
-                if period.start <= item.training_day <= period.end
+                if weeks.start <= item.training_day <= weeks.end
             ]
         )
-        views = [done(view) for view in self._activities(scope, period)]
+        views = [done(view) for view in self._activities(scope, weeks)]
         links = {item.activity_id: item for item in self._links.list_all(scope)}
-        found = executions(planned, views, links, today=self._today(scope))
-        return found, {item.activity_id: item for item in views}
+        found = [
+            item
+            for item in executions(planned, views, links, today=self._today(scope))
+            if period.start <= item.training_day <= period.end
+        ]
+        return found, {
+            item.activity_id: item
+            for item in views
+            if any(item.activity_id in entry.completed_activity_ids for entry in found)
+        }
 
     def planned_sessions(
         self, scope: OwnerScope, period: DateRange

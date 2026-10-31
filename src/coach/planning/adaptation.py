@@ -31,7 +31,7 @@ change, so links and executions follow them.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Final
@@ -43,7 +43,7 @@ from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.plans.adaptation import AdaptationReason, Decision
 from coach.domain.plans.execution import DoneActivity, ExecutionStatus, WorkoutExecution
-from coach.domain.plans.plan import PlanContent
+from coach.domain.plans.plan import Phase, PlanContent
 from coach.domain.plans.workout import (
     SAFETY_STOP,
     EnduranceWorkout,
@@ -61,7 +61,7 @@ from coach.domain.recovery.assessment import (
     RecoveryStatus,
 )
 from coach.domain.recovery.checkin import DailyCheckIn
-from coach.domain.recovery.pain import PAIN_RESTRICTION_DAYS, PAIN_RESTRICTION_MIN
+from coach.domain.recovery.pain import PAIN_RESTRICTION_DAYS, PAIN_RESTRICTION_MIN, recent_pain
 from coach.domain.strength.catalogue import CATALOGUE
 from coach.domain.strength.exercise import ExerciseCatalogue
 from coach.domain.strength.prescription import EffortCue, PrescribedExercise
@@ -71,6 +71,7 @@ from coach.metrics.strength import HARD_SET_MAX_RIR, HARD_SET_MIN_RPE
 from coach.metrics.tennis import LoadLevel, load_level
 from coach.planning.generator import session_load
 from coach.planning.interference import (
+    LOWER_REGIONS,
     SessionLoad,
     assess,
     run_demands,
@@ -90,6 +91,8 @@ DEVIATED_SESSIONS: Final = 2
 PROGRESS_SESSIONS: Final = 4
 INTERFERENCE_DAYS: Final = 2
 LIGHT_RPE: Final = 5.0
+PROGRESS_MIN_WEEKS: Final = 6
+PROGRESS_PHASES: Final = frozenset({Phase.ADAPTATION, Phase.BASE, Phase.BUILD})
 _IDS: Final = UUID("0193b2a0-7a51-7c3e-9d10-5e6f7a8b9c0e")
 _SEVERE: Final = frozenset({InterferenceLevel.HIGH, InterferenceLevel.VERY_HIGH})
 
@@ -107,6 +110,7 @@ class AdaptationInputs:
     checkins: tuple[DailyCheckIn, ...] = ()  # the last 7 days
     availability: Availability | None = None
     safety_hold: bool = False
+    goal_date: date | None = None  # nothing moves onto it or the day before it
     catalogue: ExerciseCatalogue = CATALOGUE
 
 
@@ -126,11 +130,20 @@ class Outcome:
 
 
 def _upcoming(inputs: AdaptationInputs, days: int) -> list[PlannedWorkout]:
+    """The planned workouts of the next days not done yet (a workout done today is
+    history)."""
     end = inputs.today + timedelta(days=days)
+    done = {
+        item.planned_workout_id
+        for item in inputs.executions
+        if item.planned_workout_id is not None and item.completed_activity_ids
+    }
     return [
         item
         for item in inputs.content.workouts
-        if inputs.today <= item.training_day < end and item.type is not WorkoutType.REST
+        if inputs.today <= item.training_day < end
+        and item.type is not WorkoutType.REST
+        and item.workout_id not in done
     ]
 
 
@@ -303,6 +316,16 @@ def _ref(kind: EvidenceKind, ref_id: UUID, note: str | None = None) -> EvidenceR
 # --------------------------------------------------------------------------- rules
 
 
+@dataclass(frozen=True, slots=True)
+class _Note:
+    """What a rule found without changing anything: it joins the decision's explanation."""
+
+    reason: AdaptationReason
+    evidence: tuple[EvidenceRef, ...]
+    text: str
+    uncertainty: frozenset[UncertaintyReason] = frozenset()
+
+
 def _blocked(inputs: AdaptationInputs) -> Outcome | None:
     blocking = [item for item in inputs.prescriptions if item.blocks_intensity]
     if not blocking:
@@ -345,15 +368,8 @@ def _blocked(inputs: AdaptationInputs) -> Outcome | None:
     )
 
 
-def _pain(inputs: AdaptationInputs) -> Outcome | None:
-    since = inputs.today - timedelta(days=PAIN_DAYS - 1)
-    reports = [
-        item
-        for item in inputs.checkins
-        if item.pain is not None
-        and item.pain.intensity >= PAIN_THRESHOLD
-        and since <= item.training_day <= inputs.today
-    ]
+def _pain(inputs: AdaptationInputs) -> Outcome | _Note | None:
+    reports = recent_pain(inputs.checkins, inputs.today)
     if not reports:
         return None
     named = {region_named(item.pain.location) for item in reports if item.pain is not None}
@@ -381,20 +397,20 @@ def _pain(inputs: AdaptationInputs) -> Outcome | None:
         f"You reported pain of {intensity} of 10 on {worst.training_day}{where}. If the pain "
         "lasts more than 7 days or gets worse, consider a professional evaluation."
     )
+    uncertainty = frozenset({UncertaintyReason.MISSING_DATA}) if regions is None else frozenset()
     if not changes:
-        return Outcome(
-            Decision.MAINTAIN,
-            (AdaptationReason.PAIN_REPORTED, AdaptationReason.NOTHING_TO_CHANGE),
+        return _Note(
+            AdaptationReason.PAIN_REPORTED,
             evidence,
             told + " The next days have no intensity to take out.",
-            frozenset({UncertaintyReason.MISSING_DATA}) if regions is None else frozenset(),
+            uncertainty,
         )
     return Outcome(
         Decision.REDUCE,
         (AdaptationReason.PAIN_REPORTED,),
         evidence,
         told + f" {len(changes)} planned workouts of the next {PAIN_DAYS} days are eased.",
-        frozenset({UncertaintyReason.MISSING_DATA}) if regions is None else frozenset(),
+        uncertainty,
         Confidence.MEDIUM,
         tuple(changes),
         adapted(inputs.content, changes),
@@ -402,16 +418,18 @@ def _pain(inputs: AdaptationInputs) -> Outcome | None:
 
 
 def _free_day(inputs: AdaptationInputs, workout: PlannedWorkout, after: date) -> date | None:
-    """A later day of the workout's week, free and available for it, at least 2 days after
-    the load it interferes with."""
+    """A later day of the workout's week with nothing planned (a rest day is not free), open
+    for it in the availability, at least 2 days after the load it interferes with, and
+    before the day preceding the goal."""
     monday = workout.training_day - timedelta(days=workout.training_day.isoweekday() - 1)
-    busy = {
-        item.training_day for item in inputs.content.workouts if item.type is not WorkoutType.REST
-    }
+    busy = {item.training_day for item in inputs.content.workouts}
     minutes = (workout.planned_seconds or 0) / 60
-    day = max(workout.training_day, after + timedelta(days=INTERFERENCE_DAYS))
-    while day <= monday + timedelta(days=6):
-        if day > workout.training_day and day not in busy and inputs.availability is not None:
+    last = monday + timedelta(days=6)
+    if inputs.goal_date is not None:
+        last = min(last, inputs.goal_date - timedelta(days=2))
+    day = max(workout.training_day + timedelta(days=1), after + timedelta(days=INTERFERENCE_DAYS))
+    while day <= last:
+        if day not in busy and inputs.availability is not None:
             found = inputs.availability.resolve(day)
             sport_ok = found.allowed_sports is None or workout.sport in found.allowed_sports
             if (
@@ -425,7 +443,7 @@ def _free_day(inputs: AdaptationInputs, workout: PlannedWorkout, after: date) ->
     return None
 
 
-def _interference(inputs: AdaptationInputs) -> Outcome | None:
+def _interference(inputs: AdaptationInputs) -> Outcome | _Note | None:
     since = inputs.today - timedelta(days=INTERFERENCE_DAYS)
     unplanned = [
         reference
@@ -463,32 +481,35 @@ def _interference(inputs: AdaptationInputs) -> Outcome | None:
             key=list(InterferenceLevel).index,
             default=InterferenceLevel.NONE,
         )
-        return Outcome(
-            Decision.MAINTAIN,
-            (AdaptationReason.INTERFERENCE_ASSESSED,),
+        return _Note(
+            AdaptationReason.INTERFERENCE_ASSESSED,
             evidence,
             f"Unplanned load ({loads}) was assessed against the next {INTERFERENCE_DAYS + 1} "
-            f"days of the plan: interference {level.value} at most, so the plan stays.",
+            f"days of the plan: interference {level.value} at most.",
             uncertainty,
         )
     changes: dict[UUID, PlannedWorkout | None] = {}
     moved = False
     for assessment in severe:
         last = max(
-            (load.start.date() for load in completed if load.session_id in assessment.sessions),
+            (
+                inputs.done[load.session_id].training_day
+                for load in completed
+                if load.session_id in assessment.sessions
+            ),
             default=inputs.today,
         )
         for session in assessment.sessions:
             workout = upcoming.get(session)
-            if workout is None or session in changes:
-                continue
+            if workout is None or session in changes or workout.tennis is not None:
+                continue  # the athlete's own tennis stays theirs
             if workout.endurance is not None and workout.intensive:
                 day = _free_day(inputs, workout, last)
                 if day is not None:
                     changes[session] = replace(workout, training_day=day)
                     moved = True
                     continue
-            changes[session] = eased(workout, catalogue=inputs.catalogue)
+            changes[session] = eased(workout, regions=LOWER_REGIONS, catalogue=inputs.catalogue)
     changes = {key: value for key, value in changes.items() if value != upcoming[key]}
     if not changes:
         return None
@@ -586,7 +607,14 @@ def _deviations(inputs: AdaptationInputs) -> Outcome | None:
     )
 
 
-def _progress(inputs: AdaptationInputs) -> Outcome | None:
+def _phase_today(inputs: AdaptationInputs) -> Phase | None:
+    return next(
+        (week.phase for week in inputs.content.weeks if week.start <= inputs.today <= week.end),
+        None,
+    )
+
+
+def _progress(inputs: AdaptationInputs) -> Outcome | _Note | None:
     since = inputs.today - timedelta(days=LOOKBACK_DAYS - 1)
     recent = [
         item
@@ -609,6 +637,16 @@ def _progress(inputs: AdaptationInputs) -> Outcome | None:
         for item in inputs.checkins
     ):
         return None
+    for item in recent:  # measured and at or below the target effort: never assumed
+        planned = inputs.content.workout(item.planned_workout_id)  # type: ignore[arg-type]
+        target = None if planned is None else planned.max_rpe
+        if (
+            item.compliance.duration_ratio is None
+            or item.session_rpe is None
+            or target is None
+            or item.session_rpe > target
+        ):
+            return None
     evidence = (
         _ref(EvidenceKind.RECOVERY_ASSESSMENT, inputs.assessment.assessment_id, "NORMAL"),
         *(
@@ -617,13 +655,27 @@ def _progress(inputs: AdaptationInputs) -> Outcome | None:
             for reference in item.completed_activity_ids
         ),
     )
+    done = (
+        f"{len(recent)} planned workouts of the last {LOOKBACK_DAYS} days were completed "
+        "within 80% to 120% of the planned duration at or below their target RPE, and recovery "
+        f"is normal ({inputs.assessment.day})"
+    )
+    phase = _phase_today(inputs)
+    far = inputs.goal_date is None or inputs.goal_date >= inputs.today + timedelta(
+        weeks=PROGRESS_MIN_WEEKS
+    )
+    if phase not in PROGRESS_PHASES or not far:
+        return _Note(
+            AdaptationReason.CONSISTENT_COMPLETION,
+            evidence,
+            done + ": the plan's own progression continues (no regeneration in the specific "
+            f"and taper phases or within {PROGRESS_MIN_WEEKS} weeks of the goal).",
+        )
     return Outcome(
         Decision.PROGRESS,
         (AdaptationReason.CONSISTENT_COMPLETION,),
         evidence,
-        f"{len(recent)} planned workouts of the last {LOOKBACK_DAYS} days were completed "
-        "within 80% to 120% of the plan at or below their target effort, and recovery is "
-        f"normal ({inputs.assessment.day}): the plan progresses from your updated history.",
+        done + ": the plan progresses from your updated history.",
         frozenset(inputs.assessment.uncertainty_reasons),
         inputs.assessment.confidence,
     )
@@ -645,21 +697,74 @@ def _maintain(inputs: AdaptationInputs) -> Outcome:
             "no other signal: the plan stays; one session never rebuilds the plan.",
         )
     if deviated:
+        notes = "; ".join(_deviation_note(item, inputs) for item in deviated)
+        if inputs.assessment is None:
+            return Outcome(
+                Decision.MAINTAIN,
+                (AdaptationReason.DEVIATIONS_WITHOUT_RECOVERY_SIGNAL,),
+                evidence,
+                f"{len(deviated)} sessions fell short of the plan ({notes}) and no recovery "
+                "assessment says whether recovery deviates: the plan stays and the next "
+                "sessions are watched.",
+                frozenset({UncertaintyReason.MISSING_DATA}),
+            )
+        if _recovering(inputs):
+            return Outcome(
+                Decision.MAINTAIN,
+                (
+                    AdaptationReason.DEVIATIONS_WITH_RECOVERY_SIGNAL,
+                    AdaptationReason.NOTHING_TO_CHANGE,
+                ),
+                (
+                    _ref(
+                        EvidenceKind.RECOVERY_ASSESSMENT,
+                        inputs.assessment.assessment_id,
+                        inputs.assessment.status.value,
+                    ),
+                    *evidence,
+                ),
+                f"{len(deviated)} sessions fell short of the plan ({notes}) and recovery is below "
+                f"your baseline ({inputs.assessment.status.value} on {inputs.assessment.day}), "
+                f"but the next {WINDOW_DAYS} days have no intensity to take out: the plan stays.",
+                frozenset(inputs.assessment.uncertainty_reasons),
+                inputs.assessment.confidence,
+            )
         return Outcome(
             Decision.MAINTAIN,
             (AdaptationReason.DEVIATIONS_WITHOUT_RECOVERY_SIGNAL,),
             evidence,
-            f"{len(deviated)} sessions fell short of the plan but recovery shows no deviation: "
-            "the plan stays and the next sessions are watched.",
-            frozenset({UncertaintyReason.MISSING_DATA})
-            if inputs.assessment is None
-            else frozenset(),
+            f"{len(deviated)} sessions fell short of the plan ({notes}) but recovery shows no "
+            "deviation: the plan stays and the next sessions are watched.",
         )
     return Outcome(
         Decision.MAINTAIN,
         (AdaptationReason.NO_SIGNAL,),
         (),
         "Nothing in the recent sessions or recovery calls for a change: the plan stays.",
+    )
+
+
+def _with_notes(outcome: Outcome, notes: Sequence[_Note]) -> Outcome:
+    """The decision explained with what the earlier rules found without deciding."""
+    if not notes:
+        return outcome
+    reasons = tuple(note.reason for note in notes)
+    if outcome.reasons != (AdaptationReason.NO_SIGNAL,):
+        reasons += tuple(item for item in outcome.reasons if item not in reasons)
+    text = " ".join(note.text for note in notes)
+    tail = (
+        "The plan stays."
+        if outcome.reasons == (AdaptationReason.NO_SIGNAL,)
+        else outcome.interpretation
+    )
+    return replace(
+        outcome,
+        reasons=reasons,
+        evidence=tuple(
+            dict.fromkeys((*(ref for note in notes for ref in note.evidence), *outcome.evidence))
+        ),
+        interpretation=f"{text} {tail}",
+        uncertainty=outcome.uncertainty.union(*(note.uncertainty for note in notes)),
     )
 
 
@@ -674,8 +779,11 @@ def decide(inputs: AdaptationInputs) -> Outcome:
             "healthcare professional has cleared you to train.",
             confidence=Confidence.HIGH,
         )
+    notes: list[_Note] = []
     for rule in (_blocked, _pain, _interference, _deviations, _progress):
         found = rule(inputs)
-        if found is not None:
-            return found
-    return _maintain(inputs)
+        if isinstance(found, Outcome):
+            return _with_notes(found, notes)
+        if isinstance(found, _Note):
+            notes.append(found)
+    return _with_notes(_maintain(inputs), notes)

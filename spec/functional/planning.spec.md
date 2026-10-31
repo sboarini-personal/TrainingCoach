@@ -125,15 +125,18 @@ what they produce. Initial values under A-18.
   sport; its minutes in each of the last 8 complete weeks (Monday to Sunday, ACTIVE activities,
   none without the activities consent); SAFETY_HOLD and RECOVERY_BLOCK with its end.
 - **Refused**: NOT_READY (no version, AT-ONB-002); a goal sport other than running, cycling or
-  swimming; a goal date before the plan could start; an active constraint excluding the goal
+  swimming; a goal too close for a plan (before the second day of the plan); an active
+  constraint excluding the goal
   sport; swimming without pool access; cycling without a bicycle or smart trainer.
 - **Kind and dates.** The plan starts on the next Monday (today when it is one). In
   BASELINE_COLLECTION it is a 2-week ADAPTATION block with one submaximal assessment a week
   (`eval.submaximal_<sport>`: 10 minutes easy then 20 minutes at RPE 4 to 5, recording heart
-  rate; 30 minutes; never maximal, since no opt-in exists), provisional (FR-ONB-005,
+  rate; 30 minutes, a fixed length; its target RPE 4 to 5 is stated, capped by MAX_RPE;
+  never maximal, since no opt-in exists), provisional (FR-ONB-005,
   AT-ONB-004). Otherwise it runs to the week of the target date, at most 26 weeks (a longer
   horizon is stated as an assumption). The target date and the 6 days after carry nothing;
-  the day before is a REST day; the goal's week has no long session.
+  the day before is a REST day; the goal's week has no long session, and its primary goal
+  states the minutes planned before the goal.
 - **Phases** over N weeks: TAPER the last 2 weeks when N is 8 or more, the last week when N
   is 4 to 7; ADAPTATION the first 2 weeks when the history is insufficient (no activity in 8
   weeks, or under a year of experience) and at least 6 weeks remain; the rest is BASE (half,
@@ -160,8 +163,10 @@ what they produce. Initial values under A-18.
   goes on the longest day (the latest on a tie), the key one far from it (and not the day
   after the athlete's tennis), strength not the day before the long or key session and
   preferably the day after the key one, easy sessions spread out. Each session fits its day;
-  the week fits the pattern's hours (shorter sessions first, then fewer easy ones, then no key
-  one).
+  the week fits the pattern's hours (the assessment keeps its length; the others become
+  shorter first, then fewer easy ones, then no key one). With few hours the goal sport keeps
+  40 minutes before strength takes any; strength planned less or not at all for that reason
+  is stated (AT-STR-002).
 - **Workouts**, intensity by RPE only (heart-rate, pace and power targets need reliable
   anchors these rules do not read; stated as an assumption, FR-PLN-005, AT-CYC-001): easy and
   long sessions at RPE 3 to 4; the key session is a steady one in BASE (RPE 5 to 6 between an
@@ -185,8 +190,9 @@ what they produce. Initial values under A-18.
   session is replaced by the upper-body session (AT-STR-001); each strength session states
   the worst level it is part of.
 - **The athlete's tennis**: each declared slot becomes a tennis session (expected RPE 7 for a
-  match or an unknown type, 5 for practice) unless an availability exception marks the date
-  unavailable, a health constraint restricts tennis, or it is hard while intensity is paused
+  match or an unknown type, 5 for practice; one session per slot, two slots on a day are two
+  sessions) unless an availability exception marks the date unavailable or allows other
+  sports only, a health constraint restricts tennis, or it is hard while intensity is paused
   (then the plan says so: if the athlete plays, the session is recorded and counts as load).
   Planned sessions do not use the tennis days.
 - **Assumptions** state the baseline block, each missing preferred input and how it is
@@ -224,6 +230,8 @@ Execution rules 1.0.0 (P12, precision; `coach.planning.execution`, `coach plan e
   one per activity, a newer one replacing it, audited as `plan.execution_linked`). Athlete
   feedback is the activity's own: its session RPE is shown (`subjective.rpe`), and soreness and
   pain come from the activity and the daily check-in.
+- **Weeks.** Matching runs over whole training weeks, then keeps the executions of the period
+  asked, so a link within a week counts whatever period is read.
 - **Links.** A link names one of the athlete's activities and a non-REST workout of the ACTIVE
   version in the same training week (Monday to Sunday), or none (the activity is UNPLANNED); a
   workout may take several linked activities. A link to a workout no longer in the ACTIVE
@@ -274,8 +282,13 @@ Adaptation rules 1.0.0 (P12, precision; `coach.planning.adaptation`, `coach plan
 - **Inputs** (from stored state): the ACTIVE version; the executions and their activities of
   the last 14 days (section 6); the recovery assessment in force (today's, else yesterday's)
   and the prescriptions in force today; the check-ins of the last 7 days; availability; the
-  coaching conditions.
-- **Rules**, the first that applies decides:
+  coaching conditions; the goal's date. Only planned workouts not done yet are adapted (a
+  workout with activities, today's included, is history).
+- **Rules**, the first that decides wins; a rule that finds something without changing it
+  (a pain report with no intensity to take out, an assessed load that is not severe,
+  consistent completion where PROGRESS does not apply) adds it to the explanation and its
+  reason code, and the next rules still decide (review of P12: a MAINTAIN on an assessed load
+  must not hide a needed reduction):
   1. SAFETY_HOLD: MAINTAIN; nothing is adapted until the athlete releases the hold.
   2. A blocking prescription (REST, ACTIVE_RECOVERY) with planned workouts that conflict before
      its `reevaluateAfter`: REST (a REST prescription; those days become rest days) or REDUCE
@@ -284,20 +297,28 @@ Adaptation rules 1.0.0 (P12, precision; `coach.planning.adaptation`, `coach plan
      days, and strength light (RPE 5, at most 2 sets) where it loads a region the pain
      location names exactly (region rules 1.0.0), or everywhere when it names none. The
      explanation suggests a professional evaluation if the pain lasts more than 7 days or
-     worsens (safety spec 5), never a diagnosis. Nothing to change: MAINTAIN.
+     worsens (safety spec 5), never a diagnosis. Nothing to change: a note (PAIN_REPORTED).
   4. Unplanned load of the last 2 days (UNPLANNED executions; completed strength without its
      sets is taken as possibly heavy) assessed by the interference rules (strength spec 7)
      with the planned sessions of the next 3 days: HIGH or VERY_HIGH moves an endurance
-     session with intensity to a free, available day of its week at least 2 days after that
-     load (RESCHEDULE) or takes its intensity out (REPLACE), and makes heavy legs light.
-     Assessed but not severe: MAINTAIN, with the load as evidence (AT-UNP-001).
+     session with intensity to a later day of its week with nothing planned (a rest day is
+     not free), open for it in the availability, at least 2 training days after that load
+     and before the day preceding the goal (RESCHEDULE), or takes its intensity out
+     (REPLACE); heavy legs become light (lower-body regions); the athlete's own tennis
+     stays. Assessed but not severe: a note (INTERFERENCE_ASSESSED) with the load as
+     evidence (AT-UNP-001).
   5. Two or more deviated sessions in 14 days (below 80% of the planned duration, or a
      session RPE 2 or more above the workout's highest target) with a recovery assessment of
      REDUCE or REST: REDUCE, the intensity of the next 7 days taken out.
-  6. Four or more planned workouts of the last 14 days done, all COMPLETE, none deviated, a
-     NORMAL recovery assessment and no pain in 7 days: PROGRESS.
-  7. Otherwise MAINTAIN: one deviated session (AT-ADP-001), several without a recovery
-     signal (watched), or no signal.
+  6. Four or more planned workouts of the last 14 days done, all COMPLETE with a measured
+     duration and a recorded session RPE at or below the workout's highest target (an
+     unknown never progresses), none deviated, a NORMAL recovery assessment and no pain in
+     7 days: PROGRESS, in an ADAPTATION, BASE or BUILD week at least 6 weeks before the goal;
+     otherwise a note (CONSISTENT_COMPLETION): the plan's own progression continues
+     (review of P12: regenerating within the taper or close to the goal removed the taper).
+  7. Otherwise MAINTAIN: one deviated session (AT-ADP-001); several with a NORMAL recovery
+     (watched), with no assessment (MISSING_DATA), or with a recovery signal but nothing to
+     take out (NOTHING_TO_CHANGE); or no signal.
 - **Outcome.** Every run records an AdaptationDecision
   ([../contracts/adaptation-decision.schema.json](../contracts/adaptation-decision.schema.json)):
   trigger, decision, reason codes, evidence, an interpretation whose numbers come from the
@@ -309,8 +330,9 @@ Adaptation rules 1.0.0 (P12, precision; `coach.planning.adaptation`, `coach plan
   readiness is PROVISIONAL); PROGRESS proposes a version regenerated from the updated history
   (section 5.1). The proposed version's generator names the decision (`decisionId`). Every
   proposal goes through the goal, readiness and plan-policy checks; the athlete activates or
-  rejects it.
-- **Lifecycle.** A run moves TRAINING to ANALYSIS and then to TRAINING (MAINTAIN) or ADAPTATION
-  (a proposal); activating the adapted version or rejecting it returns to TRAINING. Each run
+  rejects it. A proposal refused by them is still recorded, with PROPOSAL_REFUSED and the
+  refusal's codes in the interpretation, and the plan stays as it is.
+- **Lifecycle.** A run moves TRAINING to ANALYSIS and then to TRAINING (no proposal) or
+  ADAPTATION (a proposal); activating the adapted version or rejecting it returns to TRAINING. Each run
   is audited (`plan.adaptation_decided`, with the decision and reasons) and emitted
   (`plan.adaptation.decided`).

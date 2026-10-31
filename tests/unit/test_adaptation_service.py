@@ -15,10 +15,17 @@ from test_execution import Activities
 from coach.application.adaptation import AdaptationService
 from coach.application.events import EventName
 from coach.application.executions import ExecutionService
+from coach.domain.activity.observation import SourceKind
 from coach.domain.availability.availability import Availability, DayDefaults
 from coach.domain.coaching.state import LifecycleState
 from coach.domain.common.quality import Confidence
-from coach.domain.plans.adaptation import AdaptationDecision, AdaptationTrigger, Decision
+from coach.domain.onboarding.readiness import Readiness, ReadinessInput, ReadinessStatus
+from coach.domain.plans.adaptation import (
+    AdaptationDecision,
+    AdaptationReason,
+    AdaptationTrigger,
+    Decision,
+)
 from coach.domain.plans.execution import ExecutionLink
 from coach.domain.plans.plan import PlanStatus, PlanVersion
 from coach.domain.recovery.assessment import Reason, RecoveryAssessment, RecoveryStatus
@@ -93,6 +100,7 @@ class Loop:
                 ATHLETE, recurring=PATTERN, defaults=DayDefaults(240)
             ),
             readiness=lambda _scope: self.world.ready,
+            goal_date=lambda _scope, _goal: date(2027, 3, 14),
             conditions=self.world.conditions,
             lifecycle=self.world.lifecycle,
             today=lambda _scope: self.today,
@@ -105,7 +113,12 @@ class Loop:
     def run_on(self, day: date, minutes: float) -> None:
         start = datetime.combine(day, datetime.min.time(), tzinfo=UTC) + timedelta(hours=21)
         observation = sample_observation(
-            updates={"timing.startTimeUtc": start, "timing.elapsedSeconds": minutes * 60},
+            SourceKind.ATHLETE_ENTRY,
+            updates={
+                "timing.startTimeUtc": start,
+                "timing.elapsedSeconds": minutes * 60,
+                "subjective.rpe": 4.0,
+            },
             provider_activity_id=f"run-{day}",
         )
         self.store.add(sample_activity(observation, activity_id=UUID(int=0x880 + day.day)))
@@ -189,11 +202,13 @@ def test_progress_regenerates_from_the_updated_history() -> None:
     strength_day = MONDAY + timedelta(days=1)
     loop.store.views[UUID(int=0x880 + strength_day.day)] = sample_activity(
         sample_observation(
+            SourceKind.ATHLETE_ENTRY,
             updates={
                 "classification.sport": "STRENGTH",
                 "classification.subtype": None,
                 "timing.startTimeUtc": datetime(2026, 10, 27, 21, 0, tzinfo=UTC),
                 "timing.elapsedSeconds": 2700.0,
+                "subjective.rpe": 6.0,
             },
             provider_activity_id="gym-1",
         ),
@@ -202,3 +217,29 @@ def test_progress_regenerates_from_the_updated_history() -> None:
     result = loop.service.run(SCOPE, AdaptationTrigger.WEEKLY_REVIEW)
     assert result.decision.decision is Decision.PROGRESS, result.decision.interpretation
     assert loop.generation.calls == [(GOAL, result.decision.decision_id)]
+
+
+@pytest.mark.req("FR-ADP-004", "FR-ONB-006")
+def test_a_refused_proposal_is_still_recorded_and_the_lifecycle_returns() -> None:
+    loop = Loop()
+    loop.today = MONDAY + timedelta(days=1)
+    loop.checkins = [
+        DailyCheckIn(
+            checkin_id=UUID(int=0xD04),
+            athlete_id=ATHLETE,
+            recorded_at=AT,
+            training_day=loop.today,
+            pain=CheckInPain(intensity=5, location="rodilla"),
+            pain_flag=True,
+        )
+    ]
+    loop.world.ready = Readiness(
+        ReadinessStatus.NOT_READY, (ReadinessInput.HEALTH_CONSTRAINTS,), ()
+    )  # the health declaration was not re-confirmed
+    result = loop.service.run(SCOPE)
+    assert (result.decision.decision, result.proposed) == (Decision.REDUCE, None)
+    assert result.decision.reasons[-1] is AdaptationReason.PROPOSAL_REFUSED
+    assert "could not be proposed (NOT_READY)" in result.decision.interpretation
+    assert loop.service.decisions(SCOPE) == [result.decision]
+    assert loop.lifecycle() is LifecycleState.TRAINING
+    assert [item.number for item in loop.versions()] == [1]

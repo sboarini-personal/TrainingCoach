@@ -50,7 +50,8 @@
           "UNPLANNED_LOAD_INTERFERENCE",
           "INTERFERENCE_ASSESSED",
           "CONSISTENT_COMPLETION",
-          "NOTHING_TO_CHANGE"
+          "NOTHING_TO_CHANGE",
+          "PROPOSAL_REFUSED"
         ]
       }
     },

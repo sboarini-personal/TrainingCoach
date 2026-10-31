@@ -228,6 +228,16 @@ def workout_to_contract(workout: PlannedWorkout) -> Json:
                 if evaluation.duration_seconds is None
                 else {"durationSeconds": evaluation.duration_seconds}
             ),
+            **(
+                {}
+                if evaluation.target_rpe is None
+                else {
+                    "targetRpe": {
+                        "min": evaluation.target_rpe.low,
+                        "max": evaluation.target_rpe.high,
+                    }
+                }
+            ),
         }
     return document
 
@@ -274,6 +284,9 @@ def workout_from_contract(document: Document) -> PlannedWorkout:
             requires_opt_in=evaluation["requiresOptIn"],
             safety_notes=tuple(evaluation["safetyNotes"]),
             duration_seconds=evaluation.get("durationSeconds"),
+            target_rpe=None
+            if evaluation.get("targetRpe") is None
+            else RpeRange(evaluation["targetRpe"]["min"], evaluation["targetRpe"]["max"]),
         ),
     )
 

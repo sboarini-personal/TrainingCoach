@@ -97,6 +97,7 @@ START_WEEKS: Final = 4  # the starting volume is the mean of the last 4 weeks
 UNLOAD_EVERY: Final = 4
 PEAK_STEPS: Final = 3  # the peak: the highest recent week plus three of the athlete's steps
 MIN_SESSION_MINUTES: Final = 20
+ENDURANCE_FLOOR: Final = 40  # minutes kept for the goal sport before strength takes hours
 KEY_MINUTES: Final = (45, 75)
 STRENGTH_MINUTES: Final = 45
 TAPER_STRENGTH_MINUTES: Final = 30
@@ -435,8 +436,14 @@ def _own_tennis(
         name = Weekday(slot.weekday).name.capitalize()
         rpe = TENNIS_RPE[slot.session_type]
         effective = inputs.availability.resolve(day)
-        if effective.basis is AvailabilityBasis.EXCEPTION and not effective.available:
-            continue
+        if effective.basis is AvailabilityBasis.EXCEPTION and (
+            not effective.available
+            or (
+                effective.allowed_sports is not None
+                and Sport.TENNIS not in effective.allowed_sports
+            )
+        ):
+            continue  # the athlete's own statement for that date
         if _restricted(inputs.health, day, Sport.TENNIS) or rpe > _rpe_cap(
             inputs.health, day, Sport.TENNIS
         ):
@@ -647,6 +654,7 @@ class _Factory:
 
     def evaluation(self, day: date) -> PlannedWorkout:
         sport = self._inputs.sport
+        cap = _rpe_cap(self._inputs.health, day, sport)
         return PlannedWorkout(
             workout_id=self.ids(day, Role.EVALUATION.value),
             type=WorkoutType.EVALUATION,
@@ -667,12 +675,13 @@ class _Factory:
                 requires_opt_in=False,
                 safety_notes=(SAFETY_STOP,),
                 duration_seconds=EVALUATION_MINUTES * 60,
+                target_rpe=_target(4, 5, cap).rpe,
             ),
         )
 
     def tennis(self, day: date, slot: TennisSlot) -> PlannedWorkout:
         return PlannedWorkout(
-            workout_id=self.ids(day, "TENNIS"),
+            workout_id=self.ids(day, f"TENNIS/{slot.start_minute}"),
             type=WorkoutType.TENNIS,
             training_day=day,
             order=0,
@@ -838,28 +847,34 @@ def _split(minutes: int, roles: Sequence[Role]) -> dict[Role, int]:
 
 
 def _fit(wanted: dict[_Slot, int], room: int) -> dict[_Slot, int]:
-    """Endurance minutes within the weekly room: shorter sessions, then fewer easy ones, the
-    key one, and last a shorter long one."""
-    total = sum(wanted.values())
-    if total <= room:
+    """Endurance minutes within the weekly room: the assessment keeps its fixed length;
+    the others become shorter, then fewer easy ones, no key one, and last a shorter long
+    one."""
+    if sum(wanted.values()) <= room:
         return wanted
-    fitted = {
-        slot: max(MIN_SESSION_MINUTES, 5 * math.floor(minutes * room / total / 5))
-        for slot, minutes in wanted.items()
+    fixed: dict[_Slot, int] = {
+        slot: minutes for slot, minutes in wanted.items() if slot is Role.EVALUATION
     }
-    while fitted and sum(fitted.values()) > room:
+    space = room - sum(fixed.values())
+    if space < 0:
+        return {}
+    flexible = {slot: minutes for slot, minutes in wanted.items() if slot not in fixed}
+    total = sum(flexible.values())
+    fitted = {
+        slot: max(MIN_SESSION_MINUTES, 5 * math.floor(minutes * space / total / 5))
+        for slot, minutes in flexible.items()
+    }
+    while fitted and sum(fitted.values()) > space:
         easy = [slot for slot in fitted if isinstance(slot, tuple)]
         if easy:
             del fitted[max(easy, key=lambda slot: slot[1] if isinstance(slot, tuple) else 0)]
         elif Role.KEY in fitted:
             del fitted[Role.KEY]
-        elif Role.EVALUATION in fitted:
-            del fitted[Role.EVALUATION]
-        elif room >= MIN_SESSION_MINUTES:
-            fitted[Role.LONG] = 5 * (room // 5)
+        elif space >= MIN_SESSION_MINUTES:
+            fitted[Role.LONG] = 5 * (space // 5)
         else:
             fitted.clear()
-    return fitted
+    return {**fixed, **fitted}
 
 
 # --------------------------------------------------------------------------- weeks
@@ -891,8 +906,17 @@ def _build_week(
         notes.add(f"Strength is not planned while {reason}.")
     strength_minutes = TAPER_STRENGTH_MINUTES if week.phase is Phase.TAPER else STRENGTH_MINUTES
     budget = None if recurring is None else int(recurring.maximum_hours_per_week * 60)
-    if budget is not None:
-        strength = min(strength, budget // strength_minutes)
+    if budget is not None and strength:
+        fitting = max(0, (budget - ENDURANCE_FLOOR) // strength_minutes)
+        if fitting < strength:
+            notes.add(
+                "Strength is planned less in some weeks: the weekly hours leave little room "
+                "after the goal sport's sessions."
+                if fitting
+                else "Strength could not be planned in some weeks: the weekly hours leave no "
+                "room after the goal sport's sessions."
+            )
+        strength = min(strength, fitting)
     sessions = max(2, min(5, round(week.minutes / 45)))
     race = not inputs.baseline and week.start <= inputs.target_date <= week.start + timedelta(
         days=6
@@ -1106,11 +1130,15 @@ def _training_week(
         item.planned_seconds or 0.0 for item in week.workouts if item.sport is inputs.sport
     )
     sport = inputs.sport.value.capitalize()
+    race = rest_day is not None and week.start <= rest_day + timedelta(
+        days=1
+    ) <= week.start + timedelta(days=6)
     return TrainingWeek(
         week_index=week.index,
         start=week.start,
         phase=week.phase,
-        primary_goal=f"{_FOCUS[week.phase]}. {sport} {week.minutes} min: {week.rationale}.",
+        primary_goal=f"{_FOCUS[week.phase]}. {sport} {week.minutes} min: {week.rationale}."
+        + (f" The goal's week: {round(seconds / 60)} min planned before the goal." if race else ""),
         estimated_load=EstimatedLoad(None, {inputs.sport: SportLoad(seconds or None, None)}),
         days=ordered,
     )
@@ -1121,8 +1149,10 @@ def generate(inputs: GenerationInputs) -> PlanContent:
     if inputs.sport not in ENDURANCE_SPORTS:
         raise DomainValidationError("rules 1.0.0 plan running, cycling or swimming goals")
     start = plan_start(inputs.today)
-    if inputs.target_date < start and not inputs.baseline:
-        raise DomainValidationError("the goal date is before the plan could start")
+    if not inputs.baseline and inputs.target_date < start + timedelta(days=2):
+        raise DomainValidationError(
+            "the goal is too close for a plan: it would start on " + start.isoformat()
+        )
     if _restricted(inputs.health, start, inputs.sport):
         raise DomainValidationError(
             "an active health constraint excludes the goal sport: review the goal first"

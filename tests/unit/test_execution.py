@@ -237,3 +237,37 @@ def test_links_name_the_athletes_activity_and_a_workout_of_its_week() -> None:
         service.link(SCOPE, wednesday_run.activity_id, following.workout_id)
     actions = [record.document["action"] for record in world.audit.all_records()]
     assert actions.count("plan.execution_linked") == 2
+
+
+@pytest.mark.req("FR-PLN-007")
+def test_a_link_counts_even_when_the_period_cuts_the_week() -> None:
+    world = PlanWorld()
+    first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
+    world.activate(first.plan_id, 1)
+    store = Activities()
+    thursday_run = store.add(
+        sample_activity(
+            sample_observation(
+                updates={"timing.startTimeUtc": datetime(2026, 10, 29, 21, 0, tzinfo=UTC)}
+            ),
+            activity_id=UUID(int=0x803),
+        )
+    )
+    service = ExecutionService(
+        world.service,
+        InMemoryRepository[ExecutionLink](),
+        activities=store.between,
+        activity=store.get,
+        today=lambda _scope: SUNDAY,
+        audit=world.audit,
+        clock=world.clock,
+    )
+    tuesday = world.service.active(SCOPE).content.on(TUESDAY)[0]  # type: ignore[union-attr]
+    service.link(SCOPE, thursday_run.activity_id, tuesday.workout_id)  # done on Thursday
+    later = service.executions(SCOPE, DateRange(WEDNESDAY, SUNDAY))  # Tuesday outside it
+    thursday = next(item for item in later if item.training_day == THURSDAY)
+    assert thursday.completed_activity_ids == ()  # the linked run is not taken by Thursday
+    assert not [item for item in later if item.status is ExecutionStatus.UNPLANNED]
+    whole = service.executions(SCOPE, DateRange(MONDAY, SUNDAY))
+    linked = next(item for item in whole if item.planned_workout_id == tuesday.workout_id)
+    assert (linked.completed_activity_ids, linked.manual) == ((thursday_run.activity_id,), True)
