@@ -46,7 +46,8 @@ External systems: Garmin Connect (Personal tier, pull-only, outbound HTTPS), LLM
 | `coach.application` | use cases, authorization chain, ports, unit of work | policy, planning, metrics, domain |
 | `coach.integrations` | Garmin adapter, file parsers, normaliser | application (ports), lower layers |
 | `coach.infrastructure` | SQLite repositories, blob store, keyring, logging/redaction | application (ports), lower layers |
-| `coach.api`, `coach.cli`, `coach.agent` | interface adapters and composition | everything below; `coach.agent` never imports integrations or infrastructure |
+| `coach.api`, `coach.cli` | interface adapters and composition | everything below |
+| `coach.agent` | the AI coach: tools, message pipeline, prompts, output validation | application and below; never integrations or infrastructure (P13: a layer of its own, so the CLI composes it) |
 
 Enforced by import-linter contracts in `pyproject.toml` on every CI run:
 

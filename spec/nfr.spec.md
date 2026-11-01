@@ -80,7 +80,7 @@ Structured (JSON) events are emitted for at least:
 | Deletion | `deletion.requested`, `deletion.completed`, `deletion.failed` |
 | Security | `security.authn.failed`, `security.authz.denied`, `security.secret_detected`, `security.rate_limited`, `security.lookup.not_found` |
 | Safety | `safety.hold.activated`, `safety.hold.released` |
-| Agent | `agent.tool.called` (tool name, outcome code, duration; P13) |
+| Agent | `agent.tool.called` (tool name, outcome code, duration), `agent.reply.sent` (outcome code, tool call and untraced number counts), `agent.decision.recorded` (decision kind) (P13) |
 
 Events contain identifiers, counts, codes and durations, not health values or free text.
 

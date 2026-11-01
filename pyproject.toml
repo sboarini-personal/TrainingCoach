@@ -95,7 +95,8 @@ root_package = "coach"
 name = "Layered architecture: outer layers depend inward only (ADR-008, docs/architecture.md)"
 type = "layers"
 layers = [
-  "coach.api | coach.cli | coach.agent",
+  "coach.api | coach.cli",
+  "coach.agent",
   "coach.integrations | coach.infrastructure",
   "coach.application",
   "coach.planning | coach.policy",

@@ -75,6 +75,7 @@ def test_numbers_carry_unit_and_evidence_and_unknown_stays_null() -> None:
         "value": 1234.6,
         "unit": "m",
         "evidence": [{"kind": "ACTIVITY", "id": str(UUID(int=9)), "field": "distance.meters"}],
+        "display": "1.23 km",
     }
     assert quantity(42.0, "bpm", REF)["value"] == 42
     assert quantity(None, "bpm", REF)["value"] is None

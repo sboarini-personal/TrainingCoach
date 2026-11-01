@@ -65,6 +65,8 @@ class EventName(StrEnum):
     RECOVERY_PRESCRIBED = "recovery.prescription.created"
     INSIGHT_DETECTED = "insight.detected"
     AGENT_TOOL_CALLED = "agent.tool.called"
+    AGENT_REPLIED = "agent.reply.sent"
+    AGENT_DECISION_RECORDED = "agent.decision.recorded"
 
 
 def check_fields(fields: Mapping[str, str]) -> dict[str, str]:

@@ -62,7 +62,7 @@ from coach.application.plan_generation import PlanGenerationService, weekly_minu
 from coach.application.planning_context import PlanningContextSource
 from coach.application.plans import PlanService
 from coach.application.policy_gate import PolicyGate
-from coach.application.ports import Clock, CredentialProvider
+from coach.application.ports import Clock, CredentialProvider, EventSink
 from coach.application.providers import FitnessProvider
 from coach.application.recovery import RecoveryService
 from coach.application.recovery_assessment import RecoveryAssessmentService
@@ -179,6 +179,7 @@ class Runtime:
     integrations: SqliteAggregateRepository[IntegrationStatus]
     conditions: CoachingConditions
     sync: SyncService
+    events: EventSink
     clock: Clock
 
 
@@ -606,5 +607,6 @@ def build_runtime(
         integrations=integrations,
         conditions=conditions,
         sync=sync,
+        events=events,
         clock=clock,
     )

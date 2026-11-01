@@ -45,6 +45,40 @@ For each athlete message, in this order, all deterministic:
 The LLM may also flag possible red flags; a flag from either source activates SAFETY_HOLD
 (fail-safe).
 
+Precision (P13.3; `coach.agent.coach`, `coach.agent.validation`):
+
+- **Consent first.** Without AI_PROCESSING nothing is stored or sent; the chat says how to
+  grant it. A message has at most 8000 characters.
+- **Red flags answer in code.** When the phrase rules find a red flag, SAFETY_HOLD is
+  activated, the answer is the fixed safety notice (safety spec 3), the message is not sent to
+  the model (it could only speculate about causes), and an `AgentDecision` SAFETY_RESPONSE is
+  recorded (action `ACTIVATE_SAFETY_HOLD`, the red flags as reasons, no model). Both turns are
+  kept in the conversation.
+- **Context block.** The athlete's turn starts with a block written by the application:
+  `<context>{"today", "timezoneSet", "language", "lifecycle", "conditions"}</context>`.
+  Volatile facts travel with the message, so the system prompt and the tools stay the same
+  (and cached) for the whole conversation.
+- **Tools.** The model may call the READ tools for at most 8 rounds per message; past the
+  budget its tool calls get `TOOL_BUDGET_EXHAUSTED` and the exchange is closed in code, so
+  every stored tool use has its result.
+- **Output validation rules 1.0.0.** The sources of a turn are its tool results, the context
+  block and the athlete's message. Every number of the answer must be one of their numbers
+  at the precision written (5.2 matches 5.23; the display forms of the tools, such as 45:00,
+  4:24/km, 10.23 km or 85%, count). Spanish and English writing are both read ("10.000",
+  "5,2"); list markers and digits joined to a word on their left (VO2max, Z2) are not
+  numbers. An answer with untraced numbers goes back to the model once, with a note that
+  names them; if they remain, the answer is shown with a warning that names them
+  (outcome NOT_VERIFIED). Numbers from earlier turns must be read again: a conversation can
+  span days.
+- **Shown after validation.** The answer is shown once validated, never while it arrives
+  (FR-AGT-004 over the streaming display of section 7); each data read is shown as a
+  progress line meanwhile.
+- **Outcomes.** ANSWERED, NOT_VERIFIED, SAFETY_HOLD, REFUSED (the model refused: a fixed
+  text), INCOMPLETE (output limit or tool budget). Each reply emits `agent.reply.sent`
+  (outcome and counts), each decision `agent.decision.recorded` (its kind).
+- **Failure.** If the model is unavailable the exchange is not stored; the athlete's message
+  can be sent again.
+
 ## 5. Decision audit (FR-AGT-003)
 
 Significant decisions (plan proposals, adaptations, load reductions, safety responses) are
@@ -80,8 +114,8 @@ Precision (P13; decision D-14; `coach.application.llm`, `coach.integrations.llm`
 - **Model and effort.** The default model is Claude Opus 5.5 (`claude-opus-5-5`), with effort
   `medium`. Both are configuration (`COACH_LLM_MODEL`, `COACH_LLM_EFFORT`), and the model is
   recorded on every decision.
-- **Request.** It streams the answer, so long turns never hit an HTTP timeout and the chat
-  shows text as it arrives. Thinking is left at the model's default (adaptive, its text
+- **Request.** It streams the answer, so long turns never hit an HTTP timeout (the chat
+  shows the answer once it is validated, section 4). Thinking is left at the model's default (adaptive, its text
   omitted), so no reasoning is shown or stored. The stable prefix (system prompt and tools) is
   cached.
 - **Server-side fallback.** Anthropic's fallback for a declined request is enabled

@@ -224,6 +224,7 @@ def test_goals_availability_feasibility_and_a_readiness_that_changes_nothing(
         "value": 2700,
         "unit": "s",
         "evidence": [{"kind": "GOAL", "id": goal_id}],
+        "display": "45:00",
     }
     assert world.data("getGoals", {"status": "DRAFT"})["goals"] == []
     days = world.data("getAvailability")["days"]

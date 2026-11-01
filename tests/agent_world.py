@@ -9,13 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from cli_harness import Cli
-from coach.agent.services import AgentServices
+from coach.agent.coach import Coach
 from coach.agent.tools import read_tools
 from coach.agent.tools.base import Toolbox, ToolCallOutput, ToolContext
-from coach.application.consent import ConsentGate
 from coach.application.errors import TimezoneRequiredError
+from coach.application.llm import LLMProvider
 from coach.application.ownership import OwnerScope
-from coach.cli.runtime import PRIVACY_POLICY_VERSION, Runtime, build_runtime
+from coach.cli.chat import agent_services, build_coach
+from coach.cli.runtime import Runtime, build_runtime
 from coach.infrastructure.datadir import ensure_layout
 from coach.infrastructure.memory import RecordingEventSink
 from coach.infrastructure.sqlite.database import SqliteDatabase
@@ -33,25 +34,6 @@ ONBOARDING = (
     ("availability", "set", "--days", "6", "--max-hours", "10"),
     ("availability", "default", "--minutes", "240"),
 )
-
-
-def agent_services(runtime: Runtime) -> AgentServices:
-    return AgentServices(
-        consents=ConsentGate(runtime.consents.ledgers, policy_version=PRIVACY_POLICY_VERSION),
-        conditions=runtime.conditions,
-        inputs=runtime.inputs,
-        activities=runtime.activities,
-        analytics=runtime.analytics,
-        strength=runtime.strength,
-        recovery=runtime.recovery,
-        assessments=runtime.recovery_assessment,
-        plans=runtime.plans,
-        executions=runtime.executions,
-        adaptation=runtime.adaptation,
-        insights=runtime.insights,
-        reports=runtime.reports,
-        integrations=runtime.integrations,
-    )
 
 
 @dataclass
@@ -82,6 +64,10 @@ class AgentWorld:
         assert output.payload["ok"] is True, output.payload
         found: dict[str, Any] = output.payload["data"]
         return found
+
+    def coach(self, llm: LLMProvider, **options: Any) -> Coach:
+        """The coach over this runtime, with the runtime's own stores."""
+        return build_coach(self.runtime, llm, **options)
 
     def error(self, name: str, arguments: object = None) -> dict[str, Any]:
         output = self.call(name, arguments)

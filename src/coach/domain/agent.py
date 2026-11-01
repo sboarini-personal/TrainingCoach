@@ -200,6 +200,13 @@ class Conversation:
             and sum(turn.size() for turn in (*self.turns, *turns)) <= MAX_CONVERSATION_BYTES
         )
 
+    def has_room(self, *, turns: int, size: int) -> bool:
+        """Whether an exchange of up to ``turns`` turns and ``size`` bytes can still be
+        appended. Checked before the model is asked, so that its answer is stored in the
+        conversation it was given (its reasoning blocks are valid only there)."""
+        used = sum(turn.size() for turn in self.turns)
+        return len(self.turns) + turns <= MAX_TURNS and used + size <= MAX_CONVERSATION_BYTES
+
     def messages(self) -> list[dict[str, Any]]:
         """The history as the provider receives it, exactly as stored."""
         return [{"role": turn.role.value, "content": list(turn.content)} for turn in self.turns]

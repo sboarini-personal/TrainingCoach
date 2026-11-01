@@ -159,13 +159,45 @@ def evidence(*refs: EvidenceRef) -> list[dict[str, str]]:
 
 
 def quantity(value: float | None, unit: str, *refs: EvidenceRef, digits: int = 1) -> dict[str, Any]:
-    """A number with its unit and evidence; ``None`` stays unknown."""
+    """A number with its unit and evidence; ``None`` stays unknown. Durations, distances,
+    paces, speeds and shares also get the form people read (computed here, so the coach
+    never converts a unit)."""
     shown: float | None = value
     if isinstance(value, float):
         shown = round(value, digits)
         if shown == int(shown):
             shown = int(shown)
-    return {"value": shown, "unit": unit, "evidence": evidence(*refs)}
+    found: dict[str, Any] = {"value": shown, "unit": unit, "evidence": evidence(*refs)}
+    if value is not None:
+        display = _display(float(value), unit)
+        if display is not None:
+            found["display"] = display
+    return found
+
+
+def clock(seconds: float) -> str:
+    """``h:mm:ss`` or ``m:ss``."""
+    whole = round(seconds)
+    hours, rest = divmod(whole, 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def _display(value: float, unit: str) -> str | None:
+    match unit:
+        case "s" if value >= 60:
+            return clock(value)
+        case "m" if value >= 1000:
+            return f"{value / 1000:.2f}".rstrip("0").rstrip(".") + " km"
+        case "s/km":
+            return f"{clock(value)}/km"
+        case "s/100m":
+            return f"{clock(value)}/100m"
+        case "m/s":
+            return f"{value * 3.6:.1f} km/h"
+        case "share 0-1" | "ratio":
+            return f"{value * 100:.0f}%"
+    return None
 
 
 def code(value: Enum | None) -> str | None:

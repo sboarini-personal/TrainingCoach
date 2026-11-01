@@ -26,12 +26,14 @@ from coach.application.credentials import CredentialKind, credential_handle, exp
 from coach.application.errors import RateLimitedError
 from coach.application.identity import Identity, Principal
 from coach.application.ids import new_id
+from coach.application.llm import LLMProvider
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, CredentialProvider
 from coach.application.secrets import SecretValue
 from coach.cli import activities as activity_commands
 from coach.cli import analytics as analytics_commands
 from coach.cli import athlete as athlete_commands
+from coach.cli import chat as chat_commands
 from coach.cli import garmin as garmin_commands
 from coach.cli import insights as insight_commands
 from coach.cli import plans as plan_commands
@@ -77,6 +79,13 @@ def _parser() -> argparse.ArgumentParser:
     store.add_argument("kind", choices=sorted(SECRET_KINDS))
     store.add_argument("--expires-on", type=date.fromisoformat, help="expiry date, YYYY-MM-DD")
     secret_actions.add_parser("list", help="stored credentials and their expiry state")
+    chatting = commands.add_parser(
+        "chat", help="talk with the AI coach (needs the ai-processing consent)"
+    )
+    chatting.add_argument(
+        "message", nargs="*", help="one question; without it, an interactive chat"
+    )
+    chatting.add_argument("--new", action="store_true", help="start a new conversation")
     audit = commands.add_parser("audit", help="audit log").add_subparsers(
         dest="action", required=True
     )
@@ -351,6 +360,7 @@ def _dispatch(
     ask: Ask | None,
     data_dir: Path,
     variables: Mapping[str, str],
+    llm: LLMProvider | None = None,
 ) -> int:
     match (args.command, getattr(args, "action", None)):
         case ("init", _):
@@ -475,6 +485,10 @@ def _dispatch(
             return garmin_commands.status(runtime, _session(runtime), stream)
         case ("garmin", "sync"):
             return garmin_commands.sync(runtime, _session(runtime), args, stream)
+        case ("chat", _):
+            return chat_commands.chat(
+                runtime, _session(runtime), args, stream, ask=ask, llm=llm, variables=variables
+            )
         case _:  # pragma: no cover - argparse rejects anything else
             return 2
 
@@ -523,6 +537,7 @@ def main(
     transport: HttpTransport | None = None,
     sleep: Callable[[float], None] | None = None,
     read_answer: Callable[[str], str] | None = None,
+    llm: LLMProvider | None = None,
 ) -> int:
     stream = out if out is not None else sys.stdout
     # Missing planning inputs are asked for only in an interactive terminal (D-12).
@@ -560,6 +575,7 @@ def main(
             ask=ask,
             data_dir=data_dir,
             variables=variables,
+            llm=llm,
         )
     except (CliError, activity_commands.CommandError) as error:
         print(f"error: {error}", file=stream)
