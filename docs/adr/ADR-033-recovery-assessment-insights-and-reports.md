@@ -1,6 +1,6 @@
 # ADR-033: Recovery assessment, pattern detection and report data
 
-- Status: Proposed (pending the athlete's review)
+- Status: Accepted (athlete's review of 2026-10-31)
 - Date: 2026-10-30
 - Requirements: FR-REC-002 to FR-REC-004, FR-MET-002, FR-INS-001 to FR-INS-003, FR-RPT-001 to
   FR-RPT-003, FR-AGT-004

@@ -58,7 +58,7 @@ When SAFETY_HOLD activates:
 
 AT-SAFE-001 covers activation, the policy denial and the response content.
 
-## 4. Release (SAFE-MED-005, PROPOSED)
+## 4. Release (SAFE-MED-005)
 
 - The hold is released only by an explicit athlete action (for example confirming that a
   healthcare professional cleared them to train), recorded and audited.
@@ -67,8 +67,10 @@ AT-SAFE-001 covers activation, the policy denial and the response content.
   confirmation; audited as `coaching.condition_cleared` with reason
   `CLEARED_BY_PROFESSIONAL` and emitted as `safety.hold.released`. `coach safety status`
   shows whether the hold is active.
-- After release, training resumes conservatively (the next plan version starts with reduced
-  intensity and a re-evaluation date).
+- Precision (athlete's review of 2026-10-31): no special restart after release. The text that asked for one
+  (the next plan version starting with reduced intensity and a re-evaluation date) was
+  removed; after release the plan policies, the recovery rules and the adaptive loop
+  apply as usual.
 
 ## 5. Pain that is not a red flag
 

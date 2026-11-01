@@ -1,6 +1,6 @@
 # ADR-032: Recovery data: minimised provider payloads and fail-safe red-flag capture
 
-- Status: Proposed (pending the athlete's review)
+- Status: Accepted (athlete's review of 2026-10-31)
 - Date: 2026-10-30
 - Requirements: FR-REC-001, FR-REC-005, PRIV-CON-002, PRIV-CON-004, INT-GAR-009, SAFE-MED-002,
   SAFE-MED-003

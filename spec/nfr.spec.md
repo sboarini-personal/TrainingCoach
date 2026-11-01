@@ -51,7 +51,7 @@ Database migration rules (P3, ADR-022):
 - A database whose recorded schema version is newer than the code, or whose applied migration
   SQL differs from the code (checksum mismatch), is refused: no downgrade, no silent edit.
 
-### NFR-REL-005 Backup and restore (PROPOSED)
+### NFR-REL-005 Backup and restore (planned for P15)
 
 - A command exports a consistent backup of the database and blob store to a location the
   athlete chooses, and restores it. Backups contain athlete data and inherit privacy rules.

@@ -21,7 +21,8 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | FR-PRF-004 | Recurring availability and resources | functional/profile.spec.md | - | ACCEPTED |
 | FR-PRF-005 | AvailabilityException with precedence exception over recurring over default | functional/profile.spec.md | AT-AVL-001 | ACCEPTED |
 | FR-PRF-006 | Declared health constraints captured and enforced by the policy engine | functional/profile.spec.md | AT-POL-001 | ACCEPTED |
-| FR-PRF-007 | Preferred language for athlete-facing text | functional/profile.spec.md | - | PROPOSED |
+| FR-PRF-007 | Preferred language for athlete-facing text | functional/profile.spec.md | - | ACCEPTED |
+| FR-PRF-008 | Body weight over time for relative metrics | functional/profile.spec.md | - | PROPOSED |
 | FR-GOL-001 | SportEvent separate from Goal | functional/goals.spec.md | - | ACCEPTED |
 | FR-GOL-002 | Goal priority A, B, C | functional/goals.spec.md | - | ACCEPTED |
 | FR-GOL-003 | Deterministic feasibility pipeline from current state to feasibility | functional/goals.spec.md | AT-GOL-001 | ACCEPTED |
@@ -153,8 +154,8 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 |---|---|---|---|---|
 | PRIV-CON-001 | ConsentRecord model | security/privacy.spec.md | AT-CON-001 | ACCEPTED |
 | PRIV-CON-002 | Missing or revoked consent blocks dependent processing | security/privacy.spec.md | AT-CON-001 | ACCEPTED |
-| PRIV-CON-003 | Consent for processing by an external AI provider | security/privacy.spec.md | AT-CON-001 | PROPOSED |
-| PRIV-CON-004 | Unnecessary sensitive categories not ingested by default | security/privacy.spec.md | - | PROPOSED |
+| PRIV-CON-003 | Consent for processing by an external AI provider | security/privacy.spec.md | AT-CON-001 | ACCEPTED |
+| PRIV-CON-004 | Unnecessary sensitive categories not ingested by default | security/privacy.spec.md | - | ACCEPTED |
 | PRIV-ACC-001 | Athlete can inspect and export their data | security/privacy.spec.md | - | ACCEPTED |
 | PRIV-ACC-002 | Athlete can correct their data | security/privacy.spec.md | AT-RAW-001 | ACCEPTED |
 | PRIV-STO-001 | Athlete data stored outside synced folders by default | security/privacy.spec.md | AT-STO-001 | PROPOSED |
@@ -170,7 +171,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | SAFE-MED-002 | Declared red flags activate SAFETY_HOLD | safety/sport-safety.spec.md | AT-SAFE-001 | ACCEPTED |
 | SAFE-MED-003 | SAFETY_HOLD enforced by the policy engine | safety/sport-safety.spec.md | AT-SAFE-001 | ACCEPTED |
 | SAFE-MED-004 | Safety reason communicated and healthcare evaluation recommended | safety/sport-safety.spec.md | AT-SAFE-001 | ACCEPTED |
-| SAFE-MED-005 | Leaving SAFETY_HOLD requires explicit athlete action and is audited | safety/sport-safety.spec.md | AT-SAFE-001 | PROPOSED |
+| SAFE-MED-005 | Leaving SAFETY_HOLD requires explicit athlete action and is audited | safety/sport-safety.spec.md | AT-SAFE-001 | ACCEPTED |
 
 ## Non-functional
 
@@ -180,7 +181,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | NFR-REL-002 | Explicit retry strategy and no silent data loss | nfr.spec.md | AT-DEG-001 | ACCEPTED |
 | NFR-REL-003 | Optimistic concurrency on mutable aggregates | nfr.spec.md | AT-CONC-001 | ACCEPTED |
 | NFR-REL-004 | Schema versioning and explicit, non-destructive migrations | nfr.spec.md | AT-MIG-001 | ACCEPTED |
-| NFR-REL-005 | Backup and restore of the local data store | nfr.spec.md | - | PROPOSED |
+| NFR-REL-005 | Backup and restore of the local data store | nfr.spec.md | - | ACCEPTED |
 | NFR-OBS-001 | Structured observability events | nfr.spec.md | - | ACCEPTED |
 | NFR-OBS-002 | Log and telemetry redaction | nfr.spec.md | AT-SEC-002 | ACCEPTED |
 | NFR-EXP-001 | Significant plan modifications are explained | nfr.spec.md | AT-EXP-001 | ACCEPTED |

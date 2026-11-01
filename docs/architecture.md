@@ -318,7 +318,7 @@ engine for proposals -> AgentDecision audit.
 | A-14 | Specs, code and logs in English; athlete-facing language configurable, default Spanish | Proposed |
 | A-15 | Women's health and nutrition data not ingested | Proposed |
 | A-16 | Deduplication tolerances and weights as in the deduplication spec (rules 1.0.0), versioned | Proposed |
-| A-17 | V1 is for adults (18 or older) | Proposed |
+| A-17 | V1 is for adults (18 or older) | Accepted (athlete's review of 2026-10-31) |
 | A-18 | Coaching parameters (freshness windows, baseline thresholds, plausibility limits, expected fields and reliability rules of quality rules 1.0.0, recovery windows, open-water reliability, the metric input ranges and the 20 s sample gap of time in zones from P8, and the P9 sport analytics parameters: warm-up, steadiness, splits, repetition tolerances, power zone fractions and FTP window, set sizes, tennis load levels, terrain bands and trend thresholds, and the P10 strength parameters: hard-set thresholds, heavy session
 size, calf-intensive size, long-run duration, hard run and swim RPE, region tables, FIT
 exercise mapping, progression RPE overshoot, and the P11 parameters: the 28-day baseline and its
@@ -328,9 +328,9 @@ thresholds of the insights spec section 5, and the P12 parameters: readiness bas
 sufficiency, feasibility thresholds, generator volume start, step bounds, peak, unloading and
 taper fractions, session sizes, compliance band and grace day, adaptation windows, deviation,
 pain and progression thresholds, pain restriction days) are initial, versioned values to be
-reviewed with real data | Proposed |
-| A-19 | At most one ACTIVE priority-A goal | Proposed |
-| A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Proposed |
+reviewed with real data | Accepted (athlete's review of 2026-10-31) |
+| A-19 | At most one ACTIVE priority-A goal | Accepted (athlete's review of 2026-10-31) |
+| A-20 | Revoking LONG_TERM_STORAGE starts deletion of data older than the active coaching period after confirmation | Accepted (athlete's review of 2026-10-31) |
 
 Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md` section 8.
 

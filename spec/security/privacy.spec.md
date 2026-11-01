@@ -41,19 +41,21 @@ Contract: [../contracts/consent.schema.json](../contracts/consent.schema.json).
   deletion of existing data of that category. Revoking LONG_TERM_STORAGE starts deletion
   of data older than the active coaching period after confirmation (assumption A-20).
 
-## 2. External AI processing (PRIV-CON-003, PROPOSED)
+## 2. External AI processing (PRIV-CON-003)
 
 The LLM provider is a third-party processor. Without AI_PROCESSING consent no personal data
 is sent to it; deterministic features keep working. With consent, context sent to the LLM is
 minimised: derived summaries before raw data, no identifiers beyond what the task needs, no
 credentials. The provider and its data-retention terms are documented in `docs/privacy.md`.
 
-## 3. Minimisation (PRIV-CON-004, PROPOSED)
+## 3. Minimisation (PRIV-CON-004)
 
 Only data needed for training planning, performance evaluation, sports recovery and product
 security is collected. Not ingested by default: women's health data, nutrition logs, weight
 goals, location traces beyond what the activity analysis needs (GPS streams are stored but
-never sent to the LLM). The system does not infer unnecessary sensitive attributes.
+never sent to the LLM). The system does not infer unnecessary sensitive attributes. Body
+weight is not a weight goal: the athlete declares it in the profile, and its history and
+provider source are FR-PRF-008 (athlete's review of 2026-10-31).
 
 ## 4. Access and correction (PRIV-ACC-001, PRIV-ACC-002)
 

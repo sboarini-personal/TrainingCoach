@@ -1,6 +1,6 @@
 # Athlete profile, experience, availability, resources, health constraints
 
-Owner of FR-PRF-001 to FR-PRF-007. Master spec §5 to §7.
+Owner of FR-PRF-001 to FR-PRF-008. Master spec §5 to §7.
 
 General rules:
 
@@ -30,7 +30,7 @@ General rules:
 | heartRate | zoneCalculationMethod | enum | PROVIDER, PERCENT_MAX_HR, HEART_RATE_RESERVE, LACTATE_THRESHOLD_HR, CUSTOM, UNKNOWN |
 | preferences | timezone | IANA name | must exist in tz database |
 | preferences | metricUnits | boolean | default true |
-| preferences | language | BCP 47 tag | default `es` (FR-PRF-007, PROPOSED) |
+| preferences | language | BCP 47 tag | default `es` (FR-PRF-007) |
 | devices | garminModel | string | free text, untrusted |
 | sensors | sensors[] | `{type, model, reliableForTraining}` | type: HR_STRAP, CYCLING_POWER_METER, CADENCE_SENSOR, RUNNING_POD, SMART_TRAINER, OTHER |
 
@@ -113,7 +113,21 @@ PROFESSIONAL_ADVICE_DECLARED).
   interpreted. The description is screened for disclosed secrets before it is stored, as
   are availability restrictions and an event's name, place and conditions (SEC-SEC-005).
 
-## 6. Language (FR-PRF-007, PROPOSED)
+## 6. Language (FR-PRF-007)
 
 Athlete-facing text (coach messages, reports) uses the athlete's `language`. Specifications,
-code and logs are in English (assumption A-14).
+code and logs are in English (assumption A-14). Precision (athlete's review of 2026-10-31): the CLI
+stays in English in V1; the AI coach's messages and narratives (P13) use the athlete's
+language.
+
+## 7. Body weight (FR-PRF-008, PROPOSED)
+
+Requested in the athlete's review of 2026-10-31; to be specified and scheduled in a later phase.
+
+- The athlete declares body weight with its date; a history is kept, each value with its
+  provenance (`weightKg` today holds only the latest declaration).
+- Relative metrics use the weight in force on the activity's day, for example power per
+  kilogram in cycling; without a known weight they stay unknown.
+- Weight from a provider is read only if the provider documents it and the athlete grants
+  its consent; it is never inferred.
+- Weight goals, nutrition logs and women's health data stay out of scope (PRIV-CON-004).

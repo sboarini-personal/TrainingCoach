@@ -93,7 +93,7 @@ surface (P6 uploads, P7 provider, P13 agent).
 | ID | Risk | Owner decision |
 |---|---|---|
 | R-01 | Repository folder syncs to an organisational OneDrive tenant | Accepted for code and docs only (ADR-014); athlete data and secrets stay outside |
-| R-11 | Garmin Personal API terms on third-party AI processing unknown (G-5) | Athlete review before P13 uses Garmin data |
+| R-11 | Garmin Personal API terms on third-party AI processing unknown (G-5) | Accepted by the athlete (athlete's review of 2026-10-31): they declared that the data may be processed by a third-party AI provider; not verified by the application. AI_PROCESSING consent and context minimisation still apply |
 | R-12 | Parser memory limits depend on the platform: enforced by a Job Object on Windows and RLIMIT_AS on POSIX (P6); if a Job Object cannot be created the parser runs without the Windows memory limit | Record limits, output limits and timeouts apply everywhere; `memory_limit_enforced` reports it (ADR-025) |
 | R-13 | CI actions pinned to tags, not SHAs | Follow-up after the GitHub remote exists |
 | R-14 | Any process running as the same OS user can read the Windows Credential Manager entries and the data directory | Accepted for V1 single-user local use; OS account security and full-disk encryption are the boundary (A-10) |
@@ -109,7 +109,7 @@ surface (P6 uploads, P7 provider, P13 agent).
 | R-24 | Garmin JSON records are parsed in process, outside the sandbox | Standard JSON parser (executes nothing), 4 MiB cap, NaN and Infinity refused, depth errors rejected (ADR-026) |
 | R-25 | Daily recovery RAW is minimised: a new normaliser cannot re-read Garmin's original bytes for those payloads | Accepted for privacy (ADR-032); a new sync re-fetches what the provider still serves |
 | R-26 | Red-flag phrase detection has false positives (no negation handling) and cannot catch every wording | Fail-safe by design; the athlete releases a hold; lists versioned and pending review; the LLM classification flag (P13) adds a third source |
-| R-27 | Garmin activity records stored byte-exact under ACTIVITIES carry proprietary per-activity metrics (stress, Body Battery change, SpO2) of other consent categories | Never normalised, sent to the AI or exported (privacy.md); whether to minimise them like daily payloads is an open question for the athlete (the re-normalisation of ADR-029 relies on them) |
+| R-27 | Garmin activity records stored byte-exact under ACTIVITIES carry proprietary per-activity metrics (stress, Body Battery change, SpO2) of other consent categories | Never normalised, sent to the AI or exported (privacy.md); accepted by the athlete (athlete's review of 2026-10-31): they stay byte-exact, so re-normalisation (ADR-029) keeps working |
 | R-28 | Generated and adapted plans rest on initial thresholds not yet validated with real data (A-18) and on the athlete's declarations: a constraint or a pain the athlete did not declare cannot be respected | The athlete reviews and activates every version; policies deny on unknown; the health declaration is re-confirmed every 30 days; recovery, pain and safety rules reduce or hold; thresholds are versioned for review (ADR-034) |
 
 ## 5. Explicitly analysed threat classes
