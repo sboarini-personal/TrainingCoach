@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Final, TextIO
 from uuid import UUID
 
+from coach.agent.narratives import Narrator
 from coach.application.authentication import AuthenticationError
 from coach.application.authorization import AuthorizationError
 from coach.application.credentials import CredentialKind, credential_handle, expiry_state
@@ -450,12 +451,21 @@ def _dispatch(
             return insight_commands.detect(runtime, _session(runtime), stream)
         case ("insights", "list"):
             return insight_commands.list_insights(runtime, _session(runtime), args, stream)
-        case ("report", "activity"):
-            return report_commands.activity(runtime, _session(runtime), args, stream)
-        case ("report", "week"):
-            return report_commands.week(runtime, _session(runtime), args, stream)
-        case ("report", "month"):
-            return report_commands.month(runtime, _session(runtime), args, stream)
+        case ("report", "activity" | "week" | "month"):
+            scope = _session(runtime)
+            show = {
+                "activity": report_commands.activity,
+                "week": report_commands.week,
+                "month": report_commands.month,
+            }[args.action]
+            return show(
+                runtime, scope, args, stream, narrator=_narrator(runtime, scope, llm, variables)
+            )
+        case ("insights", "interpret"):
+            scope = _session(runtime)
+            return insight_commands.interpret(
+                runtime, scope, args, stream, narrator=_narrator(runtime, scope, llm, variables)
+            )
         case ("profile", "name"):
             return athlete_commands.name(runtime, _session(runtime), args, stream)
         case ("profile", "health"):
@@ -499,6 +509,18 @@ def _dispatch(
             )
         case _:  # pragma: no cover - argparse rejects anything else
             return 2
+
+
+def _narrator(
+    runtime: Runtime, scope: OwnerScope, llm: LLMProvider | None, variables: Mapping[str, str]
+) -> Callable[[], Narrator]:
+    """Built only when a narrative is asked for: the LLM key is not read otherwise."""
+
+    def build() -> Narrator:
+        provider = llm or chat_commands.llm_provider(runtime, scope, variables)
+        return chat_commands.build_narrator(runtime, provider)
+
+    return build
 
 
 def _applier(

@@ -28,6 +28,8 @@ def test_the_prompt_in_force_states_the_rules_and_carries_no_volatile_data() -> 
         "You never write plan content",
         "flagSafetyConcern",
         "Never infer a value",
+        "getOnboardingQuestions",  # the planner chooses the questions
+        "desired, realistic and minimum goals",
     ):
         assert rule in text, rule
     assert "{" not in text.replace('{"untrusted_text": ...}', "")  # nothing is templated in

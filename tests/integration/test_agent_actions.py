@@ -99,7 +99,7 @@ def test_profile_changes_are_allow_listed_and_versioned(tmp_path: Path) -> None:
     world, _goal = with_goal(tmp_path)
     version = world.data("getAthleteProfile", {"sections": ["physiology"]})["version"]
     changed = world.data("updateAthleteProfile", {"expectedVersion": version, "restingHr": 52})
-    assert changed == {"version": version + 1, "changed": ["restingHr"]}
+    assert changed == {"version": version + 1, "changed": ["restingHr"], "unknown": []}
     assert world.data("getAthleteProfile", {"sections": ["physiology"]})["restingHr"]["value"] == 52
     stale = world.error("updateAthleteProfile", {"expectedVersion": version, "maxHr": 190})
     assert stale == {"code": "CONCURRENCY_CONFLICT", "currentVersion": version + 1}

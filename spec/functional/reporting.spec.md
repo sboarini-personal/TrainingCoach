@@ -112,3 +112,19 @@ Data part 1.1.0 (P12, precision): the sections that needed plans and goals.
   race result; uncertainty ESTIMATED_VALUE), the classification, the feasibility reasons, and
   the statement that it is an estimate from the athlete's data, never a guarantee of the
   outcome.
+
+## Narrative part 1.0.0 (P13.5, precision)
+
+- `--narrative` on `coach report activity|week|month` adds the AI coach's narrative after the
+  data part (not with `--json`). It needs the AI_PROCESSING consent; without it, or when the
+  model is unavailable, the data part is still shown and the narrative says why it is not.
+- The model receives the data part as tool-shaped JSON (numbers with units, evidence and
+  display forms; external text as untrusted text) and the context block (language,
+  coaching conditions), and no tools: it can only use what it was given. Prompt
+  `narrative-1.0.0` (`coach.agent.prompts`).
+- It writes the sections the data part marks NARRATIVE (What Went Well, Recommendations),
+  or a Summary when there are none, each as `## <section>` and at most five sentences.
+- Output validation rules 1.0.0 apply with the data part and the context as the sources;
+  untraced numbers go back once, then the narrative is shown with a warning that names them.
+  No intensive training is recommended while SAFETY_HOLD or RECOVERY_BLOCK is active.
+- The narrative is written when asked and never stored, as the data part.

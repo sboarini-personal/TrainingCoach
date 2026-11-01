@@ -34,6 +34,7 @@ from coach.agent.tools.base import (
 )
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.consent.ledger import ConsentType
+from coach.domain.insights import Insight
 from coach.domain.recovery.assessment import RecoveryAssessment, RecoveryPrescription, Signal
 from coach.domain.recovery.checkin import DailyCheckIn
 from coach.domain.recovery.daily import METRICS, RecoveryMetric
@@ -192,6 +193,33 @@ def _status(
     }
 
 
+def insight_json(item: Insight) -> dict[str, Any]:
+    """An insight as tool data. The observation is written in code; an earlier reading by
+    the AI coach comes back as untrusted text (model output is never an instruction)."""
+    return {
+        "insightId": str(item.insight_id),
+        "pattern": code(item.kind),
+        "from": day(item.period.start),
+        "to": day(item.period.end),
+        "observation": item.observation,  # written in code from the evidence
+        "relationship": code(item.relationship),
+        "association": None
+        if item.association is None
+        else {
+            "variables": list(item.association.variables),
+            "sampleSize": item.association.sample_size,
+            "windowDays": item.association.window_days,
+        },
+        "confidence": code(item.confidence),
+        "uncertaintyReasons": codes(item.uncertainty_reasons),
+        "evidence": evidence(EvidenceRef(EvidenceKind.INSIGHT, item.insight_id), *item.evidence),
+        "interpretation": untrusted(item.interpretation),
+        "hypothesis": untrusted(item.hypothesis),
+        "recommendation": untrusted(item.recommendation),
+        "rulesVersion": item.rules_version,
+    }
+
+
 def _insights(
     services: AgentServices, context: ToolContext, arguments: Mapping[str, Any]
 ) -> Mapping[str, Any]:
@@ -200,30 +228,7 @@ def _insights(
     return {
         "from": day(start),
         "to": day(end),
-        "insights": [
-            {
-                "insightId": str(item.insight_id),
-                "pattern": code(item.kind),
-                "from": day(item.period.start),
-                "to": day(item.period.end),
-                "observation": item.observation,  # written in code from the evidence
-                "relationship": code(item.relationship),
-                "association": None
-                if item.association is None
-                else {
-                    "variables": list(item.association.variables),
-                    "sampleSize": item.association.sample_size,
-                    "windowDays": item.association.window_days,
-                },
-                "confidence": code(item.confidence),
-                "uncertaintyReasons": codes(item.uncertainty_reasons),
-                "evidence": evidence(
-                    EvidenceRef(EvidenceKind.INSIGHT, item.insight_id), *item.evidence
-                ),
-                "rulesVersion": item.rules_version,
-            }
-            for item in found
-        ],
+        "insights": [insight_json(item) for item in found],
     }
 
 

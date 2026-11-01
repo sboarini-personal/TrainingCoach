@@ -10,13 +10,15 @@ until the AI coach (P13). A finding already stored is not stored again.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from enum import StrEnum
 from typing import Final
+from uuid import UUID
 
 from coach.application.analytics import AnalyticsService
 from coach.application.consent import ConsentGate
+from coach.application.errors import NotFoundError
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, EventSink, IdFactory, OwnedRepository
@@ -29,7 +31,7 @@ from coach.domain.common.quality import UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.common.time import DateRange
 from coach.domain.consent.ledger import ConsentType
-from coach.domain.insights import Insight, Pattern, Relationship, readable
+from coach.domain.insights import AgentVersion, Insight, Pattern, Relationship, readable
 from coach.domain.recovery.daily import RecoveryMetric
 from coach.metrics.catalog import CATALOG, SRPE_LOAD_TOTAL
 from coach.metrics.derived import MetricSubject, SubjectKind
@@ -136,6 +138,31 @@ class InsightService:
             skipped.append((Pattern.SLEEP_PERFORMANCE, NotEvaluated.NO_CONSENT))
         insights, new = self._keep(scope, found)
         return DetectionReport(today, insights, new, tuple(skipped))
+
+    def interpret(
+        self,
+        scope: OwnerScope,
+        insight_id: UUID,
+        *,
+        interpretation: str,
+        hypothesis: str | None,
+        recommendation: str | None,
+        agent: AgentVersion,
+    ) -> Insight:
+        """The AI coach's reading of a stored insight (insights spec 2, P13.5), recorded with
+        the prompt and model that wrote it. The observation and its evidence never change;
+        an insight whose data may not be read with the consents granted now is not found."""
+        found = self._insights.get(scope, insight_id)
+        if not readable(found.kind, self._consents.granted(scope)):
+            raise NotFoundError
+        changed = replace(
+            found,
+            interpretation=interpretation,
+            hypothesis=hypothesis,
+            recommendation=recommendation,
+            agent_version=agent,
+        )
+        return self._insights.update(scope, changed, expected_version=found.version)
 
     def recent(self, scope: OwnerScope, *, until: date, days: int) -> Sequence[Insight]:
         """Stored insights whose days reach into the period and whose data may be read with

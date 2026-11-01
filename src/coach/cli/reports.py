@@ -1,23 +1,27 @@
 """``coach report`` commands: the data part of the reports (P11; reporting spec).
 
 Numbers come from the report service with their evidence; this module only formats them, or
-prints the report-data document with ``--json``. The narrative part arrives with the AI coach
-(P13).
+prints the report-data document with ``--json``. ``--narrative`` adds the AI coach's
+narrative, written from the data part only (P13.5; FR-AGT-004).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from typing import TextIO
 from uuid import UUID
 
+from coach.agent.narratives import Narrator
 from coach.application.consent import ConsentRequiredError
 from coach.application.contracts.reports import report_to_contract
 from coach.application.errors import NotFoundError, TimezoneRequiredError
+from coach.application.llm import LLMUnavailableError
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
 from coach.cli.analytics import amount, week_argument
+from coach.cli.chat import ai_unavailable
 from coach.cli.runtime import Runtime
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.reports import ReportData, ReportItem
@@ -35,6 +39,11 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     month.add_argument("--month", help="YYYY-MM")
     for parser in (activity, week, month):
         parser.add_argument("--json", action="store_true", help="the report-data document")
+        parser.add_argument(
+            "--narrative",
+            action="store_true",
+            help="add the AI coach's narrative (needs the ai-processing consent)",
+        )
 
 
 def _value(item: ReportItem) -> str:
@@ -69,15 +78,42 @@ def _print(report: ReportData, title: str, out: TextIO) -> None:
     print(f"Missing data: {missing or 'none'}", file=out)
 
 
-def _emit(report: ReportData, title: str, args: argparse.Namespace, out: TextIO) -> int:
+type NarratorFactory = Callable[[], Narrator]
+
+
+def _emit(
+    report: ReportData,
+    title: str,
+    args: argparse.Namespace,
+    out: TextIO,
+    *,
+    scope: OwnerScope,
+    narrator: NarratorFactory | None,
+) -> int:
     if args.json:
         print(json.dumps(report_to_contract(report), ensure_ascii=False, indent=2), file=out)
-    else:
-        _print(report, title, out)
+        return 0
+    _print(report, title, out)
+    if not getattr(args, "narrative", False) or narrator is None:
+        return 0
+    try:
+        narrative = narrator().report(scope, report)
+    except (ConsentRequiredError, LLMUnavailableError) as error:
+        print(f"Narrative: not available ({ai_unavailable(error)})", file=out)
+        return 1
+    print(f"Narrative (AI coach, from the data above): {narrative.outcome.value}", file=out)
+    print(narrative.text, file=out)
     return 0
 
 
-def activity(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+def activity(
+    runtime: Runtime,
+    scope: OwnerScope,
+    args: argparse.Namespace,
+    out: TextIO,
+    *,
+    narrator: NarratorFactory | None = None,
+) -> int:
     try:
         report = runtime.reports.post_activity(scope, UUID(args.activity_id))
     except ValueError:
@@ -86,19 +122,34 @@ def activity(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out:
         raise CommandError("activity not found") from None
     except ConsentRequiredError:
         raise CommandError(CONSENT_HINT) from None
-    return _emit(report, f"post-activity report {report.subject}", args, out)
+    title = f"post-activity report {report.subject}"
+    return _emit(report, title, args, out, scope=scope, narrator=narrator)
 
 
-def week(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+def week(
+    runtime: Runtime,
+    scope: OwnerScope,
+    args: argparse.Namespace,
+    out: TextIO,
+    *,
+    narrator: NarratorFactory | None = None,
+) -> int:
     key = week_argument(args.week, runtime, scope)
     try:
         report = runtime.reports.weekly(scope, key)
     except TimezoneRequiredError:
         raise CommandError(TIMEZONE_HINT) from None
-    return _emit(report, f"weekly report {key}", args, out)
+    return _emit(report, f"weekly report {key}", args, out, scope=scope, narrator=narrator)
 
 
-def month(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+def month(
+    runtime: Runtime,
+    scope: OwnerScope,
+    args: argparse.Namespace,
+    out: TextIO,
+    *,
+    narrator: NarratorFactory | None = None,
+) -> int:
     try:
         key = args.month or runtime.recovery.today(scope).strftime("%Y-%m")
         report = runtime.reports.monthly(scope, key)
@@ -106,4 +157,4 @@ def month(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Te
         raise CommandError(TIMEZONE_HINT) from None
     except DomainValidationError as error:
         raise CommandError(str(error)) from None
-    return _emit(report, f"monthly report {key}", args, out)
+    return _emit(report, f"monthly report {key}", args, out, scope=scope, narrator=narrator)

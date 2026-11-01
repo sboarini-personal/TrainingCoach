@@ -39,11 +39,37 @@ from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.common.provenance import FieldValue
 from coach.domain.common.sport import Sport
 from coach.domain.goals.goal import Goal, GoalStatus, SportEvent
+from coach.domain.onboarding.planner import OnboardingField
 
 SECTIONS: Final = ("basics", "physiology", "devices", "experience", "resources", "health")
 CATALOGUE_CODES: Final = frozenset({"exercise_id", "familiar_exercise_ids"})
 AVAILABILITY_DAYS: Final = 14  # the default: today and the next 13 days
 _SPORTS: Final = tuple(sport for sport in Sport if sport is not Sport.OTHER)
+_F: Final = OnboardingField
+# How each onboarding answer is recorded: a coach tool for the allow-listed fields, else the
+# athlete's own command (consents and health declarations never go through the AI coach).
+ANSWERS: Final[Mapping[OnboardingField, Mapping[str, str]]] = {
+    _F.CONSENT_DECISIONS: {"command": "coach consent grant <type> | coach consent decline <type>"},
+    _F.DISPLAY_NAME: {"command": "coach profile name <name>"},
+    _F.BIRTH_DATE_OR_AGE: {"command": "coach profile birth-date YYYY-MM-DD"},
+    _F.TIMEZONE: {"command": "coach profile timezone <IANA name>"},
+    _F.UNITS: {"tool": "updateAthleteProfile", "field": "metricUnits"},
+    _F.LANGUAGE: {"tool": "updateAthleteProfile", "field": "language"},
+    _F.HEIGHT: {"tool": "updateAthleteProfile", "field": "heightCm"},
+    _F.WEIGHT: {"status": "NOT_COLLECTED_YET"},  # body weight: a later phase (D-11)
+    _F.HEALTH_CONSTRAINTS: {"command": "coach profile health"},
+    _F.PRIMARY_GOAL: {"tool": "saveGoal", "then": "coach goal activate <goal id>"},
+    _F.GOAL_SPORT_EXPERIENCE: {"command": "coach profile experience <sport>"},
+    _F.OTHER_SPORTS_EXPERIENCE: {"command": "coach profile experience <sport>"},
+    _F.RESTING_HR: {"tool": "updateAthleteProfile", "field": "restingHr"},
+    _F.MAX_HR: {"tool": "updateAthleteProfile", "field": "maxHr"},
+    _F.WEEKLY_AVAILABILITY: {"command": "coach availability set"},
+    _F.RESOURCES: {"command": "coach profile resources"},
+    _F.STRENGTH_EXPERIENCE: {"command": "coach profile experience strength"},
+    _F.TENNIS: {"command": "coach profile experience tennis"},
+    _F.GARMIN_MODEL: {"command": "coach profile sensors"},
+    _F.SENSORS: {"command": "coach profile sensors"},
+}
 
 
 class _Fields:
@@ -259,6 +285,22 @@ def _readiness(
     }
 
 
+def _questions(
+    services: AgentServices, context: ToolContext, _arguments: Mapping[str, Any]
+) -> Mapping[str, Any]:
+    batch = services.inputs.questions(context.scope)
+    if batch is None:
+        return {"complete": True, "questions": []}
+    return {
+        "complete": False,
+        "group": batch.group.value,
+        "inputClass": code(batch.input_class),
+        "questions": [
+            {"field": field.value, "answerWith": dict(ANSWERS[field])} for field in batch.fields
+        ],
+    }
+
+
 def _feasibility(
     services: AgentServices, context: ToolContext, arguments: Mapping[str, Any]
 ) -> Mapping[str, Any]:
@@ -345,6 +387,15 @@ def athlete_tools(services: AgentServices) -> list[Tool]:
             "lifecycle state. Reads only; changes nothing.",
             schema(),
             partial(_readiness, services),
+        ),
+        Tool(
+            "getOnboardingQuestions",
+            ToolKind.READ,
+            "The next onboarding questions, chosen by the application: at most five related "
+            "fields, in order, never one already known. Ask exactly these, in one message, "
+            "and say how each answer is recorded (a tool, or the athlete's own command).",
+            schema(),
+            partial(_questions, services),
         ),
         Tool(
             "getGoalFeasibility",

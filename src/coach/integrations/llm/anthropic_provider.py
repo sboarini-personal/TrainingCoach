@@ -75,24 +75,27 @@ class AnthropicProvider:
         if key is None:
             raise LLMUnavailableError(LLMFailure.NO_API_KEY)
         client = self._client_factory(key.reveal())
+        options: dict[str, Any] = {}
+        if request.tools:  # a narrative is written without tools
+            options["tools"] = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "input_schema": dict(tool.input_schema),
+                }
+                for tool in request.tools
+            ]
         try:
             with client.beta.messages.stream(
                 model=self._model,
                 max_tokens=self._max_tokens,
                 system=request.system,
-                tools=[
-                    {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "input_schema": dict(tool.input_schema),
-                    }
-                    for tool in request.tools
-                ],
                 messages=[dict(message) for message in request.messages],
                 output_config={"effort": self._effort},
                 cache_control={"type": "ephemeral"},
                 betas=[FALLBACK_BETA],
                 fallbacks="default",
+                **options,
             ) as stream:
                 if on_text is not None:
                     for text in stream.text_stream:

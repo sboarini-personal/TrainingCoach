@@ -71,7 +71,7 @@ from coach.domain.goals.goal import (
     SportEvent,
     ensure_single_active_primary,
 )
-from coach.domain.onboarding.planner import OnboardingSnapshot
+from coach.domain.onboarding.planner import OnboardingSnapshot, QuestionBatch, next_questions
 from coach.domain.onboarding.readiness import (
     HistoryFacts,
     HistorySufficiency,
@@ -410,6 +410,11 @@ class AthleteInputsService:
         return assess_feasibility(
             goal, self.profile(scope), self.availability(scope), today=self._today(scope)
         )
+
+    def questions(self, scope: OwnerScope) -> QuestionBatch | None:
+        """The next onboarding questions, decided in code (FR-ONB-001, FR-ONB-002): at most
+        five related fields, none already known within its freshness window."""
+        return next_questions(self._snapshot(scope), now=self._clock())
 
     # ------------------------------------------------------------------ readiness
 

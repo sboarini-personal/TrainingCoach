@@ -15,7 +15,8 @@ from collections.abc import Callable, Mapping
 from typing import Final, TextIO
 
 from coach.agent.coach import Coach, CoachReply, MessageTooLongError
-from coach.agent.prompts import system_prompt
+from coach.agent.narratives import Narrator
+from coach.agent.prompts import narrative_prompt, system_prompt
 from coach.agent.services import AgentServices
 from coach.agent.tools import coach_tools
 from coach.agent.tools.base import Toolbox
@@ -113,6 +114,25 @@ def build_coach(
     )
 
 
+def build_narrator(runtime: Runtime, llm: LLMProvider) -> Narrator:
+    return Narrator(
+        llm=llm, prompt=narrative_prompt(), services=agent_services(runtime), events=runtime.events
+    )
+
+
+def ai_unavailable(error: ConsentRequiredError | LLMUnavailableError) -> str:
+    """Why the AI coach cannot write now, and what to do (no secret, no detail)."""
+    if isinstance(error, ConsentRequiredError):
+        return (
+            "the AI coach sends your data to the LLM provider only with your consent: run "
+            "`coach consent grant ai-processing`"
+        )
+    return (
+        f"the AI coach is not available now ({error.failure.value}): "
+        f"{_UNAVAILABLE[error.failure]}. Every other command keeps working."
+    )
+
+
 def _show(reply: CoachReply, out: TextIO) -> None:
     for notice in reply.notices:
         print(notice, file=out)
@@ -156,19 +176,11 @@ def chat(
             )
         except ConsentRequiredError as error:
             if ConsentType.AI_PROCESSING in error.missing:
-                print(
-                    "error: the AI coach sends your data to the LLM provider only with your "
-                    "consent: run `coach consent grant ai-processing`",
-                    file=out,
-                )
+                print(f"error: {ai_unavailable(error)}", file=out)
                 return 2
             raise
         except LLMUnavailableError as error:
-            print(
-                f"error: the AI coach is not available now ({error.failure.value}): "
-                f"{_UNAVAILABLE[error.failure]}. Every other command keeps working.",
-                file=out,
-            )
+            print(f"error: {ai_unavailable(error)}", file=out)
             return 1
         except MessageTooLongError as error:
             print(f"error: {error}", file=out)

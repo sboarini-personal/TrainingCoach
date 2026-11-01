@@ -61,11 +61,12 @@ are added per tool in the implementing phase (P13) and covered by contract tests
 | Tool | Kind | Input (summary) | Output (summary) | Policies |
 |---|---|---|---|---|
 | getAthleteProfile | READ | `sections[]?` (basics, physiology, devices, experience, resources, health) | profile with UNKNOWN markers and provenance; an age, not the birth date | |
-| updateAthleteProfile | WRITE_INTERNAL | `expectedVersion` and allow-listed fields: `heightCm`, `restingHr`, `maxHr`, `metricUnits`, `language` | new profile version and the fields changed | mass-assignment allow-list (SEC-AUTHZ-003); `CONCURRENCY_CONFLICT {currentVersion}` |
+| updateAthleteProfile | WRITE_INTERNAL | `expectedVersion` and allow-listed fields: `heightCm`, `restingHr`, `maxHr`, `metricUnits`, `language`; `unknown[]` (`heightCm`, `restingHr`, `maxHr`) for "I don't know" | new profile version and the fields changed | mass-assignment allow-list (SEC-AUTHZ-003); `CONCURRENCY_CONFLICT {currentVersion}` |
 | getGoals | READ | `status?` | goals (with baseline evidence) and events | |
 | saveGoal | WRITE_INTERNAL | `sport`, `targetDate`, `priority`, `distanceMeters?`, `targetTimeSeconds?`, `eventId?` | a DRAFT goal and the command that activates it | the athlete activates (at most one ACTIVE A goal) |
 | getGoalFeasibility | READ | `goalId?` (default: the primary goal) | feasibility now: classification, confidence, reasons, current level, alternatives | |
 | getReadiness | READ | none | Definition of Ready, missing inputs, history sufficiency, lifecycle; changes nothing | |
+| getOnboardingQuestions | READ | none | the planner's next group: at most five fields, each with how its answer is recorded (a coach tool or the athlete's command) | FR-ONB-001, FR-ONB-002 |
 | getAvailability | READ | `from?`, `to?` (default: today and 13 days) | effective availability per date and the weekly declaration | |
 | getActivities | READ | `from?`, `to?` (default 14 days), `sport?`, `limit` (max 100) | activity summaries with quality | consent ACTIVITIES |
 | getActivityDetail | READ | `activityId` | canonical activity (no raw streams), quality, corrected fields, source summary, metrics, open issues | ownership, consent ACTIVITIES |

@@ -14,6 +14,7 @@ cannot take. Significant decisions are handed to the pipeline as pending decisio
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import date
 from functools import partial
 from typing import Any, Final
@@ -53,6 +54,7 @@ SCALE: Final = {"type": "integer", "minimum": 1, "maximum": 5}
 CHECKIN_SCALES: Final = ("sleepQuality", "fatigue", "soreness", "stress", "motivation")
 PROFILE_FIELDS: Final = ("heightCm", "restingHr", "maxHr", "metricUnits", "language")
 LANGUAGES: Final = ("es", "en")
+UNKNOWABLE: Final = ("heightCm", "restingHr", "maxHr")
 REDUCTIONS: Final = frozenset({Decision.REDUCE, Decision.REST})
 DELETION_SCOPES: Final = ("ALL", "ACTIVITIES", "RECOVERY", "CHECKINS", "PLANS", "CONVERSATIONS")
 _STATED: Final = (
@@ -144,7 +146,11 @@ def _profile(
     current = services.inputs.profile(context.scope)
     if current.version != arguments["expectedVersion"]:
         raise ToolError(ToolOutcome.CONCURRENCY_CONFLICT, currentVersion=current.version)
-    declared = partial(FieldValue.declared, at=services.clock())
+    now = services.clock()
+    declared = partial(FieldValue.declared, at=now)
+    unknown = set(arguments.get("unknown", ()))
+    if unknown & set(arguments):
+        raise ToolError(ToolOutcome.VALIDATION_ERROR, reason="VALUE_AND_UNKNOWN")
     changes = {key: arguments[key] for key in PROFILE_FIELDS if key in arguments}
     update = ProfileUpdate(
         height_cm=declared(float(changes["heightCm"])) if "heightCm" in changes else None,
@@ -153,8 +159,15 @@ def _profile(
         metric_units=declared(bool(changes["metricUnits"])) if "metricUnits" in changes else None,
         language=declared(str(changes["language"])) if "language" in changes else None,
     )
+    if unknown:  # "I don't know": UNKNOWN, not asked again within its window (FR-ONB-002)
+        update = replace(
+            update,
+            height_cm=FieldValue.unknown(at=now) if "heightCm" in unknown else update.height_cm,
+            resting_hr=FieldValue.unknown(at=now) if "restingHr" in unknown else update.resting_hr,
+            max_hr=FieldValue.unknown(at=now) if "maxHr" in unknown else update.max_hr,
+        )
     saved = services.inputs.update_profile(context.scope, update)
-    return {"version": saved.version, "changed": sorted(changes)}
+    return {"version": saved.version, "changed": sorted(changes), "unknown": sorted(unknown)}
 
 
 def _goal(
@@ -398,6 +411,13 @@ def action_tools(services: AgentServices) -> list[Tool]:
                         "maxHr": {"type": "integer", "minimum": 100, "maximum": 230},
                         "metricUnits": {"type": "boolean"},
                         "language": {"enum": list(LANGUAGES)},
+                        "unknown": {
+                            "type": "array",
+                            "items": {"enum": list(UNKNOWABLE)},
+                            "minItems": 1,
+                            "uniqueItems": True,
+                            "description": "Fields the athlete said they do not know.",
+                        },
                     },
                     "expectedVersion",
                 ),

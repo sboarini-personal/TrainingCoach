@@ -20,7 +20,12 @@ implemented (the condition was never raised). Now:
 - AT-STM-001 is executed by `tests/unit/test_coaching_state.py` (every transition, every
   condition with every state) and `tests/unit/test_coaching_conditions.py` (every change
   audited).
-- AT-ONB-001 marks the planner tests; its dialogue part still waits for P13.
+- AT-ONB-001 marks the planner tests; its dialogue part is executed since P13.5 by
+  `tests/integration/test_agent_narratives.py`: the coach's `getOnboardingQuestions`
+  tool returns the planner's group (at most five fields, none already known, each with
+  how its answer is recorded), and an "I don't know" recorded through
+  `updateAthleteProfile` (`unknown`) is not asked again. Whether the model asks exactly
+  those questions is an agent evaluation (simulated, P13.6).
 
 ### AT-ONB-001 — Progressive onboarding without repeated questions
 - Requirements: FR-ONB-001, FR-ONB-002

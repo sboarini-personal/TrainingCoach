@@ -7,6 +7,7 @@ SDK error. The planted API key must never leave the adapter except into the clie
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import Any
 
 import anthropic
@@ -193,3 +194,11 @@ def test_without_a_key_nothing_is_sent() -> None:
     assert client.calls == []
     with pytest.raises(ValueError, match="effort is one of"):
         AnthropicProvider(lambda: None, effort="extreme")
+
+
+@pytest.mark.req("FR-AGT-004")
+def test_a_request_without_tools_sends_no_tools_field() -> None:
+    client, keys = FakeClient(), list[str]()
+    provider(client, keys).reply(replace(REQUEST, tools=()))
+    (call,) = client.calls
+    assert "tools" not in call  # a narrative is written from the data it was given

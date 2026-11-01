@@ -63,7 +63,7 @@ Detection is code (`coach.planning.patterns`, run by `coach insights detect`); e
 threshold is an initial value under A-18, pending review. An observation states only numbers
 present in its evidence, or computed in code from them, and says how (a mean, a share, a
 ratio, a least-squares trend). Interpretation, hypothesis and recommendation stay null until
-the AI coach (P13). An insight equal to a stored one (same pattern, days, observation and
+the AI coach reads the insight (P13.5, below). An insight equal to a stored one (same pattern, days, observation and
 evidence) is not stored again; `coach insights list` shows the stored ones.
 
 | Pattern | Rule (window ending today, athlete's timezone) | Evidence | Confidence |
@@ -101,3 +101,19 @@ keep their version):
   SLEEP_PERFORMANCE; none for INSUFFICIENT_RECOVERY and ACCUMULATED_FATIGUE, built from
   the athlete's own declarations and decisions): a revocation hides them at once (privacy
   spec 1); deleting them comes with the deletion workflow (P15).
+
+## 6. The AI coach's reading (P13.5, precision)
+
+- `coach insights interpret [--days]` asks the AI coach to read the stored insights of the
+  period that have no reading yet (only insights whose consents are granted now). The model
+  receives the insight as tool-shaped JSON and the context block, and no tools (prompt
+  `narrative-1.0.0`).
+- It answers a JSON object `interpretation` (required), `hypothesis` (explicitly tentative,
+  or null) and `recommendation` (a training action to consider, or null). An answer that is
+  not that object is not stored.
+- Output validation rules 1.0.0 apply with the insight and the context as the sources; a
+  reading whose numbers do not trace after one correction is not stored.
+- While SAFETY_HOLD or RECOVERY_BLOCK is active, the recommendation is not stored (code, not
+  prompt). The reading is stored with `agentVersion` (the prompt version and the answering
+  model); the observation, evidence and confidence never change. A stored reading reaches
+  the coach again only as untrusted text.

@@ -122,7 +122,7 @@ class MessageTooLongError(DomainValidationError):
         super().__init__(f"a message has at most {MAX_MESSAGE_LENGTH} characters")
 
 
-def _texts(language: str) -> dict[str, str]:
+def texts_for(language: str) -> dict[str, str]:
     return _TEXTS.get(language.split("-", 1)[0].lower(), _TEXTS["es"])
 
 
@@ -247,7 +247,7 @@ class Coach:
         )
         exchange = _Exchange([user], [context, text], [], [], ToolContext(scope, today, principal))
         history = [] if conversation is None else conversation.messages()
-        texts = _texts(language)
+        texts = texts_for(language)
         try:
             final = self._answer(history, exchange)
             answer, outcome = self._read(final, texts)
