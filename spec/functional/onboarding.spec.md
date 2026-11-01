@@ -199,9 +199,11 @@ DATA_INCOMPLETE (precision, review of 2026-10-31; `coach.application.athlete_inp
 - **Reasons.** It is active for either of two reasons:
   - `AVAILABILITY_UNDEFINED`: once availability is declared, a day of the coming 7 days that
     no exception, recurring availability or default makes plannable (profile spec 4);
-  - `REQUIRED_INPUT_MISSING`: once onboarding is over, a REQUIRED input that is missing or
-    stale (section 2). During onboarding a missing input is expected, not "becomes
-    missing".
+  - `REQUIRED_INPUT_MISSING`: once onboarding is over (the lifecycle is past ONBOARDING),
+    a REQUIRED input that is missing or stale (section 2). During onboarding a missing
+    input is expected, not "becomes missing". An athlete who never records the
+    AI_PROCESSING decision stays NEW_USER, so this reason does not apply; readiness still
+    refuses the plan (review of 2026-11-01).
 - **Evaluation.** The reasons are evaluated after every change of the athlete's inputs and
   whenever readiness is assessed. The condition clears with reason `INPUT_PROVIDED` when
   neither holds.

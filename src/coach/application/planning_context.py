@@ -14,6 +14,7 @@ from datetime import date
 from uuid import UUID
 
 from coach.application.athlete_inputs import AthleteInputsService
+from coach.application.consent import ConsentRequiredError
 from coach.application.ownership import OwnerScope
 from coach.domain.recovery.assessment import RecoveryPrescription
 from coach.domain.recovery.checkin import DailyCheckIn
@@ -54,5 +55,15 @@ class PlanningContextSource:
             pain=PainRestriction()
             if self._checkins is None
             else pain_restriction(self._checkins(scope, day, PAIN_RESTRICTION_DAYS), day),
-            done=frozenset() if self._done is None else frozenset(self._done(scope, day)),
+            done=self._done_from(scope, day),
         )
+
+    def _done_from(self, scope: OwnerScope, day: date) -> frozenset[UUID]:
+        """Work already done, which the policies read as history; without the activities
+        consent nothing counts as done, so every workout is checked (strict)."""
+        if self._done is None:
+            return frozenset()
+        try:
+            return frozenset(self._done(scope, day))
+        except ConsentRequiredError:
+            return frozenset()

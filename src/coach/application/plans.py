@@ -148,9 +148,6 @@ class PlanService:
         transaction. Other proposals stay PROPOSED until activated or rejected."""
         if plan_id is None and (parent is not None or replaces is not None):
             raise DomainValidationError("the first version of a plan has no parent")
-        goal = self._goals.get(scope, goal_id)  # the athlete's own goal, or NotFoundError
-        if goal.status not in OPEN_GOALS:
-            raise DomainValidationError("a closed goal gets no new plan")
         ready = self._readiness(scope)
         if ready.status is ReadinessStatus.NOT_READY:
             raise PlanNotReadyError(ready.missing_required)
@@ -158,6 +155,34 @@ class PlanService:
             raise DomainValidationError(
                 "with preferred inputs missing only a provisional plan may be proposed (FR-ONB-004)"
             )
+        return self._propose(
+            scope,
+            goal_id=goal_id,
+            content=content,
+            generator=generator,
+            plan_id=plan_id,
+            parent=parent,
+            replaces=replaces,
+            actor=actor,
+        )
+
+    def _propose(
+        self,
+        scope: OwnerScope,
+        *,
+        goal_id: UUID,
+        content: PlanContent,
+        generator: Generator,
+        plan_id: UUID | None,
+        parent: int | None,
+        replaces: int | None,
+        actor: ActorKind,
+    ) -> PlanVersion:
+        """A proposal once readiness allows it (``propose``), or for the athlete's own edit
+        of the plan they already activated (``edit``): the goal and every plan policy."""
+        goal = self._goals.get(scope, goal_id)  # the athlete's own goal, or NotFoundError
+        if goal.status not in OPEN_GOALS:
+            raise DomainValidationError("a closed goal gets no new plan")
         self._gate.enforce(
             scope,
             Action(
@@ -290,18 +315,20 @@ class PlanService:
         plan_id: UUID,
         content: PlanContent,
         *,
+        base: int,
         expected_revision: int,
         summary: str,
     ) -> PlanVersion:
-        """The athlete's own change of the ACTIVE version, active at once (edit rules,
-        athlete's review of 2026-10-31): a new version whose parent is the ACTIVE one,
+        """The athlete's own change of the ACTIVE version ``base``, active at once (edit
+        rules, athlete's review of 2026-10-31): a new version whose parent is ``base``,
         checked by every plan policy and by activation's (a safety hold denies it), then
-        activated. Refused while a proposed version waits, which it would leave behind."""
+        activated. The Definition of Ready is not asked again: the athlete changes the plan
+        they activated. Refused while a proposed version waits (it would leave it behind)
+        and when the plan changed since it was read; a version whose activation fails is
+        withdrawn, so nothing is left waiting."""
         header = self._headers.get(scope, plan_id)
-        if header.version != expected_revision:
+        if header.version != expected_revision or header.active_number != base:
             raise ConcurrencyConflictError("the plan changed since it was read")
-        if header.active_number is None:
-            raise DomainValidationError("this plan has no ACTIVE version to change")
         latest = self.version(scope, plan_id, header.latest_number)
         if latest.status is PlanStatus.PROPOSED:
             raise DomainValidationError(
@@ -318,22 +345,27 @@ class PlanService:
                 activates_plan=True,
             ),
         )
-        proposed = self.propose(
+        proposed = self._propose(
             scope,
             goal_id=active.goal_id,
             content=content,
             generator=Generator(kind=GeneratorKind.ATHLETE, engine_version=EDIT_RULES_VERSION),
             plan_id=plan_id,
             parent=active.number,
+            replaces=None,
             actor=ActorKind.USER,
         )
-        return self.activate(
-            scope,
-            plan_id,
-            proposed.number,
-            expected_revision=self._headers.get(scope, plan_id).version,
-            reason=summary,
-        )
+        try:
+            return self.activate(
+                scope,
+                plan_id,
+                proposed.number,
+                expected_revision=self._headers.get(scope, plan_id).version,
+                reason=summary,
+            )
+        except ApplicationError:  # a hold or a change arrived meanwhile
+            self.reject(scope, plan_id, proposed.number)
+            raise
 
     def reject(self, scope: OwnerScope, plan_id: UUID, number: int) -> PlanVersion:
         """The athlete rejects a PROPOSED version (an ACTIVE one is superseded only by

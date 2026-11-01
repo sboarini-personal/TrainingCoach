@@ -77,10 +77,16 @@ Contract: [../contracts/training-plan.schema.json](../contracts/training-plan.sc
     ACTIVE one, generator `ATHLETE` (`engineVersion` = edit rules version). It is checked by
     every plan policy and by activation's own policy (a safety hold denies it), then
     activated in the same command, with the edit as its activation reason. Nothing is
-    written when a policy denies it.
+    written when a policy denies it; a version whose activation then fails (a hold or a
+    change arriving meanwhile) is withdrawn, so nothing is left waiting. The Definition
+    of Ready is not asked again: the athlete changes the plan they activated (review of 2026-11-01).
   - **Refusals.** An edit is refused while a proposed version waits for the athlete (it
-    would leave it behind), and when the plan changed since it was read.
-  - **What changes.** Only workouts from today on, not done yet, change. A move goes to a
+    would leave it behind), and when the plan changed since it was read: the edit names
+    the version it was built on. An edit needs the ACTIVITIES consent, because what is
+    done is read from the activities (review of 2026-11-01).
+  - **What changes.** Only workouts from today on, not done yet, change. Done means with
+    activities, from today to the end of the week: a link may place an activity on a
+    later day of its week (review of 2026-11-01). A move goes to a
     day of the plan, from today on; a rest day that receives a workout is no longer a rest
     day. Only steady sessions (one steady step, with or without a warm-up and a cool-down)
     and recovery sessions change their minutes (10 to 300), at the same effort.

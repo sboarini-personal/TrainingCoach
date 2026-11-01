@@ -250,6 +250,9 @@ def garmin_rpe(value: object) -> float | None:
 class GarminActivityRecords:
     """Implements ``ProviderRecords`` for Garmin activity details."""
 
+    def normaliser_versions(self) -> Mapping[str, str]:
+        return {NORMALISER: RULES_VERSION}
+
     def decode(
         self, data: bytes, *, provider_object_id: str, received_at: datetime
     ) -> Sequence[DecodedSession]:

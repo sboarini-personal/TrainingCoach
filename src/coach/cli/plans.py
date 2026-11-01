@@ -256,6 +256,7 @@ def _edit(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Te
     active = runtime.plans.active(scope)
     if active is None:
         raise CommandError("there is no ACTIVE plan to change")
+    revision = runtime.plans.plan(scope, active.plan_id).version  # read with the content
     today = runtime.recovery.today(scope)
     done = runtime.executions.done_workouts(scope, today)
     workout = _target(active.content, args.workout)
@@ -272,9 +273,13 @@ def _edit(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Te
                 active.content, workout.workout_id, args.minutes, today=today, done=done
             )
             summary = f"changed by you: the {what} to {args.minutes} minutes"
-    revision = runtime.plans.plan(scope, active.plan_id).version
     stored = runtime.plans.edit(
-        scope, active.plan_id, content, expected_revision=revision, summary=summary
+        scope,
+        active.plan_id,
+        content,
+        base=active.number,
+        expected_revision=revision,
+        summary=summary,
     )
     print(f"{summary}; plan {stored.plan_id} version {stored.number} is ACTIVE", file=out)
     return 0

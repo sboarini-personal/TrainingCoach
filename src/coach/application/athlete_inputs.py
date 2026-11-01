@@ -382,7 +382,9 @@ class AthleteInputsService:
         )
         if target_date < today:
             raise DomainValidationError("a goal's target date is today or later")
-        return self._goals.add(scope, goal)
+        saved = self._goals.add(scope, goal)
+        self._sync_incomplete(scope)
+        return saved
 
     def goals(self, scope: OwnerScope) -> list[Goal]:
         return sorted(
@@ -440,6 +442,11 @@ class AthleteInputsService:
         if past_onboarding and readiness.missing_required:
             found.append(Incomplete.REQUIRED_INPUT_MISSING)
         return tuple(found)
+
+    def refresh_incomplete(self, scope: OwnerScope) -> tuple[Incomplete, ...]:
+        """Re-evaluate DATA_INCOMPLETE after a profile change made elsewhere (the
+        timezone, the birth date)."""
+        return self._sync_incomplete(scope)
 
     def _sync_incomplete(
         self, scope: OwnerScope, readiness: Readiness | None = None

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Final, Protocol
@@ -145,6 +145,11 @@ class ProviderRecords(Protocol):
     def decode(
         self, data: bytes, *, provider_object_id: str, received_at: datetime
     ) -> Sequence[DecodedSession]: ...
+
+    def normaliser_versions(self) -> Mapping[str, str]:
+        """Current version of each record normaliser by name, for re-normalisation
+        (ADR-029)."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)

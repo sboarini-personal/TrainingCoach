@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +33,10 @@ class FakeGarminRecords:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.version = "1.0.0"
+
+    def normaliser_versions(self) -> Mapping[str, str]:
+        return {"garmin_activity": self.version}
 
     def decode(
         self, data: bytes, *, provider_object_id: str, received_at: datetime
@@ -47,13 +51,15 @@ class FakeGarminRecords:
             "timing.elapsedSeconds": float(document["seconds"]),
             "distance.meters": float(document["seconds"]) * 3.0,
             "metadata.name": document.get("name"),
+            # rules 1.1.0 read the athlete's RPE entered in Garmin Connect (G-8)
+            "subjective.rpe": document.get("rpe") if self.version >= "1.1.0" else None,
         }
         return [
             DecodedSession(
                 part=0,
                 values={path: value for path, value in values.items() if value is not None},
                 normaliser="garmin_activity",
-                normaliser_version="1.0.0",
+                normaliser_version=self.version,
             )
         ]
 
@@ -287,3 +293,22 @@ def test_a_payload_that_never_arrived_whole_is_recorded_as_rejected(world: Inges
         None,
     )
     assert [issue.kind for issue in world.issues.list_all(SCOPE)] == [IssueKind.IMPORT_FAILED]
+
+
+@pytest.mark.req("INT-GAR-007", "FR-ACT-005")
+def test_reprocess_reads_a_stored_record_with_newer_rules(world: IngestionWorld) -> None:
+    """G-8: records are stored byte-exact (R-27), so newer record rules reach activities
+    already synchronised through coach activity reprocess (ADR-029)."""
+    world.ingestion.import_provider_payload(SCOPE, record_payload(rpe=6))
+    (activity,) = world.activities.list_all(SCOPE)
+    assert (
+        "subjective.rpe" not in world.service.effective(SCOPE, activity.activity_id).activity.values
+    )
+    records = world.ingestion._provider_records["garmin"]
+    assert world.ingestion.reprocess(SCOPE).up_to_date == 1
+    records.version = "1.1.0"  # type: ignore[attr-defined]
+    report = world.ingestion.reprocess(SCOPE)
+    assert (report.reprocessed, report.skipped) == (1, {})
+    view = world.service.effective(SCOPE, activity.activity_id).activity
+    assert view.values["subjective.rpe"] == 6.0
+    assert world.ingestion.reprocess(SCOPE).up_to_date == 1  # idempotent

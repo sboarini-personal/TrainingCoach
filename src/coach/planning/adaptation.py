@@ -43,7 +43,7 @@ from coach.domain.common.quality import Confidence, UncertaintyReason
 from coach.domain.common.sport import Sport
 from coach.domain.plans.adaptation import AdaptationReason, Decision
 from coach.domain.plans.execution import DoneActivity, ExecutionStatus, WorkoutExecution
-from coach.domain.plans.plan import Phase, PlanContent
+from coach.domain.plans.plan import EstimatedLoad, Phase, PlanContent
 from coach.domain.plans.workout import (
     SAFETY_STOP,
     EnduranceWorkout,
@@ -261,8 +261,27 @@ def adapted(
             )
             for offset in range(7)
         )
-        weeks.append(replace(week, days=days))
+        weeks.append(replace(week, days=days, estimated_load=_reloaded(week.estimated_load, days)))
     return replace(content, weeks=tuple(weeks))
+
+
+def _reloaded(load: EstimatedLoad, days: tuple[tuple[PlannedWorkout, ...], ...]) -> EstimatedLoad:
+    """The week's planned minutes per sport after the change, the generator's measure
+    (review of 2026-11-01: a changed week kept its parent's load)."""
+    workouts = [item for day in days for item in day]
+    return replace(
+        load,
+        by_sport={
+            sport: replace(
+                value,
+                duration_seconds=sum(
+                    item.planned_seconds or 0.0 for item in workouts if item.sport is sport
+                )
+                or None,
+            )
+            for sport, value in load.by_sport.items()
+        },
+    )
 
 
 def _completed_load(activity: DoneActivity) -> SessionLoad | None:

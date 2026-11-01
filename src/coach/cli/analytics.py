@@ -496,6 +496,7 @@ def birth_date(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, ou
         raise CommandError("age must be 18 to 100 (assumption A-17)")
     updated = profile.apply(ProfileUpdate(birth_date=FieldValue.declared(args.date, at=now)))
     _save(runtime, scope, stored, updated)
+    runtime.inputs.refresh_incomplete(scope)  # a readiness input (onboarding spec 4.2)
     print(f"birth date set to {args.date}", file=out)
     if any(model.estimated for model in updated.zone_models):
         return recompute(runtime, scope, out)

@@ -156,6 +156,19 @@ def test_a_day_without_availability_is_not_plannable_and_raises_data_incomplete(
     assert actions == ["coaching.condition_activated", "coaching.condition_cleared"]
 
 
+@pytest.mark.req("FR-PRF-005", "FR-ONB-006")
+def test_setting_the_timezone_re_evaluates_data_incomplete(cli: Cli) -> None:
+    """Review of 2026-11-01: profile commands outside the inputs service skipped it."""
+    ok(cli, "availability", "set", "--days", "2", "--max-hours", "3")  # no timezone: no today
+    runtime = build_runtime(ensure_layout(cli.data_dir), cli.credentials, lambda: cli.now)
+    owner = SqliteIdentityDirectory(SqliteDatabase.open(cli.data_dir / "coach.sqlite3")).owner()
+    assert owner is not None
+    scope = OwnerScope(owner.athlete_id)
+    assert Condition.DATA_INCOMPLETE not in runtime.conditions.current(scope).conditions
+    ok(cli, "profile", "timezone", "America/Argentina/Buenos_Aires")
+    assert Condition.DATA_INCOMPLETE in runtime.conditions.current(scope).conditions
+
+
 @pytest.mark.req("FR-PRF-006", "SEC-SEC-005", "SAFE-MED-001")
 def test_health_constraints_name_regions_exactly_and_screen_their_text(cli: Cli) -> None:
     code, output = cli.run(

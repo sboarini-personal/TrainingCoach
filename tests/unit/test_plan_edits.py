@@ -8,6 +8,7 @@ on Saturday.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 import pytest
@@ -16,7 +17,15 @@ from coach.application.errors import ConcurrencyConflictError
 from coach.application.policy_gate import PolicyDeniedError
 from coach.domain.coaching.state import Actor, Condition
 from coach.domain.common.errors import DomainValidationError
-from coach.domain.plans.plan import GeneratorKind, PlanStatus, PlanVersion
+from coach.domain.common.sport import Sport
+from coach.domain.onboarding.readiness import Readiness, ReadinessInput, ReadinessStatus
+from coach.domain.plans.plan import (
+    EstimatedLoad,
+    GeneratorKind,
+    PlanStatus,
+    PlanVersion,
+    SportLoad,
+)
 from coach.domain.plans.workout import WorkoutType
 from coach.planning.edits import moved, removed, resized
 from plan_samples import MONDAY, content, recovery, week
@@ -102,7 +111,7 @@ def test_an_edit_is_a_new_version_active_at_once() -> None:
     edited = moved(first.content, squats.workout_id, FRIDAY, today=MONDAY)
     revision = world.service.plan(SCOPE, plan_id).version
     stored = world.service.edit(
-        SCOPE, plan_id, edited, expected_revision=revision, summary="moved by you"
+        SCOPE, plan_id, edited, base=1, expected_revision=revision, summary="moved by you"
     )
     assert (stored.number, stored.parent_number, stored.status) == (2, 1, PlanStatus.ACTIVE)
     assert stored.generator.kind is GeneratorKind.ATHLETE
@@ -111,7 +120,18 @@ def test_an_edit_is_a_new_version_active_at_once() -> None:
     actions = [record.document["action"] for record in world.audit.all_records()]
     assert actions[-2:] == ["plan.proposed", "plan.activated"]
     with pytest.raises(ConcurrencyConflictError):  # read before the edit above
-        world.service.edit(SCOPE, plan_id, edited, expected_revision=revision, summary="again")
+        world.service.edit(
+            SCOPE, plan_id, edited, base=1, expected_revision=revision, summary="again"
+        )
+    with pytest.raises(ConcurrencyConflictError):  # built on version 1, no longer ACTIVE
+        world.service.edit(
+            SCOPE,
+            plan_id,
+            edited,
+            base=1,
+            expected_revision=world.service.plan(SCOPE, plan_id).version,
+            summary="stale",
+        )
 
 
 @pytest.mark.req("FR-PLN-002", "FR-POL-001", "SAFE-MED-003")
@@ -126,12 +146,83 @@ def test_an_edit_is_refused_with_nothing_written() -> None:
 
     world.conditions.activate(SCOPE, Condition.SAFETY_HOLD, reason="RF_CHEST_PAIN")
     with pytest.raises(PolicyDeniedError):  # any activation is denied under a hold
-        world.service.edit(SCOPE, plan_id, edited, expected_revision=revision(), summary="x")
+        world.service.edit(
+            SCOPE, plan_id, edited, base=1, expected_revision=revision(), summary="x"
+        )
     assert [item.number for item in world.service.versions(SCOPE, plan_id)] == [1]
     world.conditions.clear(SCOPE, Condition.SAFETY_HOLD, reason="CLEARED", actor=Actor.ATHLETE)
     pending = world.service.propose(  # an adaptation waiting for the athlete
         SCOPE, goal_id=GOAL, content=content(), generator=ENGINE, plan_id=plan_id, parent=1
     )
     with pytest.raises(DomainValidationError, match="waiting for you"):
-        world.service.edit(SCOPE, plan_id, edited, expected_revision=revision(), summary="x")
+        world.service.edit(
+            SCOPE, plan_id, edited, base=1, expected_revision=revision(), summary="x"
+        )
     assert world.service.version(SCOPE, plan_id, pending.number).status is PlanStatus.PROPOSED
+
+
+@pytest.mark.req("FR-PLN-002", "FR-PLN-003")
+def test_a_version_whose_activation_fails_is_withdrawn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review of 2026-11-01: a hold or a change arriving between the proposal and its
+    activation left a PROPOSED version that blocked every later edit."""
+    world, first = active_world()
+    plan_id = first.plan_id
+    edited = removed(first.content, first.content.on(THURSDAY)[0].workout_id, today=MONDAY)
+
+    def refused(*_args: object, **_kwargs: object) -> PlanVersion:
+        raise ConcurrencyConflictError("the coaching state changed; try again")
+
+    monkeypatch.setattr(world.service, "activate", refused)
+    with pytest.raises(ConcurrencyConflictError):
+        world.service.edit(
+            SCOPE,
+            plan_id,
+            edited,
+            base=1,
+            expected_revision=world.service.plan(SCOPE, plan_id).version,
+            summary="x",
+        )
+    withdrawn = world.service.version(SCOPE, plan_id, 2)
+    assert withdrawn.status is PlanStatus.SUPERSEDED  # nothing left waiting
+    monkeypatch.undo()
+    again = world.service.edit(
+        SCOPE,
+        plan_id,
+        edited,
+        base=1,
+        expected_revision=world.service.plan(SCOPE, plan_id).version,
+        summary="x",
+    )
+    assert (again.number, again.status) == (3, PlanStatus.ACTIVE)
+
+
+@pytest.mark.req("FR-PLN-002", "FR-ONB-004")
+def test_an_edit_does_not_ask_for_readiness_again() -> None:
+    """Review of 2026-11-01: readiness dropping to PROVISIONAL (a missing check-in history)
+    refused every edit of a plan made while READY."""
+    world, first = active_world()
+    world.ready = Readiness(ReadinessStatus.PROVISIONAL, (), (ReadinessInput.RECOVERY_HISTORY,))
+    edited = removed(first.content, first.content.on(THURSDAY)[0].workout_id, today=MONDAY)
+    stored = world.service.edit(
+        SCOPE,
+        first.plan_id,
+        edited,
+        base=1,
+        expected_revision=world.service.plan(SCOPE, first.plan_id).version,
+        summary="x",
+    )
+    assert stored.status is PlanStatus.ACTIVE
+
+
+@pytest.mark.req("FR-PLN-004")
+def test_a_changed_week_states_its_new_load() -> None:
+    """Review of 2026-11-01: an edited or adapted version kept its parent's weekly load."""
+    loaded = replace(
+        week(MONDAY),
+        estimated_load=EstimatedLoad(None, {Sport.RUNNING: SportLoad(9000.0, None)}),
+    )
+    plan = content(loaded)
+    intervals = plan.on(THURSDAY)[0]
+    (changed,) = removed(plan, intervals.workout_id, today=MONDAY).weeks
+    # recomputed as the generator does: the runs left, 40 minutes on Wednesday and 60 on Saturday
+    assert changed.estimated_load.by_sport[Sport.RUNNING].duration_seconds == 6000.0

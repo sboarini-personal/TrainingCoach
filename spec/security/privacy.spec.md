@@ -68,8 +68,9 @@ provider source are FR-PRF-008 (athlete's review of 2026-10-31).
   exporting the athlete's own stored data never needs a processing consent. `coach activity
   list`, `show` and `export`, and `coach strength sets` and `export-sets`, keep working after
   ACTIVITIES is revoked; they read what is stored and compute nothing. Revocation stops new
-  processing: analytics, recomputation, plans, executions, adaptation, insights, reports, the
-  AI, and changes to the data.
+  processing of the activities: analytics, recomputation, executions, adaptation, insights,
+  reports, the AI, the athlete's plan edits (they must read what is done) and changes to the
+  data. A plan is still generated, without activity history (review of 2026-11-01).
 
 ## 5. Storage location (PRIV-STO-001)
 

@@ -105,6 +105,7 @@ def timezone(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out:
         runtime.profiles.add(scope, AthleteProfile.new(scope.athlete_id).apply(update))
     else:
         runtime.profiles.update(scope, current.apply(update), expected_version=current.version)
+    runtime.inputs.refresh_incomplete(scope)  # a readiness input (onboarding spec 4.2)
     print(f"timezone set to {args.name}", file=out)
     return 0
 

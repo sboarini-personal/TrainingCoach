@@ -16,7 +16,6 @@ from uuid import UUID
 
 from coach.application.analytics import ELAPSED_FIELD, RPE_FIELD
 from coach.application.audit import ActorKind, AuditEvent, AuditOutcome
-from coach.application.consent import ConsentRequiredError
 from coach.application.errors import NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.application.plans import PlanService
@@ -74,13 +73,13 @@ class ExecutionService:
         return self.recent(scope, period)[0]
 
     def done_workouts(self, scope: OwnerScope, day: date) -> frozenset[UUID]:
-        """The ACTIVE version's workouts of the day with activities: history, which the plan
-        policies and the adaptive loop leave as it is. None without the activities consent
-        (nothing is read, so nothing counts as done)."""
-        try:
-            found = self.executions(scope, DateRange(day, day))
-        except ConsentRequiredError:
-            return frozenset()
+        """The ACTIVE version's workouts from ``day`` to the end of its week that have
+        activities: history, which edits, the plan policies and the adaptive loop leave as it
+        is. A link may place an activity on a later day of its week (review of 2026-11-01);
+        later weeks have no activities yet. Needs the activities consent: what is done cannot
+        be known without reading them."""
+        sunday = day + timedelta(days=6 - day.weekday())
+        found = self.executions(scope, DateRange(day, sunday))
         return frozenset(
             item.planned_workout_id
             for item in found

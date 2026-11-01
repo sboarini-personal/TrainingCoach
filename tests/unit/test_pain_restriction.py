@@ -11,9 +11,11 @@ from uuid import UUID
 import pytest
 from test_generator import allowed, inputs
 
+from coach.application.consent import ConsentRequiredError
 from coach.application.ownership import OwnerScope
 from coach.application.planning_context import PlanningContextSource
 from coach.domain.athlete.profile import AthleteProfile
+from coach.domain.consent.ledger import ConsentType
 from coach.domain.recovery.checkin import CheckInPain, DailyCheckIn
 from coach.domain.recovery.pain import PainRestriction, pain_restriction
 from coach.domain.strength.catalogue import CATALOGUE
@@ -112,4 +114,15 @@ def test_the_planning_context_reads_recent_check_ins() -> None:
     assert context.pain.regions == frozenset({BodyRegion.SHOULDERS})
     assert asked == [(MONDAY, 3)]
     assert context.done == {UUID(int=MONDAY.day)}
+
+    def unreadable(_scope: Any, _day: date) -> set[UUID]:
+        raise ConsentRequiredError((ConsentType.ACTIVITIES,))
+
+    strict = PlanningContextSource(
+        Inputs(),  # type: ignore[arg-type]
+        lambda _scope, _day: (),
+        today=lambda _scope: MONDAY,
+        done=unreadable,
+    )
+    assert strict(OwnerScope(ATHLETE)).done == frozenset()  # every workout is checked
     assert replace(context, pain=PainRestriction()).pain.regions == frozenset()

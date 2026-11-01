@@ -165,11 +165,7 @@ def ask_for(
     """Ask for the missing inputs; True when anything was loaded (worth another try)."""
     loaded = False
     for item in missing:
-        found = questions(runtime, scope, item)
-        if not found:
-            print(f"missing: {LABELS[item]}: {COMMANDS.get(item, 'see coach readiness')}", file=out)
-            continue
-        for question in found:
+        for question in questions(runtime, scope, item):  # the refusal names the rest
             try:
                 answers = tuple(ask(prompt) for prompt in question.prompts)
             except EOFError:

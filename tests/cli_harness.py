@@ -39,7 +39,7 @@ class Cli:
             clock=lambda: self.now,
             transport=self.transport,
             sleep=self.sleeps.append,
-            read_answer=None if self.answers is None else self._answer,
+            read_answer=self._answer,  # never the real stdin, even under pytest -s
         )
         return code, out.getvalue()
 

@@ -331,7 +331,9 @@ class IngestionService:
         (activities spec 1.1). RAW never changes; a source that cannot be redone is skipped.
         ``progress`` receives (sources done, sources to do) after each one."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
-        current = self._formats.normaliser_versions()
+        current = dict(self._formats.normaliser_versions())
+        for records in self._provider_records.values():  # provider records too (G-8)
+            current.update(records.normaliser_versions())
         by_source: dict[UUID, list[Observation]] = {}
         for observation in self._activities.observations(scope):
             by_source.setdefault(observation.raw_source_id, []).append(observation)
@@ -368,15 +370,7 @@ class IngestionService:
             data = self._raw.read(scope, raw_source_id)
         except (NotFoundError, RuntimeError):  # missing, or no longer matching its hash
             raise _Skip("RAW_UNAVAILABLE") from None
-        path = self._quarantine.put(data)
-        try:
-            sessions = self._formats.decode(
-                path, source.detected_type, self.limits, received_at=source.received_at
-            )
-        except FileRejectedError:
-            raise _Skip("REJECTED") from None
-        finally:
-            self._quarantine.discard(path)
+        sessions = self._redecode(source, data)
         if sorted(session.part for session in sessions) != [item.part for item in stored]:
             raise _Skip("SESSIONS_CHANGED")
         screened = [self._screen_texts(session)[0] for session in sessions]
@@ -396,6 +390,29 @@ class IngestionService:
             return self._activities.renormalise(scope, observations)
         except RenormalisationRefusedError as refused:
             raise _Skip(refused.reason) from None
+
+    def _redecode(self, source: RawSource, data: bytes) -> Sequence[DecodedSession]:
+        """The stored bytes decoded again: a provider record in process, as at import (its
+        JSON parser executes nothing), a file through the quarantine and the parsers."""
+        try:
+            if source.detected_type is DetectedType.JSON:
+                records = self._provider_records.get(source.provider or "")
+                if records is None or source.provider_object_id is None:
+                    raise _Skip("NO_NORMALISER")
+                return records.decode(
+                    data,
+                    provider_object_id=source.provider_object_id,
+                    received_at=source.received_at,
+                )
+            path = self._quarantine.put(data)
+            try:
+                return self._formats.decode(
+                    path, source.detected_type, self.limits, received_at=source.received_at
+                )
+            finally:
+                self._quarantine.discard(path)
+        except FileRejectedError:
+            raise _Skip("REJECTED") from None
 
     def _stored_type(self, detected: DetectedType | None, data: bytes) -> DetectedType:
         if detected is DetectedType.ZIP:

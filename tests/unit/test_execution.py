@@ -275,11 +275,12 @@ def test_a_link_counts_even_when_the_period_cuts_the_week() -> None:
     assert (linked.completed_activity_ids, linked.manual) == ((thursday_run.activity_id,), True)
     # the plan policies read the workouts done on a day as history (review of P12.8)
     assert service.done_workouts(SCOPE, TUESDAY) == {tuesday.workout_id}
-    assert service.done_workouts(SCOPE, WEDNESDAY) == frozenset()  # planned, not done
+    assert service.done_workouts(SCOPE, MONDAY) == {tuesday.workout_id}  # rest of the week
+    assert service.done_workouts(SCOPE, WEDNESDAY) == frozenset()  # Tuesday is before
 
 
 @pytest.mark.req("FR-PLN-007", "PRIV-CON-002")
-def test_without_the_activities_consent_nothing_counts_as_done() -> None:
+def test_what_is_done_cannot_be_known_without_the_activities_consent() -> None:
     world = PlanWorld()
     first = world.service.propose(SCOPE, goal_id=GOAL, content=content(), generator=ENGINE)
     world.activate(first.plan_id, 1)
@@ -296,4 +297,5 @@ def test_without_the_activities_consent_nothing_counts_as_done() -> None:
         audit=world.audit,
         clock=world.clock,
     )
-    assert service.done_workouts(SCOPE, TUESDAY) == frozenset()  # the policies stay strict
+    with pytest.raises(ConsentRequiredError):  # edits refuse; the policies stay strict
+        service.done_workouts(SCOPE, TUESDAY)

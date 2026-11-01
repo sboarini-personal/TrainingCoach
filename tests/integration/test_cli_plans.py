@@ -323,6 +323,7 @@ def test_the_athlete_moves_removes_and_resizes_workouts_active_at_once(tmp_path:
     """Edit rules 1.0.0 (athlete's review of 2026-10-31): each change is a new version,
     checked by the policies and active at once."""
     cli, runtime, scope, goal = onboarded(tmp_path)
+    ok(cli, "consent", "grant", "activities")  # an edit reads what is already done
     first = runtime.plans.propose(
         scope, goal_id=goal, content=content(provisional=True), generator=ENGINE
     )
@@ -360,6 +361,35 @@ def test_the_athlete_moves_removes_and_resizes_workouts_active_at_once(tmp_path:
     assert (
         output == "error: 2026-10-29 has 0 workouts: name one by its ID (coach plan show --ids)\n"
     )
+
+
+@pytest.mark.req("FR-PLN-002", "FR-PLN-007", "PRIV-CON-002")
+def test_an_edit_never_rewrites_work_already_done(tmp_path: Path) -> None:
+    """Review of 2026-11-01: a run linked to a later workout of its week made that workout
+    done, yet it could be removed; without the consent nothing done could be seen."""
+    cli, runtime, scope, goal = onboarded(tmp_path)
+    ok(cli, "consent", "grant", "activities")
+    first = runtime.plans.propose(
+        scope, goal_id=goal, content=content(provisional=True), generator=ENGINE
+    )
+    ok(cli, "plan", "activate", str(first.plan_id), "1", "--revision", "1")
+    run = tmp_path / "run.fit"
+    tuesday = datetime(2026, 10, 27, 21, 0, tzinfo=UTC)  # 18:00 in Buenos Aires
+    run.write_bytes(fit_file([fit_session(start=tuesday, seconds=3600)]))
+    ok(cli, "import", str(run))
+    cli.now = datetime(2026, 10, 27, 23, 0, tzinfo=UTC)
+    shown = ok(cli, "plan", "executions")
+    activity = next(
+        line.split()[1] for line in shown.splitlines() if line.startswith("    activity ")
+    )
+    saturday = first.content.on(MONDAY + timedelta(days=5))[0]  # the easy 60-minute run
+    ok(cli, "plan", "link", activity, str(saturday.workout_id))  # done early, linked by you
+    code, output = cli.run("plan", "remove", str(saturday.workout_id))
+    assert (code, "already done is history" in output) == (2, True)
+    ok(cli, "consent", "revoke", "activities")
+    code, output = cli.run("plan", "remove", "2026-10-29")  # what is done cannot be read
+    assert (code, "coach consent grant activities" in output) == (2, True)
+    assert [item.number for item in runtime.plans.versions(scope, first.plan_id)] == [1]
 
 
 @pytest.mark.req("FR-ADP-001", "FR-ADP-004")
