@@ -210,8 +210,17 @@ Plans and the adaptive loop (P12, ADR-034):
   `coach.domain.recovery.pain`. Executions are a read model (`ExecutionService`; only
   `ExecutionLink`s are stored). Every adaptation run is an `AdaptationDecision` with
   evidence (`AdaptationService.run`); it proposes, never activates.
-- **Activity reads.** Every activity read needs the ACTIVITIES consent: a reader wired into
-  a service checks it, and the CLI turns `ConsentRequiredError` into the consent hint.
+- **Activity reads.** Every processing read of activities needs the ACTIVITIES consent: a
+  reader wired into a service checks it, and the CLI turns `ConsentRequiredError` into the
+  consent hint. Access is not processing: viewing and exporting stored data needs no
+  consent (`AnalyticsService.stored_activity`, `StrengthService.sets`).
+- **Athlete edits and questions** (review of 2026-10-31).
+  - `PlanService.edit` activates the athlete's own changes at once (pure rules in
+    `coach.planning.edits`).
+  - `coach plan generate` asks for missing inputs through `coach.cli.asking`, applying
+    each answer as a command through `main._dispatch`. In tests, `Cli.answers` plays
+    the athlete.
+  - DATA_INCOMPLETE is kept current by `AthleteInputsService`.
 - **Tests.** `tests/plan_world.py` (`PlanWorld`: open planning, goal, readiness, `activate`)
   and `tests/plan_samples.py` (weeks and content). The CLI tests use
   `onboarded(tmp_path, *goal)` in `tests/integration/test_cli_plans.py`. Strength set files

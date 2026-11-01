@@ -15,10 +15,10 @@ from coach.application.ownership import OwnerScope
 from coach.application.plans import PlanNotReadyError
 from coach.application.policy_gate import PolicyDeniedError
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
+from coach.cli.asking import Apply, Ask, ask_for, missing_message
 from coach.cli.runtime import Runtime, TimezoneRequiredError
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.common.time import DateRange
-from coach.domain.onboarding.readiness import LABELS
 from coach.domain.plans.adaptation import AdaptationDecision, AdaptationTrigger
 from coach.domain.plans.plan import PlanContent, PlanVersion
 from coach.domain.plans.workout import PlannedWorkout, WorkoutType
@@ -120,7 +120,15 @@ def _show(version: PlanVersion, out: TextIO, *, ids: bool = False) -> None:
     print(f"content hash {version.content_hash}", file=out)
 
 
-def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+def plan(
+    runtime: Runtime,
+    scope: OwnerScope,
+    args: argparse.Namespace,
+    out: TextIO,
+    *,
+    ask: Ask | None = None,
+    apply: Apply | None = None,
+) -> int:
     plans = runtime.plans
     try:
         match args.action:
@@ -172,9 +180,15 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                 print(f"activity {linked.activity_id} linked: {target}", file=out)
                 return 0
             case "generate":
-                made = runtime.generation.generate(
-                    scope, None if args.goal is None else UUID(args.goal)
-                )
+                goal = None if args.goal is None else UUID(args.goal)
+                try:
+                    made = runtime.generation.generate(scope, goal)
+                except PlanNotReadyError as missing:  # ask for it, then once more (D-12)
+                    if ask is None or apply is None:
+                        raise
+                    if not ask_for(runtime, scope, missing.missing, out, ask, apply):
+                        raise
+                    made = runtime.generation.generate(scope, goal)
                 _show(made, out)
                 print(
                     f"review it, then: coach plan activate {made.plan_id} {made.number} "
@@ -200,10 +214,7 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
             case _:
                 changed = plans.reject(scope, UUID(args.plan_id), args.version)
     except PlanNotReadyError as missing:
-        names = ", ".join(LABELS[item] for item in missing.missing)
-        raise CommandError(
-            f"not ready for a plan; missing: {names} (see coach readiness)"
-        ) from None
+        raise CommandError(missing_message(missing.missing)) from None
     except PolicyDeniedError as denied:
         raise CommandError("denied by policy: " + denial(denied)) from None
     except TimezoneRequiredError:

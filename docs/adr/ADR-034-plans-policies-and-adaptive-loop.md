@@ -1,6 +1,6 @@
 # ADR-034: Plans, plan policies, execution and the adaptive loop
 
-- Status: Proposed (pending the athlete's review)
+- Status: Accepted (athlete's review of 2026-10-31, with the two amendments below)
 - Date: 2026-10-31
 - Requirements: FR-ONB-003 to FR-ONB-006, FR-GOL-001 to FR-GOL-003, FR-POL-001, FR-POL-002,
   FR-PLN-001 to FR-PLN-008, FR-ADP-001 to FR-ADP-004, FR-STR-005, FR-INS-001, FR-RPT-001,
@@ -96,6 +96,21 @@ The AI coach (P13) must later explain these decisions only from numbers computed
   - The strength sets CSV template 1.0.0 imports set entries all or nothing and exports the
     executed sets (files spec 8.4).
 
+## Amendments (athlete's review of 2026-10-31)
+
+- **The athlete's own edits are active at once** (decision D-12). `coach plan move`,
+  `remove` and `minutes` change the ACTIVE plan in one command. Versions stay immutable
+  inside: each edit is a new version (generator `ATHLETE`, edit rules 1.0.0), checked
+  by every plan policy and by activation's own, then activated (planning spec 2).
+- **Missing data is asked for, not only refused** (decision D-12).
+  - When planning inputs are missing, `coach plan generate` asks for each one it can
+    take as a short answer, loads it with the same command the athlete would run, and
+    tries once more; it names the command for the rest (onboarding spec 2).
+  - The policies are unchanged: UNKNOWN still never allows, and health and safety deny
+    until declared.
+  - The DATA_INCOMPLETE condition is raised for missing or undefined inputs
+    (onboarding spec 4.2).
+
 ## Consequences
 
 - Every threshold is an initial value under A-18: the volume start and step bounds, the
@@ -105,7 +120,8 @@ The AI coach (P13) must later explain these decisions only from numbers computed
 - Plans are only as good as the athlete's declarations: without a recurring weekly pattern or
   a health declaration, the policies deny rather than assume.
 - The adaptive loop runs on the athlete's command or on a trigger; it never activates a
-  version. Activation stays a human confirmation.
+  version. Activation stays a human confirmation; the athlete's own edits are that
+  confirmation.
 - Plans are not published to Garmin (P14 needs a tier with `trainingPublish`).
 - The P13 agent will receive plan versions, executions and adaptation decisions as data. It
   can explain or propose; the policies still decide.

@@ -251,6 +251,73 @@ def test_pain_after_the_days_strength_eases_what_is_left_through_the_policies(
     assert decision["confidence"] == "MEDIUM"
 
 
+@pytest.mark.req("FR-ONB-003", "FR-ONB-001", "FR-PLN-002")
+def test_plan_generate_asks_for_what_is_missing_and_tries_again(tmp_path: Path) -> None:
+    """D-12 (athlete's review of 2026-10-31): instead of only refusing, the command asks for
+    each missing input it can take as a short answer and loads it with its own command."""
+    cli = Cli(tmp_path / "coach-data")
+    assert cli.run("init")[0] == 0
+    ok(cli, "profile", "timezone", "America/Argentina/Buenos_Aires")
+    added = ok(cli, "goal", "add", "--sport", "running", "--date", "2027-03-14")
+    ok(cli, "goal", "activate", added.split()[-1])
+    code, output = cli.run("plan", "generate")  # nobody to ask: the commands are named
+    assert code == 2
+    assert output.startswith("error: not ready for a plan; missing: ")
+    assert "weekly availability (coach availability set --days N --max-hours H" in output
+    cli.answers = []  # an athlete who does not answer
+    assert cli.run("plan", "generate")[0] == 2
+    cli.answers = [
+        *("Synthetic Runner", "1985-03-02"),  # name, birth date
+        "3",  # years of running
+        *("6", "10", "240"),  # days, hours, a usual day's minutes
+        "none",  # no health constraint
+        *("yes", "dumbbells,bench"),  # gym, equipment
+        *("1", "2"),  # strength years and sessions
+        "0",  # no tennis
+    ]
+    cli.prompts.clear()
+    code, output = cli.run("plan", "generate")
+    assert code == 0, output
+    assert cli.answers == []
+    assert cli.prompts == [
+        "Your name: ",
+        "Your birth date (YYYY-MM-DD): ",
+        "Years of running experience: ",
+        "Days a week you can train (1 to 7): ",
+        "Hours a week at most: ",
+        "Minutes you can train on a usual day: ",
+        "Any health constraint? (none, or add it with coach profile health add): ",
+        "Do you have a gym? (yes/no): ",
+        "Equipment you can use, comma-separated (or none): ",
+        "Years of strength training: ",
+        "Strength sessions a week: ",
+        "Tennis sessions a week (0 if none): ",
+    ]
+    assert "version 1: PROPOSED" in output
+    assert "PROVISIONAL: built on assumptions" in output  # no history yet
+    assert ok(cli, "profile", "health", "show") == "declared on 2026-10-25: no constraints\n"
+
+
+@pytest.mark.req("FR-ONB-003")
+def test_an_answer_that_is_not_valid_is_not_loaded(tmp_path: Path) -> None:
+    cli = Cli(tmp_path / "coach-data")
+    assert cli.run("init")[0] == 0
+    ok(cli, "profile", "timezone", "America/Argentina/Buenos_Aires")
+    added = ok(cli, "goal", "add", "--sport", "running", "--date", "2027-03-14")
+    ok(cli, "goal", "activate", added.split()[-1])
+    cli.answers = ["Synthetic Runner", "not a date", "three"]  # then the athlete stops
+    code, output = cli.run("plan", "generate")
+    assert code == 2
+    lines = output.splitlines()
+    assert lines[:3] == [
+        "name set",  # loaded with its own command
+        "not loaded (not a valid answer): use coach profile name / timezone / birth-date",
+        "not loaded (not a valid answer): use coach profile experience SPORT --years N",
+    ]
+    assert lines[3].startswith("error: not ready for a plan; missing: athlete profile")
+    assert ok(cli, "profile", "name").strip().endswith("Synthetic Runner")
+
+
 @pytest.mark.req("FR-PLN-002", "FR-PLN-003", "FR-POL-001")
 def test_the_athlete_moves_removes_and_resizes_workouts_active_at_once(tmp_path: Path) -> None:
     """Edit rules 1.0.0 (athlete's review of 2026-10-31): each change is a new version,

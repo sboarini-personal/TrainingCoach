@@ -25,6 +25,8 @@ class Cli:
         self.transport: HttpTransport | None = None
         self.sleeps: list[float] = []
         self.now = NOW
+        self.answers: list[str] | None = None  # an interactive athlete's answers, in order
+        self.prompts: list[str] = []
 
     def run(self, *argv: str) -> tuple[int, str]:
         out = io.StringIO()
@@ -37,8 +39,15 @@ class Cli:
             clock=lambda: self.now,
             transport=self.transport,
             sleep=self.sleeps.append,
+            read_answer=None if self.answers is None else self._answer,
         )
         return code, out.getvalue()
+
+    def _answer(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if not self.answers:
+            raise EOFError  # the athlete stops answering
+        return self.answers.pop(0)
 
     def local_token(self) -> SecretValue | None:
         owner = SqliteIdentityDirectory(

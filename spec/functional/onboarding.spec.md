@@ -114,6 +114,19 @@ Readiness rules 1.0.0 (P12, precision; `coach.domain.onboarding.readiness`, `coa
   - `coach availability` (show, set, default, exception, clear);
   - `coach event` (add, list);
   - `coach goal` (add, list, activate, close).
+- **Asking for what is missing** (precision, athlete's review of 2026-10-31, decision D-12):
+  - When readiness refuses a plan, `coach plan generate` asks in an interactive
+    terminal for each missing REQUIRED input it can take as a short answer. Those are
+    the profile's name, timezone and birth date; the goal sport's years; the days,
+    hours and a usual day's minutes; "none" or a re-confirmation for health; gym and
+    equipment; strength years and sessions; and tennis sessions.
+  - Each answer is loaded with the very command the athlete would run, so it gets the
+    same validation, secret screening and audit. The generation is then tried once
+    more.
+  - An answer the command refuses is not loaded, and its command is named. Inputs that
+    need a whole command (a goal, a health constraint) are named with it.
+  - Without an interactive terminal nothing is asked: the refusal lists each missing
+    input with its command.
 
 ## 3. Baseline collection (FR-ONB-005)
 

@@ -156,9 +156,15 @@ Plans (P12):
   - Every plan passes the policies first: availability, hours, equipment, health
     constraints, recovery block and safety hold.
   - A refused plan is never stored, and the command shows why.
+- **Missing data.** If something is missing, `coach plan generate` asks for it right there
+  (in an interactive terminal) and tries again; otherwise it lists each command to run.
 - **Activate.** Nothing changes until you activate a version you reviewed:
   `coach plan show`, then `coach plan activate <plan> <version> --revision <n>`. Versions
   are never edited: a change is a new version, which you activate or `reject`.
+- **Your own changes.** `coach plan move <workout> <day>`, `coach plan remove <workout>`
+  and `coach plan minutes <workout> <minutes>` change the active plan at once (name a
+  workout by its date, or by its ID from `coach plan show --ids`). Each change is still
+  a new version, checked by the same policies.
 - **Execution.** `coach plan executions [--week]` shows each planned workout as complete,
   partial, skipped, replaced or unplanned. `coach plan link` fixes a wrong match.
 - **Adaptation.** `coach plan adapt` looks at the last two weeks and your recovery:

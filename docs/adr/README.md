@@ -38,5 +38,5 @@ change is a new ADR that supersedes the old one (status `Superseded by ADR-NNN`)
 | [ADR-031](ADR-031-strength-execution-and-engines.md) | Strength execution, volume, progression and interference | Accepted |
 | [ADR-032](ADR-032-recovery-data-and-safety-detection.md) | Recovery data: minimised provider payloads and fail-safe red-flag capture | Accepted |
 | [ADR-033](ADR-033-recovery-assessment-insights-and-reports.md) | Recovery assessment, pattern detection and report data | Accepted |
-| [ADR-034](ADR-034-plans-policies-and-adaptive-loop.md) | Plans, plan policies, execution and the adaptive loop | Proposed |
+| [ADR-034](ADR-034-plans-policies-and-adaptive-loop.md) | Plans, plan policies, execution and the adaptive loop | Accepted |
 | [ADR-035](ADR-035-data-in-synchronised-folders.md) | Athlete data may live in a synchronised folder by the athlete's choice | Accepted |

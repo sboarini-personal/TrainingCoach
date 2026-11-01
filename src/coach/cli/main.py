@@ -8,7 +8,9 @@ with hidden input and never printed, logged or accepted as arguments (SEC-SEC-00
 from __future__ import annotations
 
 import argparse
+import contextlib
 import getpass
+import io
 import os
 import sys
 import time
@@ -36,6 +38,7 @@ from coach.cli import plans as plan_commands
 from coach.cli import recovery as recovery_commands
 from coach.cli import reports as report_commands
 from coach.cli import strength as strength_commands
+from coach.cli.asking import Apply, Ask
 from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.athlete.physiology import SensorType
 from coach.domain.common.errors import DomainValidationError
@@ -339,6 +342,176 @@ def _verify_audit(runtime: Runtime, _args: argparse.Namespace, out: TextIO) -> i
     return 1
 
 
+def _dispatch(
+    runtime: Runtime,
+    args: argparse.Namespace,
+    stream: TextIO,
+    *,
+    read_secret: Callable[[str], str],
+    ask: Ask | None,
+    data_dir: Path,
+    variables: Mapping[str, str],
+) -> int:
+    match (args.command, getattr(args, "action", None)):
+        case ("init", _):
+            notice = log_synced_folder(data_dir, variables)  # once, at init (ADR-035)
+            if notice is not None:
+                print(notice, file=stream)
+            return _init(runtime, args, stream)
+        case ("token", "rotate"):
+            return _rotate_token(runtime, args, stream)
+        case ("secret", "set"):
+            return _set_secret(runtime, args, stream, read_secret)
+        case ("secret", "list"):
+            return _list_secrets(runtime, args, stream)
+        case ("audit", "verify"):
+            return _verify_audit(runtime, args, stream)
+        case ("consent", "list"):
+            return activity_commands.list_consents(runtime, _session(runtime), stream)
+        case ("consent", _):
+            return activity_commands.change_consent(runtime, _session(runtime), args, stream)
+        case ("profile", "timezone"):
+            return activity_commands.timezone(runtime, _session(runtime), args, stream)
+        case ("import", _):
+            return activity_commands.import_files(runtime, _session(runtime), args, stream)
+        case ("profile", "hr-zones"):
+            return analytics_commands.hr_zones(runtime, _session(runtime), args, stream)
+        case ("profile", "sensor"):
+            return analytics_commands.sensor(runtime, _session(runtime), args, stream)
+        case ("profile", "ftp"):
+            return analytics_commands.ftp(runtime, _session(runtime), args, stream)
+        case ("profile", "birth-date"):
+            return analytics_commands.birth_date(runtime, _session(runtime), args, stream)
+        case ("activity", "show"):
+            return analytics_commands.show_activity(runtime, _session(runtime), args, stream)
+        case ("metrics", "recompute"):
+            return analytics_commands.recompute(runtime, _session(runtime), stream)
+        case ("strength", "exercises"):
+            return strength_commands.exercises(runtime, _session(runtime), args, stream)
+        case ("strength", "alias"):
+            return strength_commands.alias(runtime, _session(runtime), args, stream)
+        case ("strength", "sets"):
+            return strength_commands.sets(runtime, _session(runtime), args, stream)
+        case ("strength", "log"):
+            return strength_commands.log(runtime, _session(runtime), args, stream)
+        case ("strength", "import-sets"):
+            return strength_commands.import_sets(runtime, _session(runtime), args, stream)
+        case ("strength", "export-sets"):
+            return strength_commands.export_sets(runtime, _session(runtime), args, stream)
+        case ("strength", "relabel"):
+            return strength_commands.relabel(runtime, _session(runtime), args, stream)
+        case ("strength", "progress"):
+            return strength_commands.progress(runtime, _session(runtime), args, stream)
+        case ("strength", "interference"):
+            return strength_commands.interference(runtime, _session(runtime), args, stream)
+        case ("strength", "week"):
+            return strength_commands.week(runtime, _session(runtime), args, stream)
+        case ("strength", "watch-sets"):
+            return strength_commands.watch_sets(runtime, _session(runtime), args, stream)
+        case ("analysis", "trend"):
+            return analytics_commands.trend(runtime, _session(runtime), args, stream)
+        case ("load", "week"):
+            return analytics_commands.load_week(runtime, _session(runtime), args, stream)
+        case ("load", "weeks"):
+            return analytics_commands.load_weeks(runtime, _session(runtime), args, stream)
+        case ("activity", "correct"):
+            principal = _principal(runtime)
+            scope = runtime.authorization.scope_for(principal)
+            return activity_commands.correct(runtime, principal, scope, args, stream)
+        case ("activity", "reprocess"):
+            return activity_commands.reprocess(runtime, _session(runtime), stream)
+        case ("activity", "list"):
+            return activity_commands.list_activities(runtime, _session(runtime), args, stream)
+        case ("activity", "export"):
+            return activity_commands.export(runtime, _session(runtime), args, stream)
+        case ("issue", "list"):
+            return activity_commands.list_issues(runtime, _session(runtime), stream)
+        case ("issue", "ack"):
+            return activity_commands.acknowledge_issue(runtime, _session(runtime), args, stream)
+        case ("checkin", "add"):
+            return recovery_commands.add(runtime, _session(runtime), args, stream)
+        case ("checkin", "list"):
+            return recovery_commands.list_checkins(runtime, _session(runtime), args, stream)
+        case ("recovery", "data"):
+            return recovery_commands.data(runtime, _session(runtime), args, stream)
+        case ("recovery", "status"):
+            return recovery_commands.assessment(runtime, _session(runtime), stream)
+        case ("insights", "detect"):
+            return insight_commands.detect(runtime, _session(runtime), stream)
+        case ("insights", "list"):
+            return insight_commands.list_insights(runtime, _session(runtime), args, stream)
+        case ("report", "activity"):
+            return report_commands.activity(runtime, _session(runtime), args, stream)
+        case ("report", "week"):
+            return report_commands.week(runtime, _session(runtime), args, stream)
+        case ("report", "month"):
+            return report_commands.month(runtime, _session(runtime), args, stream)
+        case ("profile", "name"):
+            return athlete_commands.name(runtime, _session(runtime), args, stream)
+        case ("profile", "health"):
+            return athlete_commands.health(runtime, _session(runtime), args, stream)
+        case ("profile", "resources"):
+            return athlete_commands.resources(runtime, _session(runtime), args, stream)
+        case ("profile", "experience"):
+            return athlete_commands.experience(runtime, _session(runtime), args, stream)
+        case ("availability", _):
+            return athlete_commands.availability(runtime, _session(runtime), args, stream)
+        case ("event", _):
+            return athlete_commands.event(runtime, _session(runtime), args, stream)
+        case ("goal", _):
+            return athlete_commands.goal(runtime, _session(runtime), args, stream)
+        case ("readiness", _):
+            return athlete_commands.readiness(runtime, _session(runtime), stream)
+        case ("plan", _):
+            apply = _applier(runtime, stream, read_secret, data_dir, variables)
+            return plan_commands.plan(
+                runtime, _session(runtime), args, stream, ask=ask, apply=apply
+            )
+        case ("safety", "status"):
+            return recovery_commands.status(runtime, _session(runtime), stream)
+        case ("safety", "release"):
+            return recovery_commands.release(runtime, _session(runtime), args, stream)
+        case ("garmin", "status"):
+            return garmin_commands.status(runtime, _session(runtime), stream)
+        case ("garmin", "sync"):
+            return garmin_commands.sync(runtime, _session(runtime), args, stream)
+        case _:  # pragma: no cover - argparse rejects anything else
+            return 2
+
+
+def _applier(
+    runtime: Runtime,
+    stream: TextIO,
+    read_secret: Callable[[str], str],
+    data_dir: Path,
+    variables: Mapping[str, str],
+) -> Apply:
+    """Runs the command an answer stands for, as the athlete would (D-12): its error, or
+    ``None``."""
+
+    def apply(argv: Sequence[str]) -> str | None:
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                parsed = _parser().parse_args(list(argv))
+        except SystemExit:
+            return "not a valid answer"
+        try:
+            code = _dispatch(
+                runtime,
+                parsed,
+                stream,
+                read_secret=read_secret,
+                ask=None,
+                data_dir=data_dir,
+                variables=variables,
+            )
+        except (CliError, activity_commands.CommandError) as error:
+            return str(error)
+        return None if code == 0 else "not loaded"
+
+    return apply
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -349,8 +522,12 @@ def main(
     clock: Clock | None = None,
     transport: HttpTransport | None = None,
     sleep: Callable[[float], None] | None = None,
+    read_answer: Callable[[str], str] | None = None,
 ) -> int:
     stream = out if out is not None else sys.stdout
+    # Missing planning inputs are asked for only in an interactive terminal (D-12).
+    interactive = sys.stdin is not None and sys.stdin.isatty()
+    ask = read_answer if read_answer is not None else (input if interactive else None)
     args = _parser().parse_args(argv)
     variables = env if env is not None else os.environ
     try:
@@ -375,128 +552,15 @@ def main(
             transport=transport,
             sleep=sleep or time.sleep,
         )
-        match (args.command, getattr(args, "action", None)):
-            case ("init", _):
-                notice = log_synced_folder(data_dir, variables)  # once, at init (ADR-035)
-                if notice is not None:
-                    print(notice, file=stream)
-                return _init(runtime, args, stream)
-            case ("token", "rotate"):
-                return _rotate_token(runtime, args, stream)
-            case ("secret", "set"):
-                return _set_secret(runtime, args, stream, read_secret)
-            case ("secret", "list"):
-                return _list_secrets(runtime, args, stream)
-            case ("audit", "verify"):
-                return _verify_audit(runtime, args, stream)
-            case ("consent", "list"):
-                return activity_commands.list_consents(runtime, _session(runtime), stream)
-            case ("consent", _):
-                return activity_commands.change_consent(runtime, _session(runtime), args, stream)
-            case ("profile", "timezone"):
-                return activity_commands.timezone(runtime, _session(runtime), args, stream)
-            case ("import", _):
-                return activity_commands.import_files(runtime, _session(runtime), args, stream)
-            case ("profile", "hr-zones"):
-                return analytics_commands.hr_zones(runtime, _session(runtime), args, stream)
-            case ("profile", "sensor"):
-                return analytics_commands.sensor(runtime, _session(runtime), args, stream)
-            case ("profile", "ftp"):
-                return analytics_commands.ftp(runtime, _session(runtime), args, stream)
-            case ("profile", "birth-date"):
-                return analytics_commands.birth_date(runtime, _session(runtime), args, stream)
-            case ("activity", "show"):
-                return analytics_commands.show_activity(runtime, _session(runtime), args, stream)
-            case ("metrics", "recompute"):
-                return analytics_commands.recompute(runtime, _session(runtime), stream)
-            case ("strength", "exercises"):
-                return strength_commands.exercises(runtime, _session(runtime), args, stream)
-            case ("strength", "alias"):
-                return strength_commands.alias(runtime, _session(runtime), args, stream)
-            case ("strength", "sets"):
-                return strength_commands.sets(runtime, _session(runtime), args, stream)
-            case ("strength", "log"):
-                return strength_commands.log(runtime, _session(runtime), args, stream)
-            case ("strength", "import-sets"):
-                return strength_commands.import_sets(runtime, _session(runtime), args, stream)
-            case ("strength", "export-sets"):
-                return strength_commands.export_sets(runtime, _session(runtime), args, stream)
-            case ("strength", "relabel"):
-                return strength_commands.relabel(runtime, _session(runtime), args, stream)
-            case ("strength", "progress"):
-                return strength_commands.progress(runtime, _session(runtime), args, stream)
-            case ("strength", "interference"):
-                return strength_commands.interference(runtime, _session(runtime), args, stream)
-            case ("strength", "week"):
-                return strength_commands.week(runtime, _session(runtime), args, stream)
-            case ("strength", "watch-sets"):
-                return strength_commands.watch_sets(runtime, _session(runtime), args, stream)
-            case ("analysis", "trend"):
-                return analytics_commands.trend(runtime, _session(runtime), args, stream)
-            case ("load", "week"):
-                return analytics_commands.load_week(runtime, _session(runtime), args, stream)
-            case ("load", "weeks"):
-                return analytics_commands.load_weeks(runtime, _session(runtime), args, stream)
-            case ("activity", "correct"):
-                principal = _principal(runtime)
-                scope = runtime.authorization.scope_for(principal)
-                return activity_commands.correct(runtime, principal, scope, args, stream)
-            case ("activity", "reprocess"):
-                return activity_commands.reprocess(runtime, _session(runtime), stream)
-            case ("activity", "list"):
-                return activity_commands.list_activities(runtime, _session(runtime), args, stream)
-            case ("activity", "export"):
-                return activity_commands.export(runtime, _session(runtime), args, stream)
-            case ("issue", "list"):
-                return activity_commands.list_issues(runtime, _session(runtime), stream)
-            case ("issue", "ack"):
-                return activity_commands.acknowledge_issue(runtime, _session(runtime), args, stream)
-            case ("checkin", "add"):
-                return recovery_commands.add(runtime, _session(runtime), args, stream)
-            case ("checkin", "list"):
-                return recovery_commands.list_checkins(runtime, _session(runtime), args, stream)
-            case ("recovery", "data"):
-                return recovery_commands.data(runtime, _session(runtime), args, stream)
-            case ("recovery", "status"):
-                return recovery_commands.assessment(runtime, _session(runtime), stream)
-            case ("insights", "detect"):
-                return insight_commands.detect(runtime, _session(runtime), stream)
-            case ("insights", "list"):
-                return insight_commands.list_insights(runtime, _session(runtime), args, stream)
-            case ("report", "activity"):
-                return report_commands.activity(runtime, _session(runtime), args, stream)
-            case ("report", "week"):
-                return report_commands.week(runtime, _session(runtime), args, stream)
-            case ("report", "month"):
-                return report_commands.month(runtime, _session(runtime), args, stream)
-            case ("profile", "name"):
-                return athlete_commands.name(runtime, _session(runtime), args, stream)
-            case ("profile", "health"):
-                return athlete_commands.health(runtime, _session(runtime), args, stream)
-            case ("profile", "resources"):
-                return athlete_commands.resources(runtime, _session(runtime), args, stream)
-            case ("profile", "experience"):
-                return athlete_commands.experience(runtime, _session(runtime), args, stream)
-            case ("availability", _):
-                return athlete_commands.availability(runtime, _session(runtime), args, stream)
-            case ("event", _):
-                return athlete_commands.event(runtime, _session(runtime), args, stream)
-            case ("goal", _):
-                return athlete_commands.goal(runtime, _session(runtime), args, stream)
-            case ("readiness", _):
-                return athlete_commands.readiness(runtime, _session(runtime), stream)
-            case ("plan", _):
-                return plan_commands.plan(runtime, _session(runtime), args, stream)
-            case ("safety", "status"):
-                return recovery_commands.status(runtime, _session(runtime), stream)
-            case ("safety", "release"):
-                return recovery_commands.release(runtime, _session(runtime), args, stream)
-            case ("garmin", "status"):
-                return garmin_commands.status(runtime, _session(runtime), stream)
-            case ("garmin", "sync"):
-                return garmin_commands.sync(runtime, _session(runtime), args, stream)
-            case _:  # pragma: no cover - argparse rejects anything else
-                return 2
+        return _dispatch(
+            runtime,
+            args,
+            stream,
+            read_secret=read_secret,
+            ask=ask,
+            data_dir=data_dir,
+            variables=variables,
+        )
     except (CliError, activity_commands.CommandError) as error:
         print(f"error: {error}", file=stream)
         return 2
