@@ -17,12 +17,15 @@ from coach.application.coaching import CoachingConditions
 from coach.application.consent import ConsentGate
 from coach.application.executions import ExecutionService
 from coach.application.insights import InsightService
+from coach.application.plan_generation import PlanGenerationService
 from coach.application.plans import PlanService
-from coach.application.ports import OwnedRepository
+from coach.application.ports import Clock, OwnedRepository
 from coach.application.recovery import RecoveryService
 from coach.application.recovery_assessment import RecoveryAssessmentService
+from coach.application.recovery_sync import RecoverySyncService
 from coach.application.reports import ReportService
 from coach.application.strength import StrengthService
+from coach.application.sync import SyncService
 from coach.domain.integration.status import IntegrationStatus
 
 
@@ -37,8 +40,12 @@ class AgentServices:
     recovery: RecoveryService
     assessments: RecoveryAssessmentService
     plans: PlanService
+    generation: PlanGenerationService
     executions: ExecutionService
     adaptation: AdaptationService
     insights: InsightService
     reports: ReportService
     integrations: OwnedRepository[IntegrationStatus]
+    sync: SyncService
+    recovery_sync: RecoverySyncService
+    clock: Clock

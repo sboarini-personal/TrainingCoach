@@ -17,12 +17,13 @@ from typing import Final, TextIO
 from coach.agent.coach import Coach, CoachReply, MessageTooLongError
 from coach.agent.prompts import system_prompt
 from coach.agent.services import AgentServices
-from coach.agent.tools import read_tools
+from coach.agent.tools import coach_tools
 from coach.agent.tools.base import Toolbox
 from coach.application.consent import ConsentGate, ConsentRequiredError
 from coach.application.contracts import AGENT_DECISION_CODEC, CONVERSATION_CODEC
 from coach.application.credentials import CredentialKind
 from coach.application.errors import NotFoundError
+from coach.application.identity import Principal
 from coach.application.ids import new_id
 from coach.application.llm import LLMFailure, LLMProvider, LLMUnavailableError
 from coach.application.ownership import OwnerScope
@@ -63,11 +64,15 @@ def agent_services(runtime: Runtime) -> AgentServices:
         recovery=runtime.recovery,
         assessments=runtime.recovery_assessment,
         plans=runtime.plans,
+        generation=runtime.generation,
         executions=runtime.executions,
         adaptation=runtime.adaptation,
         insights=runtime.insights,
         reports=runtime.reports,
         integrations=runtime.integrations,
+        sync=runtime.sync,
+        recovery_sync=runtime.recovery_sync,
+        clock=runtime.clock,
     )
 
 
@@ -95,7 +100,7 @@ def build_coach(
     services = agent_services(runtime)
     return Coach(
         llm=llm,
-        toolbox=Toolbox(read_tools(services), events=runtime.events),
+        toolbox=Toolbox(coach_tools(services), events=runtime.events),
         prompt=system_prompt(),
         services=services,
         screen=runtime.screen,
@@ -123,6 +128,7 @@ def chat(
     ask: Ask | None,
     llm: LLMProvider | None = None,
     variables: Mapping[str, str] | None = None,
+    principal: Principal | None = None,
 ) -> int:
     provider = llm or llm_provider(
         runtime, scope, variables if variables is not None else os.environ
@@ -145,7 +151,9 @@ def chat(
             if not question or question.casefold() in EXIT_WORDS:
                 return 0
         try:
-            reply = coach.reply(scope, question, conversation_id=conversation, new=new)
+            reply = coach.reply(
+                scope, question, conversation_id=conversation, new=new, principal=principal
+            )
         except ConsentRequiredError as error:
             if ConsentType.AI_PROCESSING in error.missing:
                 print(

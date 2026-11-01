@@ -13,7 +13,7 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from coach.agent.services import AgentServices
-from coach.agent.tools import read_tools
+from coach.agent.tools import coach_tools, read_tools
 from coach.agent.tools.base import FORBIDDEN_PARAMETERS, Tool, ToolKind
 
 SPEC = Path(__file__).parents[2] / "spec" / "contracts" / "tools.spec.md"
@@ -30,7 +30,7 @@ PROHIBITED = (
 
 
 def _tools() -> list[Tool]:
-    return read_tools(cast(AgentServices, object()))  # building a tool calls no service
+    return coach_tools(cast(AgentServices, object()))  # building a tool calls no service
 
 
 def _catalogue() -> dict[str, str]:
@@ -78,7 +78,8 @@ def test_the_catalogue_in_the_spec_and_the_code_agree() -> None:
     catalogue = _catalogue()
     for tool in tools:
         assert catalogue.get(tool.name) == tool.kind.value, tool.name
-    spec_reads = {name for name, kind in catalogue.items() if kind == ToolKind.READ.value}
-    assert spec_reads == set(names)  # every READ tool of the spec exists, and no other
+    assert set(catalogue) == set(names)  # every tool of the spec exists, and no other
+    reads = {tool.name for tool in read_tools(cast(AgentServices, object()))}
+    assert reads == {name for name, kind in catalogue.items() if kind == ToolKind.READ.value}
     assert not set(PROHIBITED) & set(names)
     assert not set(PROHIBITED) & set(catalogue)

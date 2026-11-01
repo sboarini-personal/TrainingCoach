@@ -35,12 +35,14 @@ from coach.agent.tools.base import TOOLS_VERSION, Toolbox, ToolContext
 from coach.agent.validation import untraced_numbers
 from coach.application.errors import TimezoneRequiredError
 from coach.application.events import EventName
-from coach.application.llm import LLMProvider, LLMReply, LLMRequest
+from coach.application.identity import Principal
+from coach.application.llm import LLMProvider, LLMReply, LLMRequest, LLMUnavailableError
 from coach.application.ownership import OwnerScope
 from coach.application.ports import Clock, EventSink, IdFactory, OwnedRepository
 from coach.application.safety import hold_notice
 from coach.application.screening import SecretScreen
 from coach.domain.agent import (
+    MAX_EXPLANATION,
     AgentDecision,
     Conversation,
     ConversationTurn,
@@ -61,6 +63,11 @@ MAX_MESSAGE_LENGTH: Final = 8000
 # Room an exchange may need: the athlete's turn, tool rounds, a correction and the answers.
 EXCHANGE_TURNS: Final = 2 * (MAX_TOOL_ROUNDS + 1) + 4
 EXCHANGE_BYTES: Final = 768 * 1024
+MAX_DECISION_EVIDENCE: Final = 200
+UNEXPLAINED: Final = (
+    "The AI coach became unavailable before it could explain this; the action was "
+    "taken by the coaching rules."
+)
 _EXHAUSTED: Final = json.dumps(
     {"ok": False, "error": {"code": "VALIDATION_ERROR", "reason": "TOOL_BUDGET_EXHAUSTED"}}
 )
@@ -105,8 +112,9 @@ class CoachReply:
     notices: tuple[str, ...] = ()  # fixed texts written in code, shown first
     untraced: tuple[str, ...] = ()
     tool_calls: tuple[ToolCallRecord, ...] = ()
-    decision_id: UUID | None = None
+    decision_id: UUID | None = None  # the first decision recorded, if any
     model: str | None = None
+    decisions: tuple[UUID, ...] = ()
 
 
 class MessageTooLongError(DomainValidationError):
@@ -214,6 +222,7 @@ class Coach:
         *,
         conversation_id: UUID | None = None,
         new: bool = False,
+        principal: Principal | None = None,
     ) -> CoachReply:
         services = self._services
         services.consents.require(scope, ConsentType.AI_PROCESSING)
@@ -236,25 +245,39 @@ class Coach:
             ({"type": "text", "text": context}, {"type": "text", "text": text}),
             self._clock(),
         )
-        exchange = _Exchange([user], [context, text], [], [], ToolContext(scope, today))
+        exchange = _Exchange([user], [context, text], [], [], ToolContext(scope, today, principal))
         history = [] if conversation is None else conversation.messages()
-        final = self._answer(history, exchange)
         texts = _texts(language)
-        answer, outcome = self._read(final, texts)
-        untraced = untraced_numbers(answer, exchange.sources)
-        if untraced and outcome is ReplyOutcome.ANSWERED:
-            note = CORRECTION.format(numbers=", ".join(untraced))
-            exchange.turns.append(
-                ConversationTurn(Role.USER, ({"type": "text", "text": note},), self._clock())
-            )
+        try:
             final = self._answer(history, exchange)
             answer, outcome = self._read(final, texts)
             untraced = untraced_numbers(answer, exchange.sources)
             if untraced and outcome is ReplyOutcome.ANSWERED:
-                outcome = ReplyOutcome.NOT_VERIFIED
+                note = CORRECTION.format(numbers=", ".join(untraced))
+                exchange.turns.append(
+                    ConversationTurn(Role.USER, ({"type": "text", "text": note},), self._clock())
+                )
+                final = self._answer(history, exchange)
+                answer, outcome = self._read(final, texts)
+                untraced = untraced_numbers(answer, exchange.sources)
+                if untraced and outcome is ReplyOutcome.ANSWERED:
+                    outcome = ReplyOutcome.NOT_VERIFIED
+        except LLMUnavailableError:
+            # Tools may have acted before the model failed: their decisions stay audited.
+            self._record(scope, exchange, UNEXPLAINED, None, self._llm.model_id)
+            raise
         if outcome is ReplyOutcome.NOT_VERIFIED:
             answer = f"{answer}\n\n{texts['unverified'].format(numbers=', '.join(untraced))}"
         stored = self._store(scope, conversation, exchange.turns)
+        recorded = self._record(scope, exchange, answer, stored.conversation_id, final.model)
+        reported = [
+            RedFlag(reason)
+            for pending in exchange.context.decisions
+            if pending.kind is DecisionKind.SAFETY_RESPONSE
+            for reason in pending.reasons
+        ]
+        if reported:  # a red flag reported through a tool: the fixed notice, as in step 3
+            notices = (*notices, hold_notice(dict.fromkeys(reported), language))
         self._events.emit(
             EventName.AGENT_REPLIED,
             {
@@ -270,8 +293,45 @@ class Coach:
             notices=notices,
             untraced=untraced if outcome is ReplyOutcome.NOT_VERIFIED else (),
             tool_calls=tuple(exchange.records),
+            decision_id=recorded[0] if recorded else None,
             model=final.model,
+            decisions=recorded,
         )
+
+    def _record(
+        self,
+        scope: OwnerScope,
+        exchange: _Exchange,
+        explanation: str,
+        conversation_id: UUID | None,
+        model: str | None,
+    ) -> tuple[UUID, ...]:
+        """The turn's significant decisions as AgentDecisions: its tool calls, the evidence
+        they rest on and what the athlete was shown (FR-AGT-003; no reasoning)."""
+        recorded = []
+        for pending in exchange.context.decisions:
+            evidence = tuple(dict.fromkeys((*pending.evidence, *exchange.evidence)))
+            decision = AgentDecision(
+                decision_id=self._ids(),
+                athlete_id=scope.athlete_id,
+                decided_at=self._clock(),
+                kind=pending.kind,
+                prompt_version=self._prompt.version,
+                spec_version=SPEC_VERSION,
+                model_id=model,
+                tool_calls=tuple(exchange.records),
+                evidence=evidence[:MAX_DECISION_EVIDENCE],
+                proposed_action=pending.action,
+                policy_verdict=pending.verdict,
+                explanation=explanation[:MAX_EXPLANATION] or UNEXPLAINED,
+                policy_reasons=pending.reasons,
+                proposal_id=pending.proposal_id,
+                conversation_id=conversation_id,
+            )
+            self._decisions.add(scope, decision)
+            self._events.emit(EventName.AGENT_DECISION_RECORDED, {"kind": decision.kind.value})
+            recorded.append(decision.decision_id)
+        return tuple(recorded)
 
     def _today(self, scope: OwnerScope) -> date | None:
         try:

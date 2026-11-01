@@ -61,9 +61,9 @@ are added per tool in the implementing phase (P13) and covered by contract tests
 | Tool | Kind | Input (summary) | Output (summary) | Policies |
 |---|---|---|---|---|
 | getAthleteProfile | READ | `sections[]?` (basics, physiology, devices, experience, resources, health) | profile with UNKNOWN markers and provenance; an age, not the birth date | |
-| updateAthleteProfile | WRITE_INTERNAL | allow-listed field changes, expected `version` | updated profile | mass-assignment allow-list (SEC-AUTHZ-003) |
+| updateAthleteProfile | WRITE_INTERNAL | `expectedVersion` and allow-listed fields: `heightCm`, `restingHr`, `maxHr`, `metricUnits`, `language` | new profile version and the fields changed | mass-assignment allow-list (SEC-AUTHZ-003); `CONCURRENCY_CONFLICT {currentVersion}` |
 | getGoals | READ | `status?` | goals (with baseline evidence) and events | |
-| saveGoal | WRITE_INTERNAL | goal fields, expected `version?` | goal | at most one ACTIVE A goal |
+| saveGoal | WRITE_INTERNAL | `sport`, `targetDate`, `priority`, `distanceMeters?`, `targetTimeSeconds?`, `eventId?` | a DRAFT goal and the command that activates it | the athlete activates (at most one ACTIVE A goal) |
 | getGoalFeasibility | READ | `goalId?` (default: the primary goal) | feasibility now: classification, confidence, reasons, current level, alternatives | |
 | getReadiness | READ | none | Definition of Ready, missing inputs, history sufficiency, lifecycle; changes nothing | |
 | getAvailability | READ | `from?`, `to?` (default: today and 13 days) | effective availability per date and the weekly declaration | |
@@ -73,21 +73,32 @@ are added per tool in the implementing phase (P13) and covered by contract tests
 | getDailyCheckIn | READ | `from?`, `to?` (default 7 days) | check-ins | |
 | getRecoveryStatus | READ | `day?` (default today) | assessment with signals, prescriptions in force, coaching conditions | wearable signals by consent |
 | getInsights | READ | `from?`, `to?` (default 28 days) | detected patterns with evidence (associations only) | consent per pattern |
-| recordSubjectiveFeedback | WRITE_INTERNAL | `activityId?` or `trainingDay`, RPE, soreness, pain, notes | stored feedback; may trigger safety rules | red-flag detection |
+| recordSubjectiveFeedback | WRITE_INTERNAL | daily check-in (`trainingDay?`, the 1-5 scales, `pain` 0-10, `painLocation`, `painOnset`, `notes`) and/or `activityId` with `activityRpe` 0-10 | the check-in and red flags; the activity RPE as a correction | red-flag detection; values the athlete stated only |
 | getStrengthHistory | READ | `from?`, `to?` (default 28 days), `exerciseId?` | set results, hard sets by muscle, volume load | consent ACTIVITIES |
 | getTrainingPlan | READ | `planId?`, `number?` (default ACTIVE), `from?`, `to?`, `details?` | plan version and its workouts in the period | |
 | getPlanExecutions | READ | `from?`, `to?` (default 14 days) | planned vs completed with compliance | consent ACTIVITIES |
 | getAdaptationDecisions | READ | `limit?` | the adaptive loop's decisions with evidence | consent ACTIVITIES |
 | getReportData | READ | `kind`, `activityId` / `week` / `month` | report data part (sections, items with evidence) | consent per section |
-| proposeTrainingPlan | PROPOSE | plan content or adaptation request, rationale, evidence refs | new PROPOSED version or `POLICY_DENIED` | full policy set |
+| proposeTrainingPlan | PROPOSE | `mode` GENERATE (`goalId?`) or ADAPT | new PROPOSED version (and how the athlete activates it), the adaptation decision, or `POLICY_DENIED` | full policy set; the content is written by the rules, never by the model |
 | getDataQualityIssues | READ | `status?` (OPEN, ALL), `limit?` | issues | consent ACTIVITIES |
-| requestProviderSync | WRITE_INTERNAL | `window?` | sync job ID and status | capability, rate limit |
+| requestProviderSync | WRITE_INTERNAL | none | outcome and counts of the activity and recovery syncs | capability, rate limit, consent per category; `PROVIDER_UNAVAILABLE {reason: NOT_CONNECTED}` |
 | getProviderCapabilities | READ | none | capability snapshot with basis and freshness | |
-| proposeGarminWorkout | PROPOSE | `plannedWorkoutId` | local workout proposal; states whether publication is possible | capability |
+| proposeGarminWorkout | PROPOSE | `plannedWorkoutId` (ACTIVE plan) | whether publication is possible (TRAINING_PUBLISH state); the workout stays local | capability |
 | publishGarminWorkout | EXECUTE_EXTERNAL | `proposalId` | `CONFIRMATION_REQUIRED` or `CAPABILITY_UNAVAILABLE` (V1 always the latter) | capability, confirmation |
-| requestDataDeletion | EXECUTE_EXTERNAL | `scope` | `CONFIRMATION_REQUIRED` with a summary of what will be deleted | destructive confirmation |
+| requestDataDeletion | EXECUTE_EXTERNAL | `scope` (ALL, ACTIVITIES, RECOVERY, CHECKINS, PLANS, CONVERSATIONS) | always `CONFIRMATION_REQUIRED {scope, confirmedBy: ATHLETE_ONLY}`; the deletion workflow is P15 | destructive confirmation |
+| flagSafetyConcern | WRITE_INTERNAL | `redFlags[]` (red flag codes) | SAFETY_HOLD active | safety spec 2, source 3 (fail-safe); only the athlete releases it |
 
 Activation of a plan version is **not** an agent tool: it is a human action in the UI or CLI.
+
+Precision (P13.4): the coach asks and the code decides. `proposeTrainingPlan` runs the
+deterministic generator or the adaptive loop (planning spec), so a version's content is
+never written by the model; a refused proposal is `POLICY_DENIED` with its reasons. Each
+significant decision a tool takes part in (plan proposal, adaptation, load reduction,
+safety response) is recorded by the pipeline as an `AgentDecision` with the turn's tool
+calls, its evidence and the answer the athlete saw; if the model fails after the tool
+acted, the decision is still recorded, with a fixed explanation. A red flag reported
+through `recordSubjectiveFeedback` or `flagSafetyConcern` adds the fixed safety notice to
+the reply. EXECUTE_EXTERNAL tools stop before any effect.
 
 ## 4. Prohibited tools
 

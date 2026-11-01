@@ -4,15 +4,16 @@ temporary data directory, the in-memory secret store. Synthetic data only."""
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from cli_harness import Cli
 from coach.agent.coach import Coach
-from coach.agent.tools import read_tools
-from coach.agent.tools.base import Toolbox, ToolCallOutput, ToolContext
+from coach.agent.tools import coach_tools
+from coach.agent.tools.base import PendingDecision, Toolbox, ToolCallOutput, ToolContext
 from coach.application.errors import TimezoneRequiredError
+from coach.application.identity import Principal
 from coach.application.llm import LLMProvider
 from coach.application.ownership import OwnerScope
 from coach.cli.chat import agent_services, build_coach
@@ -43,6 +44,8 @@ class AgentWorld:
     scope: OwnerScope
     toolbox: Toolbox
     events: RecordingEventSink
+    principal: Principal
+    decisions: list[PendingDecision] = field(default_factory=list)
 
     def ok(self, *args: str) -> str:
         code, output = self.cli.run(*args)
@@ -54,7 +57,7 @@ class AgentWorld:
             today = self.runtime.recovery.today(self.scope)
         except TimezoneRequiredError:
             today = None
-        context = ToolContext(self.scope, today)
+        context = ToolContext(self.scope, today, self.principal, self.decisions)
         return self.toolbox.run(
             "toolu_synthetic", name, {} if arguments is None else arguments, context
         )
@@ -88,5 +91,6 @@ def agent_world(tmp_path: Path, *, onboard: bool = True) -> AgentWorld:
     assert owner is not None
     runtime = build_runtime(ensure_layout(cli.data_dir), cli.credentials, lambda: cli.now)
     events = RecordingEventSink()
-    toolbox = Toolbox(read_tools(agent_services(runtime)), events=events)
-    return AgentWorld(cli, runtime, OwnerScope(owner.athlete_id), toolbox, events)
+    toolbox = Toolbox(coach_tools(agent_services(runtime)), events=events)
+    scope = OwnerScope(owner.athlete_id)
+    return AgentWorld(cli, runtime, scope, toolbox, events, Principal(owner.user_id))

@@ -42,11 +42,14 @@ from coach.application.errors import (
     TimezoneRequiredError,
 )
 from coach.application.events import EventName
+from coach.application.identity import Principal
 from coach.application.llm import ToolSpec
 from coach.application.ownership import OwnerScope
+from coach.application.plans import PlanNotReadyError
 from coach.application.policy_gate import ConfirmationRequiredError, PolicyDeniedError
 from coach.application.ports import EventSink
-from coach.domain.agent import ToolCallRecord, ToolOutcome
+from coach.application.sync import CapabilityUnavailableError
+from coach.domain.agent import DecisionKind, PolicyVerdict, ToolCallRecord, ToolOutcome
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 
@@ -96,12 +99,28 @@ class ToolError(Exception):
 
 
 @dataclass(frozen=True, slots=True)
+class PendingDecision:
+    """A significant decision a tool took part in (FR-AGT-003); the pipeline records it as an
+    ``AgentDecision`` with the turn's tool calls, evidence and the answer the athlete saw."""
+
+    kind: DecisionKind
+    action: str  # a code, for example PROPOSE_PLAN_VERSION
+    verdict: PolicyVerdict
+    reasons: tuple[str, ...] = ()
+    proposal_id: UUID | None = None
+    evidence: tuple[EvidenceRef, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ToolContext:
-    """What a call runs with: the session's owner scope and the athlete's today (``None``
-    while the timezone is not set: the training day cannot be known)."""
+    """What a call runs with: the session's owner scope and principal, the athlete's today
+    (``None`` while the timezone is not set: the training day cannot be known) and the
+    decisions the turn's tools took part in."""
 
     scope: OwnerScope
     today: date | None
+    principal: Principal | None = None
+    decisions: list[PendingDecision] = field(default_factory=list)
 
     def day(self) -> date:
         if self.today is None:
@@ -446,6 +465,16 @@ class Toolbox:
         except TimezoneRequiredError:
             return ToolOutcome.VALIDATION_ERROR, _error(
                 ToolOutcome.VALIDATION_ERROR, {"reason": "TIMEZONE_REQUIRED"}
+            )
+        except PlanNotReadyError as error:
+            missing = [item.value for item in error.missing]
+            return ToolOutcome.VALIDATION_ERROR, _error(
+                ToolOutcome.VALIDATION_ERROR, {"reason": "NOT_READY", "missing": missing}
+            )
+        except CapabilityUnavailableError as error:
+            missing = sorted(item.value for item in error.missing)
+            return ToolOutcome.CAPABILITY_UNAVAILABLE, _error(
+                ToolOutcome.CAPABILITY_UNAVAILABLE, {"capability": missing}
             )
         except (DomainValidationError, InvalidOperationError, ValueError):
             return ToolOutcome.VALIDATION_ERROR, _error(

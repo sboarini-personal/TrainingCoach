@@ -486,8 +486,16 @@ def _dispatch(
         case ("garmin", "sync"):
             return garmin_commands.sync(runtime, _session(runtime), args, stream)
         case ("chat", _):
+            principal = _principal(runtime)
             return chat_commands.chat(
-                runtime, _session(runtime), args, stream, ask=ask, llm=llm, variables=variables
+                runtime,
+                runtime.authorization.scope_for(principal),
+                args,
+                stream,
+                ask=ask,
+                llm=llm,
+                variables=variables,
+                principal=principal,
             )
         case _:  # pragma: no cover - argparse rejects anything else
             return 2

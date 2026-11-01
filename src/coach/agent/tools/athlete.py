@@ -145,10 +145,15 @@ def _profile(
                 **to_json(value, ref),
             },
         )
-    return {**fields.data, "unknown": fields.unknown, "provenance": fields.provenance}
+    return {
+        "version": profile.version,  # for updateAthleteProfile
+        **fields.data,
+        "unknown": fields.unknown,
+        "provenance": fields.provenance,
+    }
 
 
-def _goal(goal: Goal) -> dict[str, Any]:
+def goal_json(goal: Goal) -> dict[str, Any]:
     ref = EvidenceRef(EvidenceKind.GOAL, goal.goal_id)
     baseline = goal.baseline
     return {
@@ -192,7 +197,7 @@ def _goals(
     if "status" in arguments:
         goals = [item for item in goals if item.status.value == arguments["status"]]
     return {
-        "goals": [_goal(item) for item in goals],
+        "goals": [goal_json(item) for item in goals],
         "events": [_event(item) for item in services.inputs.events(context.scope)],
     }
 

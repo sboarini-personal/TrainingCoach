@@ -24,6 +24,10 @@ def test_the_prompt_in_force_states_the_rules_and_carries_no_volatile_data() -> 
         "Never diagnose",
         "SAFETY_HOLD",
         "coach secret set",  # never asks for a key in the chat
+        "proposeTrainingPlan",  # plans come from the rules
+        "You never write plan content",
+        "flagSafetyConcern",
+        "Never infer a value",
     ):
         assert rule in text, rule
     assert "{" not in text.replace('{"untrusted_text": ...}', "")  # nothing is templated in

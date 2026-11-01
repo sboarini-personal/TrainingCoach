@@ -4,6 +4,7 @@ prompts can never add a tool or widen one."""
 from __future__ import annotations
 
 from coach.agent.services import AgentServices
+from coach.agent.tools.actions import action_tools
 from coach.agent.tools.athlete import athlete_tools
 from coach.agent.tools.base import Tool
 from coach.agent.tools.plans import plan_tools
@@ -19,3 +20,10 @@ def read_tools(services: AgentServices) -> list[Tool]:
         *recovery_tools(services),
         *plan_tools(services),
     ]
+
+
+def coach_tools(services: AgentServices) -> list[Tool]:
+    """Every tool of a coaching session: the READ tools, then the tools that change
+    something (P13.4). The session grants READ, WRITE_INTERNAL and PROPOSE; EXECUTE_EXTERNAL
+    tools always stop before any effect (SEC-AUTHZ-002)."""
+    return [*read_tools(services), *action_tools(services)]

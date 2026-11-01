@@ -15,6 +15,7 @@ import pytest
 
 from agent_world import AgentWorld, agent_world
 from cli_harness import GARMIN_KEY, NOW
+from coach.agent.tools.base import ToolKind
 from coach.application.events import EventName
 from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
@@ -59,6 +60,8 @@ IDENTIFIERS = frozenset(
         "unreadSessions",
         "fromVersion",
         "proposedVersion",
+        "version",
+        "currentVersion",
     }
 )
 
@@ -183,7 +186,8 @@ def test_the_profile_says_what_is_unknown_and_sends_an_age_not_the_birth_date(
     profile = world.data("getAthleteProfile")
     assert profile["age"]["value"] == 41  # born 1985-03-02, today 2026-10-25
     assert profile["age"]["unit"] == "years"
-    assert "1985" not in json.dumps(profile)
+    assert "1985-03-02" not in json.dumps(profile)
+    assert "birthDate" not in profile
     assert profile["displayName"] == {"untrusted_text": "Synthetic Runner"}
     assert {"field": "heightCm", "status": "NOT_DECLARED"} in profile["unknown"]
     assert profile["provenance"]["timezone"] == "ATHLETE_DECLARED"
@@ -330,6 +334,8 @@ def test_every_tool_answers_with_evidence_and_is_logged_without_free_text(tmp_pa
     world.events.events.clear()
     calls = 0
     for tool in world.toolbox.tools:
+        if tool.kind is not ToolKind.READ:
+            continue
         arguments: dict[str, Any] = {}
         if tool.name == "getActivityDetail":
             arguments = {"activityId": running}
