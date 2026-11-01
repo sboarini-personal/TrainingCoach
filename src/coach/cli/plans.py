@@ -20,8 +20,9 @@ from coach.domain.common.errors import DomainValidationError, InvalidTransitionE
 from coach.domain.common.time import DateRange
 from coach.domain.onboarding.readiness import LABELS
 from coach.domain.plans.adaptation import AdaptationDecision, AdaptationTrigger
-from coach.domain.plans.plan import PlanVersion
-from coach.domain.plans.workout import PlannedWorkout
+from coach.domain.plans.plan import PlanContent, PlanVersion
+from coach.domain.plans.workout import PlannedWorkout, WorkoutType
+from coach.planning.edits import moved, removed, resized
 
 TRIGGERS = {item.value.lower().replace("_", "-"): item for item in AdaptationTrigger}
 
@@ -38,6 +39,7 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     show = plan.add_parser("show", help="a plan version (default: the ACTIVE one)")
     show.add_argument("plan_id", nargs="?")
     show.add_argument("--version", type=int, help="default: ACTIVE, else the latest")
+    show.add_argument("--ids", action="store_true", help="show each workout's ID")
     activate = plan.add_parser("activate", help="activate a PROPOSED version")
     activate.add_argument("plan_id")
     activate.add_argument("version", type=int)
@@ -66,6 +68,17 @@ def add_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -
     link = plan.add_parser("link", help="link an activity to a planned workout")
     link.add_argument("activity_id")
     link.add_argument("workout_id", help="a workout of the ACTIVE plan, or none (unplanned)")
+    target = "its ID (plan show --ids), or its date when that day has one workout"
+    move = plan.add_parser("move", help="move a workout to another day (active at once)")
+    move.add_argument("workout", help=target)
+    move.add_argument("day", type=date.fromisoformat, help="the new day, YYYY-MM-DD")
+    remove = plan.add_parser("remove", help="take a workout out (active at once)")
+    remove.add_argument("workout", help=target)
+    minutes = plan.add_parser(
+        "minutes", help="other minutes for a steady or recovery session (active at once)"
+    )
+    minutes.add_argument("workout", help=target)
+    minutes.add_argument("minutes", type=int)
 
 
 def _minutes(seconds: float | None) -> str:
@@ -79,7 +92,7 @@ def _workout(item: PlannedWorkout) -> str:
     return f"{item.type.value}{sport}{_minutes(item.planned_seconds)}{effort}{key}: {item.what}"
 
 
-def _show(version: PlanVersion, out: TextIO) -> None:
+def _show(version: PlanVersion, out: TextIO, *, ids: bool = False) -> None:
     content = version.content
     parent = "" if version.parent_number is None else f" (from version {version.parent_number})"
     print(
@@ -102,6 +115,8 @@ def _show(version: PlanVersion, out: TextIO) -> None:
             day = week.start + timedelta(days=offset)
             for item in workouts:
                 print(f"  {day} {day:%a}  {_workout(item)}", file=out)
+                if ids:
+                    print(f"    workout {item.workout_id}", file=out)
     print(f"content hash {version.content_hash}", file=out)
 
 
@@ -148,6 +163,8 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                 return 0
             case "executions":
                 return _executions(runtime, scope, args.week, out)
+            case "move" | "remove" | "minutes":
+                return _edit(runtime, scope, args, out)
             case "link":
                 workout = None if args.workout_id == "none" else UUID(args.workout_id)
                 linked = runtime.executions.link(scope, UUID(args.activity_id), workout)
@@ -170,7 +187,7 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
                 if found is None:
                     print("no plan to show", file=out)
                     return 0
-                _show(found, out)
+                _show(found, out, ids=args.ids)
                 return 0
             case "activate":
                 changed = plans.activate(
@@ -200,6 +217,55 @@ def plan(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: Tex
     except (DomainValidationError, InvalidTransitionError, ValueError) as error:
         raise CommandError(str(error)) from None
     print(f"plan {changed.plan_id} version {changed.number} is {changed.status.value}", file=out)
+    return 0
+
+
+def _target(content: PlanContent, text: str) -> PlannedWorkout:
+    """A workout named by its ID, or by its date when that day has one workout."""
+    try:
+        found = content.workout(UUID(text))
+    except ValueError:
+        try:
+            day = date.fromisoformat(text)
+        except ValueError:
+            raise CommandError("name the workout by its ID or its date") from None
+        on_day = [item for item in content.on(day) if item.type is not WorkoutType.REST]
+        if len(on_day) != 1:
+            raise CommandError(
+                f"{day} has {len(on_day)} workouts: name one by its ID (coach plan show --ids)"
+            ) from None
+        found = on_day[0]
+    if found is None:
+        raise CommandError("not a workout of your ACTIVE plan")
+    return found
+
+
+def _edit(runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO) -> int:
+    """The athlete's own change, active at once (edit rules 1.0.0; planning spec 2)."""
+    active = runtime.plans.active(scope)
+    if active is None:
+        raise CommandError("there is no ACTIVE plan to change")
+    today = runtime.recovery.today(scope)
+    done = runtime.executions.done_workouts(scope, today)
+    workout = _target(active.content, args.workout)
+    what = f"{workout.type.value.lower()} of {workout.training_day}"
+    match args.action:
+        case "move":
+            content = moved(active.content, workout.workout_id, args.day, today=today, done=done)
+            summary = f"moved by you: the {what} to {args.day}"
+        case "remove":
+            content = removed(active.content, workout.workout_id, today=today, done=done)
+            summary = f"removed by you: the {what}"
+        case _:
+            content = resized(
+                active.content, workout.workout_id, args.minutes, today=today, done=done
+            )
+            summary = f"changed by you: the {what} to {args.minutes} minutes"
+    revision = runtime.plans.plan(scope, active.plan_id).version
+    stored = runtime.plans.edit(
+        scope, active.plan_id, content, expected_revision=revision, summary=summary
+    )
+    print(f"{summary}; plan {stored.plan_id} version {stored.number} is ACTIVE", file=out)
     return 0
 
 

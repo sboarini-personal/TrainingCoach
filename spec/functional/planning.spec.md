@@ -68,6 +68,22 @@ Contract: [../contracts/training-plan.schema.json](../contracts/training-plan.sc
   until the athlete activates or rejects it. A new version keeps the plan's goal.
 - **Activation reason.** Optional free text, screened for disclosed secrets before it is
   stored (SEC-SEC-005).
+- **The athlete's own edits** (precision, athlete's review of 2026-10-31; edit rules 1.0.0,
+  `coach.planning.edits`):
+  - **Commands.** `coach plan move WORKOUT DAY`, `coach plan remove WORKOUT` and `coach plan
+    minutes WORKOUT N`. A workout is named by its ID (`coach plan show --ids`) or by its date
+    when that day has one workout.
+  - **Versions.** Versions stay immutable: each edit is a new version whose parent is the
+    ACTIVE one, generator `ATHLETE` (`engineVersion` = edit rules version). It is checked by
+    every plan policy and by activation's own policy (a safety hold denies it), then
+    activated in the same command, with the edit as its activation reason. Nothing is
+    written when a policy denies it.
+  - **Refusals.** An edit is refused while a proposed version waits for the athlete (it
+    would leave it behind), and when the plan changed since it was read.
+  - **What changes.** Only workouts from today on, not done yet, change. A move goes to a
+    day of the plan, from today on; a rest day that receives a workout is no longer a rest
+    day. Only steady sessions (one steady step, with or without a warm-up and a cool-down)
+    and recovery sessions change their minutes (10 to 300), at the same effort.
 
 ## 3. Training week (FR-PLN-004)
 

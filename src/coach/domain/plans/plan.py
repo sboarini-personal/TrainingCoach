@@ -59,6 +59,7 @@ class SupersededReason(StrEnum):
 class GeneratorKind(StrEnum):
     ENGINE = "ENGINE"
     AI_ASSISTED = "AI_ASSISTED"
+    ATHLETE = "ATHLETE"  # the athlete's own edit, active at once (edit rules)
 
 
 @dataclass(frozen=True, slots=True)

@@ -41,6 +41,7 @@ from coach.domain.goals.goal import Goal, GoalStatus
 from coach.domain.onboarding.readiness import Readiness, ReadinessInput, ReadinessStatus
 from coach.domain.plans.plan import (
     Generator,
+    GeneratorKind,
     PlanContent,
     PlanStatus,
     PlanVersion,
@@ -48,6 +49,7 @@ from coach.domain.plans.plan import (
     TrainingPlan,
     version_id,
 )
+from coach.planning.edits import EDIT_RULES_VERSION
 from coach.policy.engine import Action, ActionKind
 
 PROPOSE_ACTION = "plan.propose"
@@ -281,6 +283,57 @@ class PlanService:
         for item in superseded:
             self._events.emit(EventName.PLAN_SUPERSEDED, {"version": str(item.number)})
         return stored
+
+    def edit(
+        self,
+        scope: OwnerScope,
+        plan_id: UUID,
+        content: PlanContent,
+        *,
+        expected_revision: int,
+        summary: str,
+    ) -> PlanVersion:
+        """The athlete's own change of the ACTIVE version, active at once (edit rules,
+        athlete's review of 2026-10-31): a new version whose parent is the ACTIVE one,
+        checked by every plan policy and by activation's (a safety hold denies it), then
+        activated. Refused while a proposed version waits, which it would leave behind."""
+        header = self._headers.get(scope, plan_id)
+        if header.version != expected_revision:
+            raise ConcurrencyConflictError("the plan changed since it was read")
+        if header.active_number is None:
+            raise DomainValidationError("this plan has no ACTIVE version to change")
+        latest = self.version(scope, plan_id, header.latest_number)
+        if latest.status is PlanStatus.PROPOSED:
+            raise DomainValidationError(
+                f"version {latest.number} is waiting for you: activate or reject it first"
+            )
+        active = self.version(scope, plan_id, header.active_number)
+        self._gate.enforce(  # before anything is written: activation's own policies
+            scope,
+            Action(
+                kind=ActionKind.WRITE_INTERNAL,
+                name=ACTIVATE_ACTION,
+                resource_owner=scope.athlete_id,
+                plan=content,
+                activates_plan=True,
+            ),
+        )
+        proposed = self.propose(
+            scope,
+            goal_id=active.goal_id,
+            content=content,
+            generator=Generator(kind=GeneratorKind.ATHLETE, engine_version=EDIT_RULES_VERSION),
+            plan_id=plan_id,
+            parent=active.number,
+            actor=ActorKind.USER,
+        )
+        return self.activate(
+            scope,
+            plan_id,
+            proposed.number,
+            expected_revision=self._headers.get(scope, plan_id).version,
+            reason=summary,
+        )
 
     def reject(self, scope: OwnerScope, plan_id: UUID, number: int) -> PlanVersion:
         """The athlete rejects a PROPOSED version (an ACTIVE one is superseded only by

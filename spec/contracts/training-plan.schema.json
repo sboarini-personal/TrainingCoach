@@ -47,7 +47,7 @@
       "required": ["kind", "engineVersion", "promptVersion", "modelId", "decisionId"],
       "additionalProperties": false,
       "properties": {
-        "kind": { "enum": ["ENGINE", "AI_ASSISTED"] },
+        "kind": { "enum": ["ENGINE", "AI_ASSISTED", "ATHLETE"] },
         "engineVersion": { "type": "string", "maxLength": 20 },
         "promptVersion": { "type": ["string", "null"], "maxLength": 20 },
         "modelId": { "type": ["string", "null"], "maxLength": 100 },
