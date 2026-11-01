@@ -104,7 +104,8 @@ Precision (P7): a file downloaded from a provider is a file: `FIT_FILE` or `OTHE
 origin GARMIN_PERSONAL_API, without a provider record ID; only the provider's JSON record is
 `PROVIDER_RECORD` (files spec 9.1).
 
-Resolution rules 1.0.0 (`resolutionRulesVersion`). For each field the first source in the
+Resolution rules 1.1.0 (`resolutionRulesVersion`; 1.1.0 lets the RPE the athlete entered in
+Garmin Connect count after the athlete's entry here, G-8). For each field the first source in the
 group's order with a known value wins. When every source that provides the field has it
 UNKNOWN, the field is UNKNOWN. A field no source provides is absent (UNKNOWN when the contract
 requires it).
@@ -121,7 +122,7 @@ requires it).
 | metadata | `metadata.name`, `metadata.description`, `classification.providerType` | provider record, athlete, FIT, other file | `METADATA_PREFER_PROVIDER` |
 | environment | `environment.temperatureC`, `humidityPct`, `windMps`, `altitudeMeters`, `poolLengthMeters` | FIT, provider record, other file, athlete | `ENVIRONMENT_PREFER_FIT` |
 | declared conditions | `environment.terrain`, `environment.surface` | athlete, provider record, FIT, other file | `DECLARED_PREFER_ATHLETE` |
-| subjective | `subjective.*` (RPE, soreness, pain, comments) | athlete only, never inferred | `SUBJECTIVE_ATHLETE_ONLY` |
+| subjective | `subjective.*` (RPE, soreness, pain, comments) | athlete; then a provider record for the RPE only (the athlete's own entry in the provider's app, G-8). Never inferred | `SUBJECTIVE_PREFER_ATHLETE` |
 | streams, laps, lengths, sets | stream references, per kind | FIT, provider record, other file | `STREAMS_PREFER_FIT` |
 | computed | `timing.originalLocalTime`, `timing.trainingDay`, `timing.trainingDayBasis`, pace fields | computed from resolved fields (section 2; canonical model section 6) | `LOCAL_TIME_FROM_OFFSET`, `OFFSET_FROM_TIMEZONE`, `TRAINING_DAY_ACTIVITY_TIME`, `TRAINING_DAY_ATHLETE_TIMEZONE`, `PACE_FROM_SPEED` |
 | recovery metrics | health provider | none (P11) | |
@@ -133,8 +134,9 @@ requires it).
 - A newer payload of the same provider record (same provider and `providerActivityId`)
   replaces the older one in resolution (latest `receivedAt`); the older stays linked for
   lineage.
-- Only athlete entries may carry subjective fields; an observation from another source that
-  carries them is rejected.
+- Only athlete entries may carry subjective fields, with one exception (athlete's review of 2026-10-31,
+  G-8): a provider record may carry `subjective.rpe`, the RPE the athlete entered in the
+  provider's app. Any other subjective field from another source is rejected.
 
 ## 4. Manual overrides (FR-ACT-006)
 

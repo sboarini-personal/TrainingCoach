@@ -73,12 +73,23 @@ def test_a_file_downloaded_from_a_provider_is_a_file_without_a_record_id() -> No
 
 
 @pytest.mark.req("FR-ACT-005")
-@pytest.mark.parametrize("kind", [SourceKind.FIT_FILE, SourceKind.PROVIDER_RECORD])
-def test_only_athlete_entries_carry_subjective_fields(kind: SourceKind) -> None:
-    with pytest.raises(DomainValidationError):
-        sample_observation(kind, updates={"subjective.rpe": 6.0})
-    entry = sample_observation(SourceKind.ATHLETE_ENTRY, updates={"subjective.rpe": 6.0})
-    assert entry.values["subjective.rpe"] == 6.0
+@pytest.mark.parametrize(
+    "field",
+    [("subjective.rpe", 6.0), ("subjective.soreness", 3), ("subjective.comments", "fine")],
+    ids=["rpe", "soreness", "comments"],
+)
+def test_subjective_fields_come_from_the_athlete(field: tuple[str, object]) -> None:
+    path, value = field
+    with pytest.raises(DomainValidationError):  # a file never carries them
+        sample_observation(SourceKind.FIT_FILE, updates={path: value})
+    entry = sample_observation(SourceKind.ATHLETE_ENTRY, updates={path: value})
+    assert entry.values[path] == value
+    if path == "subjective.rpe":  # the athlete's entry in Garmin Connect (G-8)
+        garmin = sample_observation(SourceKind.PROVIDER_RECORD, updates={path: value})
+        assert garmin.values[path] == value
+    else:
+        with pytest.raises(DomainValidationError):
+            sample_observation(SourceKind.PROVIDER_RECORD, updates={path: value})
 
 
 @pytest.mark.req("FR-ACT-001")

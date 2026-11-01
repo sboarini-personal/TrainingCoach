@@ -116,7 +116,7 @@ def test_fields_no_source_provides_stay_absent_or_unknown_when_required() -> Non
 
 
 @pytest.mark.req("FR-ACT-005", "FR-ACT-011")
-def test_subjective_fields_come_only_from_the_athlete() -> None:
+def test_subjective_fields_prefer_the_athletes_entry_here() -> None:
     entry = sample_observation(
         SourceKind.ATHLETE_ENTRY,
         values=tennis_values(**{"subjective.rpe": 7.0, "environment.surface": Surface.CLAY}),
@@ -124,15 +124,22 @@ def test_subjective_fields_come_only_from_the_athlete() -> None:
     garmin = sample_observation(
         SourceKind.PROVIDER_RECORD,
         values=tennis_values(
-            **{"environment.surface": Surface.HARD, "timing.elapsedSeconds": 5300.0}
+            **{
+                "environment.surface": Surface.HARD,
+                "timing.elapsedSeconds": 5300.0,
+                "subjective.rpe": 5.0,  # entered in Garmin Connect (G-8)
+            }
         ),
     )
     resolution = resolve((garmin, entry), athlete_timezone=BUENOS_AIRES)
-    assert resolution.values["subjective.rpe"] == 7.0
+    assert resolution.values["subjective.rpe"] == 7.0  # the entry here wins
     assert resolution.provenance["subjective.rpe"].source_id == MANUAL_SOURCE
-    assert resolution.provenance["subjective.rpe"].rule == "SUBJECTIVE_ATHLETE_ONLY"
+    assert resolution.provenance["subjective.rpe"].rule == "SUBJECTIVE_PREFER_ATHLETE"
     assert resolution.values["environment.surface"] is Surface.CLAY
     assert resolution.values["timing.elapsedSeconds"] == 5300.0
+    alone = resolve((garmin,), athlete_timezone=BUENOS_AIRES)
+    assert alone.values["subjective.rpe"] == 5.0  # Garmin's, without an entry here
+    assert alone.provenance["subjective.rpe"].rule == "SUBJECTIVE_PREFER_ATHLETE"
 
 
 @pytest.mark.req("FR-ACT-005", "FR-ACT-007")

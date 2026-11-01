@@ -30,7 +30,7 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.quality import Anomaly
 from coach.domain.common.sport import Sport
 
-RESOLUTION_RULES_VERSION: Final = "1.0.0"
+RESOLUTION_RULES_VERSION: Final = "1.1.0"
 
 _FIT, _PROVIDER = SourceKind.FIT_FILE, SourceKind.PROVIDER_RECORD
 _OTHER, _ATHLETE = SourceKind.OTHER_FILE, SourceKind.ATHLETE_ENTRY
@@ -47,7 +47,7 @@ ORDER: Final[Mapping[Group, tuple[SourceKind, ...]]] = {
     Group.METADATA: (_PROVIDER, _ATHLETE, _FIT, _OTHER),
     Group.ENVIRONMENT: _MEASURED,
     Group.DECLARED: (_ATHLETE, _PROVIDER, _FIT, _OTHER),
-    Group.SUBJECTIVE: (_ATHLETE,),
+    Group.SUBJECTIVE: (_ATHLETE, _PROVIDER),  # 1.1.0: Garmin's RPE (G-8)
 }
 RULES: Final[Mapping[Group, str]] = {
     Group.SPORT: "SPORT_MOST_SPECIFIC",
@@ -60,7 +60,7 @@ RULES: Final[Mapping[Group, str]] = {
     Group.METADATA: "METADATA_PREFER_PROVIDER",
     Group.ENVIRONMENT: "ENVIRONMENT_PREFER_FIT",
     Group.DECLARED: "DECLARED_PREFER_ATHLETE",
-    Group.SUBJECTIVE: "SUBJECTIVE_ATHLETE_ONLY",
+    Group.SUBJECTIVE: "SUBJECTIVE_PREFER_ATHLETE",
 }
 STREAM_ORDER: Final = (_FIT, _PROVIDER, _OTHER)
 STREAMS_RULE: Final = "STREAMS_PREFER_FIT"

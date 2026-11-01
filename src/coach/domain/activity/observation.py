@@ -18,6 +18,7 @@ from uuid import UUID
 
 from coach.domain.activity.fields import (
     OBSERVABLE_FIELDS,
+    PROVIDER_SUBJECTIVE_FIELDS,
     SUBJECTIVE_FIELDS,
     StreamRef,
     check_streams,
@@ -135,8 +136,17 @@ class Observation:
         not_observable = sorted(set(self.values) - OBSERVABLE_FIELDS)
         if not_observable:
             raise DomainValidationError(f"fields no source provides: {not_observable}")
-        if self.kind is not SourceKind.ATHLETE_ENTRY and set(self.values) & SUBJECTIVE_FIELDS:
-            raise DomainValidationError("only athlete entries carry subjective fields")
+        if self.kind is not SourceKind.ATHLETE_ENTRY:
+            allowed = (
+                PROVIDER_SUBJECTIVE_FIELDS
+                if self.kind is SourceKind.PROVIDER_RECORD
+                else frozenset()
+            )
+            if (set(self.values) & SUBJECTIVE_FIELDS) - allowed:
+                raise DomainValidationError(
+                    "subjective fields come from the athlete (a provider record may carry "
+                    "only the RPE the athlete entered in the provider's app)"
+                )
         values = check_values(self.values)
         for required in ("classification.sport", "timing.startTimeUtc"):
             if values.get(required) is None:

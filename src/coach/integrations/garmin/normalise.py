@@ -1,9 +1,15 @@
-"""Garmin activity record normalisation rules 1.0.0 (garmin spec section 10).
+"""Garmin activity record normalisation rules 1.1.0 (garmin spec section 10).
 
 Maps one ``ActivitySummaryDTO`` (activity details endpoint) to canonical field values, with
 the units the Swagger document states, converting in code. Only documented activity type
 keys are mapped (G-6); anything the record does not state stays absent. A record that does
 not match the documented shape is rejected, never repaired.
+
+Rules 1.1.0 add the RPE the athlete entered in Garmin Connect (``directWorkoutRpe``, G-8).
+The Swagger documents it as an integer without a scale, and the athlete confirmed its
+meaning (CR-10, 1 to 10); the stored encoding is not documented, so only values that
+both plausible encodings read alike are decoded: 1 to 9 as such, 20 to 100 in tens as a
+tenth. 10 (RPE 10, or RPE 1 in tens) and anything else stay unknown.
 
 The JSON is parsed in process: the standard parser executes nothing, ``NaN`` and
 ``Infinity`` are refused, and nesting too deep for the parser is a rejection.
@@ -35,7 +41,7 @@ from coach.domain.ingestion.record import RejectionReason
 from coach.integrations.files.normalise import EARLIEST_START, whole
 
 NORMALISER: Final = "garmin_activity"
-RULES_VERSION: Final = "1.0.0"
+RULES_VERSION: Final = "1.1.0"
 PROVIDER: Final = "garmin"
 LATEST_AHEAD: Final = timedelta(days=365)
 _DATE_TIME: Final = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}")
@@ -228,6 +234,19 @@ def _summary(builder: _Builder, summary: Mapping[str, Any], sport: Sport) -> Non
             builder.put(path, metric, f"summaryDTO.{key}")
 
 
+def garmin_rpe(value: object) -> float | None:
+    """The athlete's RPE from ``directWorkoutRpe`` (G-8; module docstring), or ``None``."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):  # Swagger: int32
+        _schema("FIELD_TYPE")
+    if 1 <= value <= 9:
+        return float(value)
+    if 20 <= value <= 100 and value % 10 == 0:
+        return value / 10
+    return None
+
+
 class GarminActivityRecords:
     """Implements ``ProviderRecords`` for Garmin activity details."""
 
@@ -257,6 +276,8 @@ class GarminActivityRecords:
         builder.put("metadata.description", _text(document, "description"), "description")
         _timing(builder, document, summary, received_at)
         _summary(builder, summary, sport)
+        rpe = garmin_rpe(summary.get("directWorkoutRpe"))
+        builder.put("subjective.rpe", rpe, "summaryDTO.directWorkoutRpe")
         try:
             values = check_values(builder.values)
         except DomainValidationError:

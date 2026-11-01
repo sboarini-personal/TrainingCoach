@@ -198,7 +198,7 @@ records `notBefore`, before which no request is made.
 | G-5 | Whether the Personal API terms allow processing data with a third-party AI provider; the athlete reviews them before Garmin-sourced data reaches the LLM | Resolved by the athlete's declaration (athlete's review of 2026-10-31): the Personal API data may be processed by a third-party AI provider. Recorded as the athlete's statement; the application has not verified it against Garmin's terms. The P13 gate is lifted on this basis; AI_PROCESSING consent still applies |
 | G-6 | Garmin activity types mapped to canonical sports and subtypes (from observed values) | Partly: only the documented type keys are mapped (section 10); others are OTHER with `providerType` kept, and the file's sport wins |
 | G-7 | Semantics of proprietary health metrics (treated as PROVIDER_DERIVED) | Partly (P11): Body Battery's daily `charged` is read as a proprietary recovery signal (PROVIDER_DERIVED, never a decision on its own, recovery spec 3); Garmin stress, HRV status and sleep scores are not mapped |
-| G-8 | Garmin's per-activity RPE and feel fields (`directWorkoutRpe`, `directWorkoutFeel`) are athlete entries made in Garmin Connect, but only athlete entries in this application may carry subjective fields | Open: not mapped in P7; proposed for the athlete's review |
+| G-8 | Garmin's per-activity RPE and feel fields (`directWorkoutRpe`, `directWorkoutFeel`) are athlete entries made in Garmin Connect, but only athlete entries in this application may carry subjective fields | Resolved (athlete's review of 2026-10-31): the RPE is mapped (section 10, rules 1.1.0) with lower priority than the athlete's entry in the application. The Swagger documents an integer without a scale; the athlete confirmed the meaning (CR-10, 1 to 10). Only values both plausible encodings read alike are decoded; the first real activity with an RPE settles the encoding. `directWorkoutFeel` has no canonical field and stays unmapped |
 
 Business tiers (OAuth 2.0 reported by third parties, PKCE unconfirmed, push delivery) are out
 of V1. If adopted, webhook endpoints require signature verification, a replay window and
@@ -214,7 +214,7 @@ idempotent handling (threat model).
   `client.py`)
 - https://github.com/garmin/fit-python-sdk
 
-## 10. Activity record normalisation rules (`garmin_activity` 1.0.0)
+## 10. Activity record normalisation rules (`garmin_activity` 1.1.0)
 
 Input: one `ActivitySummaryDTO` (details endpoint). Units are those stated by the Swagger
 document. Nothing is inferred that the record does not state; text stays untrusted and is
@@ -241,10 +241,13 @@ screened for secrets like file text.
 | `swimming.lengthCount` (SWIMMING) | `summaryDTO.numberOfActiveLengths` | count |
 | `training.anaerobicEffect` | `summaryDTO.anaerobicTrainingEffect` | provider metric `garmin`, PROVIDER_DERIVED |
 | `training.load.internal.providerLoad` | `summaryDTO.activityTrainingLoad` | provider metric `garmin`, PROVIDER_DERIVED |
+| `subjective.rpe` (1.1.0, G-8) | `summaryDTO.directWorkoutRpe` (int32, scale not documented) | 1 to 9 as such; 20 to 100 in tens as a tenth; 10 (RPE 10, or RPE 1 in tens) and any other value stay unknown; a non-integer is a schema rejection |
 
 Not mapped: `trainingEffect` (the Swagger text does not say it is the aerobic effect; the FIT
 file states it), pool length (its unit handling is ambiguous in the Swagger text), temperature,
-calories, stress, Body Battery, SpO2, respiration and every other field (G-7, G-8).
+calories, stress, Body Battery, SpO2, respiration, `directWorkoutFeel` and every other field
+(G-7, G-8). Rules 1.1.0 apply to activities already synchronised through `coach activity
+reprocess` (ADR-029): their records are stored byte-exact (R-27).
 
 Rejections (ingestion record and IMPORT_FAILED issue, files spec section 9): not a JSON object
 or not UTF-8 (`SCHEMA_INVALID`, `JSON`); a mapped field with the wrong JSON type

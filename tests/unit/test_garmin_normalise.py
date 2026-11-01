@@ -1,4 +1,4 @@
-"""Garmin activity record normalisation rules 1.0.0 (garmin spec section 10; G-2, G-6)."""
+"""Garmin activity record normalisation rules 1.1.0 (garmin spec section 10; G-2, G-6, G-8)."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from coach.integrations.garmin.normalise import (
     NORMALISER,
     RULES_VERSION,
     GarminActivityRecords,
+    garmin_rpe,
 )
 from garmin_samples import ACTIVITY_ID, activity_details, details_bytes
 
@@ -81,15 +82,16 @@ def test_a_run_maps_every_documented_field() -> None:
             "training.load.internal.providerLoad": ProviderMetric(
                 61.5, "garmin", "activity training load", MetricOrigin.PROVIDER_DERIVED
             ),
+            "subjective.rpe": 3.0,  # directWorkoutRpe 30, in tens (G-8)
         }
     )
 
 
 @pytest.mark.req("INT-GAR-005")
-def test_unmapped_and_subjective_fields_are_left_out() -> None:
+def test_unmapped_fields_are_left_out() -> None:
     values = decode(details_bytes())
     assert "training.aerobicEffect" not in values  # trainingEffect is not said to be aerobic
-    assert not any(path.startswith("subjective.") for path in values)  # G-8
+    assert [path for path in values if path.startswith("subjective.")] == ["subjective.rpe"]
     assert "environment.temperatureC" not in values
     assert "metadata.description" not in values  # null in the record
 
@@ -253,3 +255,31 @@ def test_text_is_kept_as_untrusted_data() -> None:
     values = decode(details(activityName=hostile, description="\x00line\x07"))
     assert values["metadata.name"] == hostile
     assert values["metadata.description"] == "line"
+
+
+RPE_CASES = [
+    (None, None),
+    (7, 7.0),  # stored as entered, 1 to 9
+    (1, 1.0),
+    (70, 7.0),  # stored in tens
+    (100, 10.0),
+    (20, 2.0),
+    (10, None),  # RPE 10, or RPE 1 in tens: ambiguous, unknown
+    (0, None),
+    (35, None),
+    (110, None),
+]
+
+
+@pytest.mark.req("INT-GAR-005", "FR-ACT-005")
+@pytest.mark.parametrize(("raw", "rpe"), RPE_CASES, ids=[str(case[0]) for case in RPE_CASES])
+def test_garmin_rpe_is_decoded_only_where_both_encodings_agree(
+    raw: int | None, rpe: float | None
+) -> None:
+    assert garmin_rpe(raw) == rpe
+
+
+@pytest.mark.req("INT-GAR-005")
+def test_a_non_integer_rpe_is_a_schema_rejection() -> None:
+    with pytest.raises(FileRejectedError):
+        garmin_rpe(7.5)

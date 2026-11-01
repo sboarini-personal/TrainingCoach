@@ -528,6 +528,9 @@ OBSERVABLE_FIELDS: Final = frozenset(spec.path for spec in _FIELDS if spec.obser
 SUBJECTIVE_FIELDS: Final = frozenset(
     spec.path for spec in _FIELDS if spec.group is Group.SUBJECTIVE
 )
+# The athlete's own entry made in the provider's app (Garmin's RPE, G-8): the only
+# subjective field a provider record may carry; the athlete's entry here still wins.
+PROVIDER_SUBJECTIVE_FIELDS: Final = frozenset({"subjective.rpe"})
 REQUIRED_FIELDS: Final = frozenset(
     {
         "classification.sport",
