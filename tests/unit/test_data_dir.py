@@ -1,11 +1,18 @@
-"""Data directory resolution and the synced-folder guard (PRIV-STO-001, ADR-014)."""
+"""Data directory resolution, synchronised folders and the repository guard (PRIV-STO-001,
+ADR-014, ADR-035)."""
 
 import logging
 from pathlib import Path
 
 import pytest
 
-from coach.infrastructure.datadir import SyncedDataDirError, ensure_layout, resolve_data_dir
+from coach.infrastructure.datadir import (
+    DataDirError,
+    ensure_layout,
+    log_synced_folder,
+    resolve_data_dir,
+    synced_folder_reason,
+)
 
 pytestmark = [pytest.mark.req("PRIV-STO-001"), pytest.mark.acceptance("AT-STO-001")]
 
@@ -13,6 +20,7 @@ pytestmark = [pytest.mark.req("PRIV-STO-001"), pytest.mark.acceptance("AT-STO-00
 def test_windows_default_is_local_app_data(tmp_path: Path) -> None:
     resolved = resolve_data_dir({"LOCALAPPDATA": str(tmp_path / "Local")}, windows=True)
     assert resolved == (tmp_path / "Local" / "CoachDeportivo").resolve()
+    assert synced_folder_reason(resolved, {}) is None  # local by default
 
 
 def test_posix_default_is_xdg_data_home(tmp_path: Path) -> None:
@@ -27,32 +35,36 @@ def test_explicit_directory_wins(tmp_path: Path) -> None:
     assert resolve_data_dir(env, windows=True) == (tmp_path / "coach-data").resolve()
 
 
-def test_directory_inside_a_synced_root_is_refused(tmp_path: Path) -> None:
+def test_a_directory_inside_a_synced_root_is_accepted_and_named(tmp_path: Path) -> None:
     synced = tmp_path / "CorporateSync"
     env = {"OneDriveCommercial": str(synced), "COACH_DATA_DIR": str(synced / "Docs" / "coach")}
-    with pytest.raises(SyncedDataDirError, match="OneDriveCommercial"):
-        resolve_data_dir(env, windows=True)
+    resolved = resolve_data_dir(env, windows=True)  # the athlete's choice (D-5, ADR-035)
+    assert resolved == (synced / "Docs" / "coach").resolve()
+    assert "OneDriveCommercial" in (synced_folder_reason(resolved, env) or "")
 
 
 @pytest.mark.parametrize(
     "component", ["OneDrive - Example Org", "onedrive", "Dropbox", "Google Drive"]
 )
-def test_synced_looking_path_components_are_refused(tmp_path: Path, component: str) -> None:
+def test_synced_looking_components_are_accepted_with_a_logged_notice(
+    tmp_path: Path, component: str, caplog: pytest.LogCaptureFixture
+) -> None:
     env = {"COACH_DATA_DIR": str(tmp_path / component / "coach")}
-    with pytest.raises(SyncedDataDirError):
-        resolve_data_dir(env, windows=True)
-
-
-def test_override_is_explicit_and_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    env = {
-        "COACH_DATA_DIR": str(tmp_path / "Dropbox" / "coach"),
-        "COACH_ALLOW_SYNCED_DATA_DIR": "1",
-    }
+    resolved = resolve_data_dir(env, windows=True)
     with caplog.at_level(logging.WARNING, logger="coach.security"):
-        assert resolve_data_dir(env, windows=True) == (tmp_path / "Dropbox" / "coach").resolve()
-    assert "security.synced_data_dir_override" in caplog.text
-    with pytest.raises(SyncedDataDirError):
-        resolve_data_dir({**env, "COACH_ALLOW_SYNCED_DATA_DIR": "yes"}, windows=True)
+        notice = log_synced_folder(resolved, env)
+    assert notice is not None
+    assert "retention and eDiscovery" in notice
+    assert "two computers" in notice
+    assert "security.synced_data_dir" in caplog.text
+    assert log_synced_folder(tmp_path / "local", {}) is None
+
+
+def test_a_directory_inside_a_repository_is_refused(tmp_path: Path) -> None:
+    (tmp_path / "project" / ".git").mkdir(parents=True)
+    env = {"COACH_DATA_DIR": str(tmp_path / "project" / "data")}
+    with pytest.raises(DataDirError, match="inside the repository"):
+        resolve_data_dir(env, windows=True)
 
 
 def test_layout_is_created(tmp_path: Path) -> None:

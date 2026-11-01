@@ -27,8 +27,9 @@ context.
 
 ## 2. Storage location
 
-All athlete data lives in the data directory outside synced folders (default
-`%LOCALAPPDATA%\CoachDeportivo`) and in the OS secret store (ADR-014). The repository contains
+All athlete data lives in the data directory (default `%LOCALAPPDATA%\CoachDeportivo`, not
+synchronised; a synchronised folder only by the athlete's choice, ADR-035) and secrets in the
+OS secret store (ADR-014). The repository contains
 no athlete data. Backups are created only on request and go where the athlete chooses.
 
 ## 3. Third parties

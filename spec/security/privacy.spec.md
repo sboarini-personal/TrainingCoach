@@ -71,20 +71,23 @@ provider source are FR-PRF-008 (athlete's review of 2026-10-31).
   processing: analytics, recomputation, plans, executions, adaptation, insights, reports, the
   AI, and changes to the data.
 
-## 5. Storage location (PRIV-STO-001, PROPOSED)
+## 5. Storage location (PRIV-STO-001)
 
-Athlete data and secrets are stored outside folders synchronised to cloud storage (ADR-014,
-threat model R-01):
+By default athlete data is stored outside folders synchronised to cloud storage, and secrets
+always are (ADR-014, ADR-035, threat model R-01):
 
 - The data directory is `COACH_DATA_DIR` when set, otherwise `%LOCALAPPDATA%\CoachDeportivo`
   on Windows or `$XDG_DATA_HOME/CoachDeportivo` (default `~/.local/share/CoachDeportivo`)
   elsewhere.
-- The application refuses a data directory equal to or inside a synced folder: the roots
-  named by `OneDrive`, `OneDriveCommercial` and `OneDriveConsumer`, and any path with a
-  component that starts with `OneDrive`, or is `Dropbox`, `Google Drive`, `My Drive` or
-  `iCloudDrive` (case-insensitive).
-- The refusal can only be overridden by setting `COACH_ALLOW_SYNCED_DATA_DIR=1`; the override
-  is logged as a security event.
+- The athlete may choose a synchronised folder (athlete's decision D-5, review of
+  2026-10-31; ADR-035). It is detected as before: the roots named by `OneDrive`,
+  `OneDriveCommercial` and `OneDriveConsumer`, and any path with a component that starts
+  with `OneDrive`, or is `Dropbox`, `Google Drive`, `My Drive` or `iCloudDrive`
+  (case-insensitive). `coach init` then names the risks once (tenant retention and
+  eDiscovery, sync conflicts between two computers), and the choice is logged as the
+  security event `security.synced_data_dir`. No override variable is needed.
+- A data directory inside a git working tree is always refused: athlete data never goes in
+  a repository.
 - Secrets are never stored in the data directory (SEC-SEC-001).
 
 ## 6. Deletion (PRIV-DEL-001 to PRIV-DEL-003)

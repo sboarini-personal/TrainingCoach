@@ -51,7 +51,7 @@ surface (P6 uploads, P7 provider, P13 agent).
 | Repositories | I/E: SQL injection | parameterised queries only (no formatted SQL), ruff S608; tested with SQL metacharacters (P3) | SEC-INJ-003 |
 | Storage integrity | T: RAW data or derived values silently rewritten by a bug or a direct database edit | database triggers reject updates to RAW sources and any change to a derived value except the one-time supersession link; blobs read-only and verified against their hash on every read (P3) | FR-ACT-002, FR-MET-004 |
 | Blob store | I: one athlete learns that another stored the same file (existence oracle); D/T: path tricks | blobs partitioned per athlete; paths built only from the athlete UUID and a validated SHA-256 (P3) | SEC-IDOR-001, SEC-UPL-005 |
-| Data directory | I: health data synchronised to an organisational cloud tenant | synced-folder guard refuses OneDrive/Dropbox/Google Drive paths; explicit, logged override only (P3) | PRIV-STO-001 |
+| Data directory | I: health data synchronised to an organisational cloud tenant; athlete data inside the repository | local by default; a synchronised folder is the athlete's choice, named once at `coach init` and logged (ADR-035); a folder inside a git repository is refused | PRIV-STO-001 |
 | Local authentication (P4) | S: guessing or replaying the local API token; brute force | 256-bit token in the OS secret store, constant-time digest comparison, read from the store on every attempt (rotation is immediate), one generic failure message, lockout after 5 failures in 60 s doubling to 1 h, failures audited and emitted | SEC-AUTH-001, SEC-AUTH-003 |
 | Authorization chain (P4) | E: a principal without an athlete link acting on data; a caller choosing the athlete | owner scope derived only from the authenticated principal through the identity directory; no service takes an athlete ID from input; denials audited | SEC-AUTHZ-001 |
 | Credentials (P4) | I: secret in the database, logs, CLI arguments or output; arbitrary secret-store access | values only in the OS secret store; database keeps metadata without value or hash; derived handles validated before reaching the store; hidden input; `SecretValue` never renders; leakage sweep test plants secrets and scans output, logs, files and errors | SEC-SEC-001 to SEC-SEC-004, AT-SEC-002 |
@@ -82,7 +82,7 @@ surface (P6 uploads, P7 provider, P13 agent).
 | Strength sets files (P12) | T/E: formula injection through an exported cell; an oversized or malformed file; a guessed exercise; I: file text echoed in errors | parsed in-process by the standard `csv` module under fixed limits (64 KiB, 200 rows, UTF-8, no NUL), typed cells only, nothing evaluated; exercises resolved exactly or refused; all or nothing; errors name the line, never its text; formula-like text quoted on export | INT-FIL-001, INT-FIL-003, INT-FIL-004, SEC-INJ-004, AT-CSV-001 |
 | Schema evolution | T/D: an automatic migration destroys data | migration runner refuses unapproved destructive migrations, downgrades and edited migrations (P3) | NFR-REL-004 |
 | External workout publication | T/R: unconfirmed or replayed writes | capability gate (unsupported in V1), confirmation tokens, idempotency per proposal, audit | INT-GAR-002, INT-GAR-003, SEC-AUD-001 |
-| Administrator / host | I: other OS users or malware read the database and blobs | data outside synced folders, per-user ACL, OS full-disk encryption, no secrets in the database; no admin API | ADR-014, A-10 |
+| Administrator / host | I: other OS users or malware read the database and blobs | data local by default (ADR-035), per-user ACL, OS full-disk encryption, no secrets in the database; no admin API | ADR-014, A-10 |
 | Audit | R: actions denied by athlete or agent; tampering | append-only, hash-chained events | SEC-AUD-001 |
 | Replay | duplicate commands, imports or syncs | Idempotency-Key, content hashes, provider IDs | NFR-REL-001 |
 | Repository (B6) | I: athlete data or secrets committed and synced or pushed | `.gitignore`, athlete-data pre-commit hook, detect-secrets, private GitHub repository | SEC-SEC-006 |
@@ -92,7 +92,7 @@ surface (P6 uploads, P7 provider, P13 agent).
 
 | ID | Risk | Owner decision |
 |---|---|---|
-| R-01 | Repository folder syncs to an organisational OneDrive tenant | Accepted for code and docs only (ADR-014); athlete data and secrets stay outside |
+| R-01 | Repository folder syncs to an organisational OneDrive tenant | Accepted for code and docs (ADR-014). Athlete data may follow by the athlete's choice (D-5, ADR-035: retention and eDiscovery may keep it after deletion; one computer at a time); secrets always stay in the OS secret store |
 | R-11 | Garmin Personal API terms on third-party AI processing unknown (G-5) | Accepted by the athlete (athlete's review of 2026-10-31): they declared that the data may be processed by a third-party AI provider; not verified by the application. AI_PROCESSING consent and context minimisation still apply |
 | R-12 | Parser memory limits depend on the platform: enforced by a Job Object on Windows and RLIMIT_AS on POSIX (P6); if a Job Object cannot be created the parser runs without the Windows memory limit | Record limits, output limits and timeouts apply everywhere; `memory_limit_enforced` reports it (ADR-025) |
 | R-13 | CI actions pinned to tags, not SHAs | Follow-up after the GitHub remote exists |

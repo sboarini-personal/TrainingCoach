@@ -154,10 +154,10 @@ P3 additions:
 
 - Single local process on the athlete's Windows PC: HTTP API bound to loopback, background
   sync worker, CLI. No inbound internet surface.
-- Data directory outside synced folders: default `%LOCALAPPDATA%\CoachDeportivo`
-  (`COACH_DATA_DIR`), containing SQLite (WAL) and the content-addressed blob store. The
-  application refuses a data directory inside OneDrive, Dropbox or Google Drive folders
-  (PRIV-STO-001).
+- Data directory: default `%LOCALAPPDATA%\CoachDeportivo` (`COACH_DATA_DIR`), containing
+  SQLite (WAL) and the content-addressed blob store. A synchronised folder is the athlete's
+  choice, named once by `coach init`; a folder inside a git repository is refused
+  (PRIV-STO-001, ADR-035).
 - Secrets in Windows Credential Manager through `keyring`.
 - The repository (code, specs, synthetic fixtures) stays in its current folder (athlete
   decision D-1) and is pushed to a private GitHub repository (D-3).

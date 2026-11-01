@@ -158,7 +158,7 @@ and every acceptance test referenced here is defined in `spec/acceptance/`.
 | PRIV-CON-004 | Unnecessary sensitive categories not ingested by default | security/privacy.spec.md | - | ACCEPTED |
 | PRIV-ACC-001 | Athlete can inspect and export their data | security/privacy.spec.md | - | ACCEPTED |
 | PRIV-ACC-002 | Athlete can correct their data | security/privacy.spec.md | AT-RAW-001 | ACCEPTED |
-| PRIV-STO-001 | Athlete data stored outside synced folders by default | security/privacy.spec.md | AT-STO-001 | PROPOSED |
+| PRIV-STO-001 | Athlete data stored outside synced folders by default | security/privacy.spec.md | AT-STO-001 | ACCEPTED |
 | PRIV-DEL-001 | Deletion workflow covers every data store | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
 | PRIV-DEL-002 | Provider access revoked where supported, otherwise instructions given | security/privacy.spec.md | AT-DEL-001 | ACCEPTED |
 | PRIV-DEL-003 | Retained audit information minimised | security/privacy.spec.md | AT-AUD-001, AT-DEL-001 | ACCEPTED |

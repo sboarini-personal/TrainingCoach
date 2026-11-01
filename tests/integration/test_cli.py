@@ -35,11 +35,21 @@ def test_init_creates_the_installation_once(cli: Cli) -> None:
 
 
 @pytest.mark.req("PRIV-STO-001")
-def test_init_refuses_a_synced_data_directory(cli: Cli, tmp_path: Path) -> None:
+@pytest.mark.acceptance("AT-STO-001")
+def test_init_in_a_synced_folder_works_and_names_the_risks_once(cli: Cli, tmp_path: Path) -> None:
     cli.env["COACH_DATA_DIR"] = str(tmp_path / "OneDrive - Example" / "coach")
     code, output = cli.run("init")
-    assert code == 2
-    assert "synchronised" in output
+    assert code == 0, output
+    assert output.startswith("notice: the data directory ")
+    assert "synchronised folder" in output
+    assert "initialised" in output
+    code, output = cli.run("secret", "list")  # other commands stay quiet
+    assert code == 0
+    assert "notice:" not in output
+    (tmp_path / "repo" / ".git").mkdir(parents=True)
+    cli.env["COACH_DATA_DIR"] = str(tmp_path / "repo" / "data")
+    code, output = cli.run("init")
+    assert (code, "inside the repository" in output) == (2, True)
 
 
 @pytest.mark.req("SEC-SEC-001", "SEC-SEC-004")

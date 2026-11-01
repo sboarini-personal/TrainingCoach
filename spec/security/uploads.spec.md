@@ -82,7 +82,8 @@ Mechanism (P6):
 - Stored files are named by SHA-256. The original filename is kept only as sanitised display
   metadata (control characters removed, maximum 255 characters) and treated as untrusted
   text.
-- The blob store is outside the repository and outside synced folders (ADR-014).
+- The blob store is in the data directory: outside the repository always, and outside
+  synced folders unless the athlete chose one (ADR-014, ADR-035).
 
 ## 6. Malware scanning (SEC-UPL-006)
 

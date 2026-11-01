@@ -187,7 +187,9 @@ OneDrive, Dropbox and Google Drive folders. Secrets go to the Windows Credential
 ## Data and secrets
 
 - Athlete data is **never** stored in this repository. At runtime it lives in `COACH_DATA_DIR`
-  (default `%LOCALAPPDATA%\CoachDeportivo`), outside synced folders.
+  (default `%LOCALAPPDATA%\CoachDeportivo`, not synchronised). You may choose a synchronised
+  folder (OneDrive, Dropbox, Google Drive): `coach init` then explains the risks once. A folder
+  inside a git repository is refused.
 - Secrets (Garmin Personal API key, LLM key, local API token) live in the OS secret store.
   Never put them in `.env` files, chat, issues or commits.
 - Pre-commit hooks scan for secrets and block activity files (`.fit`, `.tcx`, `.gpx`, `.zip`,

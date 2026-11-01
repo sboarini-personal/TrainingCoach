@@ -15,15 +15,18 @@ agent enforcement follow in P7 and P13.
 **And** no personal data is sent to the LLM provider
 **And** deterministic features keep working.
 
-### AT-STO-001 — Synced folders are refused as data directory
+### AT-STO-001 — Synced folders are named, repositories refused
 - Requirements: PRIV-STO-001
 - Level: unit. First executable: P3.
 
 **Given** `COACH_DATA_DIR` points inside the folder named by the `OneDrive` variable, or to any path with a `OneDrive...` or `Dropbox` component
-**When** the data directory is resolved
-**Then** it is refused with an explanation
+**When** the data directory is resolved and `coach init` runs
+**Then** it is accepted (the athlete's choice, ADR-035), and `coach init` names the risks once and logs the choice
 **And** without `COACH_DATA_DIR` the default is the per-user local application data folder
-**And** only `COACH_ALLOW_SYNCED_DATA_DIR=1` overrides the refusal.
+**And** a data directory inside a git working tree is refused.
+
+(Revised in the athlete's review of 2026-10-31: the scenario used to refuse synchronised
+folders unless `COACH_ALLOW_SYNCED_DATA_DIR=1` was set.)
 
 ### AT-DEL-001 — Deletion covers every store
 - Requirements: PRIV-DEL-001, PRIV-DEL-002, PRIV-DEL-003, SEC-AUD-001

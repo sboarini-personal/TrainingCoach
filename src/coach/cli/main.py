@@ -40,7 +40,12 @@ from coach.cli.runtime import Runtime, build_runtime
 from coach.domain.athlete.physiology import SensorType
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.strength.vocabulary import MovementPattern
-from coach.infrastructure.datadir import SyncedDataDirError, ensure_layout, resolve_data_dir
+from coach.infrastructure.datadir import (
+    DataDirError,
+    ensure_layout,
+    log_synced_folder,
+    resolve_data_dir,
+)
 from coach.infrastructure.logs import attach_file_log, detach_file_log
 from coach.integrations.garmin.transport import HttpTransport
 
@@ -347,9 +352,10 @@ def main(
 ) -> int:
     stream = out if out is not None else sys.stdout
     args = _parser().parse_args(argv)
+    variables = env if env is not None else os.environ
     try:
-        data_dir = resolve_data_dir(env if env is not None else os.environ)
-    except SyncedDataDirError as error:
+        data_dir = resolve_data_dir(variables)
+    except DataDirError as error:
         print(f"error: {error}", file=stream)
         return 2
     if args.command != "init" and not (data_dir / "coach.sqlite3").is_file():
@@ -371,6 +377,9 @@ def main(
         )
         match (args.command, getattr(args, "action", None)):
             case ("init", _):
+                notice = log_synced_folder(data_dir, variables)  # once, at init (ADR-035)
+                if notice is not None:
+                    print(notice, file=stream)
                 return _init(runtime, args, stream)
             case ("token", "rotate"):
                 return _rotate_token(runtime, args, stream)

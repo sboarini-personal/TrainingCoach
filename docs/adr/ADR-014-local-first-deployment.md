@@ -1,6 +1,7 @@
 # ADR-014: Local-first deployment; data and secrets outside synced folders
 
-- Status: Accepted (athlete decision D-1, 2026-10-24)
+- Status: Accepted (athlete decision D-1, 2026-10-24); the data-location rule is amended by
+  ADR-035 (athlete decision D-5, 2026-10-31)
 - Date: 2026-10-24
 - Requirements: PRIV-DEL-001, SEC-SEC-001, SEC-SEC-003, SEC-AUTH-002
 
