@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0.0",
+  "decisionId": "0193b2a0-0000-7000-8000-000000000c01",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "decidedAt": "2026-11-01T18:00:00Z",
+  "kind": "PLAN_PROPOSAL",
+  "promptVersion": "1.0.0",
+  "specVersion": "1.1.0",
+  "modelId": "claude-opus-5-5",
+  "toolCalls": [
+    { "name": "getTrainingPlan", "outcome": "OK" },
+    { "name": "proposeTrainingPlan", "outcome": "OK" }
+  ],
+  "evidence": [{ "kind": "PLAN_VERSION", "id": "0193b2a0-0000-7000-8000-000000000502" }],
+  "proposedAction": "PROPOSE_PLAN_VERSION",
+  "proposalId": "0193b2a0-0000-7000-8000-000000000502",
+  "policyDecision": "ALLOWED",
+  "policyReasons": [],
+  "userFacingExplanation": "I proposed version 3 of your plan: the long run moves to Sunday. Review it with coach plan show; nothing changes until you activate it.",
+  "conversationId": "0193b2a0-0000-7000-8000-000000000d01",
+  "version": 1
+}

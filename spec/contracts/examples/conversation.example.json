@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0.0",
+  "conversationId": "0193b2a0-0000-7000-8000-000000000d01",
+  "athleteId": "0193b2a0-0000-7000-8000-000000000001",
+  "startedAt": "2026-11-01T18:00:00Z",
+  "promptVersion": "1.0.0",
+  "toolsVersion": "1.0.0",
+  "modelId": "claude-opus-5-5",
+  "turns": [
+    {
+      "role": "user",
+      "at": "2026-11-01T18:00:00Z",
+      "content": [{ "type": "text", "text": "How was my week?" }]
+    },
+    {
+      "role": "assistant",
+      "at": "2026-11-01T18:00:05Z",
+      "content": [
+        { "type": "thinking", "thinking": "", "signature": "synthetic-signature" },
+        {
+          "type": "tool_use",
+          "id": "toolu_synthetic_01",
+          "name": "getReportData",
+          "input": { "report": "WEEKLY", "period": "2026-W44" }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "at": "2026-11-01T18:00:06Z",
+      "content": [
+        {
+          "type": "tool_result",
+          "tool_use_id": "toolu_synthetic_01",
+          "content": "{\"sections\": []}"
+        }
+      ]
+    },
+    {
+      "role": "assistant",
+      "at": "2026-11-01T18:00:09Z",
+      "content": [{ "type": "text", "text": "Your report has no data for that week yet." }]
+    }
+  ],
+  "version": 1
+}

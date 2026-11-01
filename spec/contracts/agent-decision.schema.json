@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:agent-decision:1",
+  "title": "AgentDecision",
+  "description": "A significant decision of the AI coach (FR-AGT-003, agent spec 5): a plan proposal, an adaptation, a load reduction or a safety response. It records the prompt and spec versions, the model, the tool calls (name and outcome only, never their inputs), the evidence, the action proposed and its proposal, what the policy engine decided and the explanation the athlete was shown. Private chain-of-thought is never stored. version is the storage revision. Owner spec: spec/functional/agent.spec.md section 5.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "decisionId",
+    "athleteId",
+    "decidedAt",
+    "kind",
+    "promptVersion",
+    "specVersion",
+    "modelId",
+    "toolCalls",
+    "evidence",
+    "proposedAction",
+    "proposalId",
+    "policyDecision",
+    "policyReasons",
+    "userFacingExplanation",
+    "conversationId",
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "decisionId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "decidedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "kind": { "enum": ["PLAN_PROPOSAL", "ADAPTATION", "LOAD_REDUCTION", "SAFETY_RESPONSE"] },
+    "promptVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "specVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "modelId": { "type": ["string", "null"], "maxLength": 100 },
+    "toolCalls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z0-9_]{1,64}$" },
+          "outcome": {
+            "enum": [
+              "OK",
+              "NOT_FOUND",
+              "VALIDATION_ERROR",
+              "CONSENT_REQUIRED",
+              "POLICY_DENIED",
+              "CONFIRMATION_REQUIRED",
+              "CAPABILITY_UNAVAILABLE",
+              "CONCURRENCY_CONFLICT",
+              "PROVIDER_UNAVAILABLE",
+              "RATE_LIMITED"
+            ]
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "urn:coach:schema:common:1#/$defs/evidenceRef" }
+    },
+    "proposedAction": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+    "proposalId": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "policyDecision": { "enum": ["ALLOWED", "DENIED", "NOT_APPLICABLE"] },
+    "policyReasons": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" }
+    },
+    "userFacingExplanation": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "conversationId": {
+      "oneOf": [{ "$ref": "urn:coach:schema:common:1#/$defs/id" }, { "type": "null" }]
+    },
+    "version": { "type": "integer", "minimum": 1 }
+  }
+}

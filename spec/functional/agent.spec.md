@@ -72,9 +72,49 @@ Private chain-of-thought is **not** stored. Evidence and outcome are.
 - If the LLM is unavailable, deterministic features (ingestion, metrics, plans already
   generated, reports' data parts) keep working.
 
-## 8. User interface (decision deferred to P13)
+Precision (P13; decision D-14; `coach.application.llm`, `coach.integrations.llm`):
+
+- **Messages.** The port speaks the Messages API shape as plain JSON (roles, content blocks).
+  Every content block the model returns is kept unchanged, so a stored conversation can be
+  sent again exactly (section 9).
+- **Model and effort.** The default model is Claude Opus 5.5 (`claude-opus-5-5`), with effort
+  `medium`. Both are configuration (`COACH_LLM_MODEL`, `COACH_LLM_EFFORT`), and the model is
+  recorded on every decision.
+- **Request.** It streams the answer, so long turns never hit an HTTP timeout and the chat
+  shows text as it arrives. Thinking is left at the model's default (adaptive, its text
+  omitted), so no reasoning is shown or stored. The stable prefix (system prompt and tools) is
+  cached.
+- **Server-side fallback.** Anthropic's fallback for a declined request is enabled
+  (`fallbacks: "default"`), and the answering model is recorded.
+- **API key.** The key is read from the OS secret store (`coach secret set llm-api-key`) when
+  a reply is needed and given only to the SDK client. It never reaches the agent, a prompt, a
+  log or an error (ADR-001).
+- **Errors.** Errors become codes without their details: `NO_API_KEY`, `AUTHENTICATION`,
+  `RATE_LIMITED`, `UNAVAILABLE`, `REQUEST_INVALID`.
+
+## 8. User interface (decided in P13)
 
 The primary UI is an in-application chat with its own agent loop. An MCP-host UI (for example
 Claude Desktop) would send athlete messages to the LLM before this application could redact
 secrets or screen red flags, which breaks steps 2 and 3 of the pipeline; it may only be added
 as a secondary, read-mostly interface.
+
+Decision D-13 (P13): the chat runs in the terminal, as `coach chat` (an interactive session)
+and `coach chat "question"` (one question). A local web UI is not built in V1.
+
+## 9. Conversations (decision D-15, P13)
+
+Conversations are stored in the data directory (`Conversation`, contract
+[../contracts/conversation.schema.json](../contracts/conversation.schema.json)) so a chat can
+continue another day.
+
+- **What a turn holds.** Each turn keeps its content blocks exactly as they were sent or
+  received. The athlete's text has already passed secret redaction (section 4), so a
+  disclosed secret is never stored. Tool results are the data the tools returned.
+- **Append-only.** A conversation is append-only: no earlier turn is ever edited or removed,
+  because the model's reasoning blocks are valid only when the history is replayed unchanged.
+  Thinking text is omitted by the provider, so no chain-of-thought is stored.
+- **Binding.** A conversation is bound to the prompt version, tool set version and model it
+  started with. A change of any of them, or more than 400 turns or 2 MiB, starts a new one.
+- **Privacy.** Conversations are personal data under the privacy inventory and the deletion
+  workflow (P15).

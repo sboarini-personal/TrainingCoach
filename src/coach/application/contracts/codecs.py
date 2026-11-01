@@ -17,6 +17,12 @@ from coach.application.contracts.activities import (
     override_from_contract,
     override_to_contract,
 )
+from coach.application.contracts.agent import (
+    agent_decision_from_contract,
+    agent_decision_to_contract,
+    conversation_from_contract,
+    conversation_to_contract,
+)
 from coach.application.contracts.availability import (
     availability_from_contract,
     availability_to_contract,
@@ -95,6 +101,7 @@ from coach.domain.activity.observation import Observation
 from coach.domain.activity.overrides import DataOverride
 from coach.domain.activity.segments import Laps, Lengths
 from coach.domain.activity.streams import TimeSeries
+from coach.domain.agent import AgentDecision, Conversation
 from coach.domain.athlete.profile import AthleteProfile
 from coach.domain.availability.availability import Availability
 from coach.domain.coaching.state import CoachingState
@@ -247,6 +254,12 @@ EXECUTION_LINK_CODEC: Final[DocumentCodec[ExecutionLink]] = DocumentCodec(
     execution_link_to_contract,
     execution_link_from_contract,
 )
+AGENT_DECISION_CODEC: Final[DocumentCodec[AgentDecision]] = DocumentCodec(
+    "agent_decision", "agent-decision", agent_decision_to_contract, agent_decision_from_contract
+)
+CONVERSATION_CODEC: Final[DocumentCodec[Conversation]] = DocumentCodec(
+    "conversation", "conversation", conversation_to_contract, conversation_from_contract
+)
 INTEGRATION_STATUS_CODEC: Final[DocumentCodec[IntegrationStatus]] = DocumentCodec(
     "integration_status",
     "integration-status",
@@ -282,5 +295,7 @@ ALL_CODECS: Final[tuple[DocumentCodec[Any], ...]] = (
     PLAN_HEADER_CODEC,
     EXECUTION_LINK_CODEC,
     ADAPTATION_DECISION_CODEC,
+    AGENT_DECISION_CODEC,
+    CONVERSATION_CODEC,
     INTEGRATION_STATUS_CODEC,
 )

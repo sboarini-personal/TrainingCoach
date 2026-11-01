@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:coach:schema:conversation:1",
+  "title": "Conversation",
+  "description": "A chat with the AI coach, stored for later (decision D-15). Each turn keeps its content blocks exactly as they were sent to or received from the model (the Messages API shape: text, tool_use, tool_result, thinking with its text omitted, ...), appended only: an earlier turn never changes, so the history can be sent again unchanged. The athlete's text is screened for secrets before it becomes a turn. A conversation is bound to the prompt version, tool set version and model it started with. version is the storage revision. Owner spec: spec/functional/agent.spec.md section 9.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "conversationId",
+    "athleteId",
+    "startedAt",
+    "promptVersion",
+    "toolsVersion",
+    "modelId",
+    "turns",
+    "version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "urn:coach:schema:common:1#/$defs/schemaVersion" },
+    "conversationId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "athleteId": { "$ref": "urn:coach:schema:common:1#/$defs/id" },
+    "startedAt": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+    "promptVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "toolsVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "modelId": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "turns": {
+      "type": "array",
+      "maxItems": 400,
+      "items": {
+        "type": "object",
+        "required": ["role", "at", "content"],
+        "additionalProperties": false,
+        "properties": {
+          "role": { "enum": ["user", "assistant"] },
+          "at": { "$ref": "urn:coach:schema:common:1#/$defs/utcInstant" },
+          "content": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["type"],
+              "properties": { "type": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      }
+    },
+    "version": { "type": "integer", "minimum": 1 }
+  }
+}
