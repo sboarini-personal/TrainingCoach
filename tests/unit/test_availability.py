@@ -52,6 +52,7 @@ def swim_only_exception(day: date = THURSDAY) -> AvailabilityException:
 
 
 @pytest.mark.req("FR-PRF-005")
+@pytest.mark.acceptance("AT-AVL-001")
 def test_exception_overrides_recurring_availability() -> None:
     availability = Availability.new(ATHLETE, recurring=weekly()).with_exception(
         swim_only_exception()
@@ -86,6 +87,7 @@ def test_defaults_apply_when_recurring_does_not_cover_the_day() -> None:
 
 
 @pytest.mark.req("FR-PRF-005")
+@pytest.mark.acceptance("AT-AVL-001")
 def test_day_without_any_availability_is_not_plannable() -> None:
     tuesday = Availability.new(ATHLETE, recurring=weekly()).resolve(TUESDAY)
     assert tuesday.basis is AvailabilityBasis.UNDEFINED

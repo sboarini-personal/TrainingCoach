@@ -8,6 +8,20 @@ Implementation status (P2): AT-STM-001, AT-AVL-001 and AT-CONC-001 are executed 
 `tests/contract/test_repository_contract.py` (in-memory and, since P3, SQLite adapters). AT-ONB-001 is executed for the deterministic question planner
 (`tests/unit/test_onboarding_planner.py`); its dialogue part waits for P13.
 
+Correction (review of 2026-10-31): none of those tests carried its acceptance marker, so the
+traceability matrix never showed them, and the DATA_INCOMPLETE part of AT-AVL-001 was not
+implemented (the condition was never raised). Now:
+
+- AT-AVL-001 is executed by `tests/unit/test_availability.py` (resolution) and
+  `tests/integration/test_cli_athlete.py` (DATA_INCOMPLETE raised and cleared, onboarding
+  spec 4.2).
+- AT-CONC-001 is executed against the profile in SQLite
+  (`tests/integration/test_sqlite_aggregates.py`).
+- AT-STM-001 is executed by `tests/unit/test_coaching_state.py` (every transition, every
+  condition with every state) and `tests/unit/test_coaching_conditions.py` (every change
+  audited).
+- AT-ONB-001 marks the planner tests; its dialogue part still waits for P13.
+
 ### AT-ONB-001 — Progressive onboarding without repeated questions
 - Requirements: FR-ONB-001, FR-ONB-002
 - Level: unit (question planner) and agent evaluation. First executable: P2 (planner), P13 (dialogue).

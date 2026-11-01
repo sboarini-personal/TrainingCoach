@@ -8,6 +8,12 @@ from pathlib import Path
 import pytest
 
 from cli_harness import Cli
+from coach.application.ownership import OwnerScope
+from coach.cli.runtime import build_runtime
+from coach.domain.coaching.state import Condition
+from coach.infrastructure.datadir import ensure_layout
+from coach.infrastructure.sqlite.database import SqliteDatabase
+from coach.infrastructure.sqlite.identities import SqliteIdentityDirectory
 
 PLANTED = "Zx81Qp0LmN4vB7cT2wYe9KdR"  # pragma: allowlist secret
 
@@ -119,6 +125,35 @@ def test_onboarding_inputs_bring_readiness_and_the_lifecycle_forward(cli: Cli) -
     assert "weekly: 4 days, at most 6 h, rest days mon" in shown
     assert "2026-10-26 mon  unavailable (RECURRING)" in shown
     assert "2026-10-27 tue  120 min (RECURRING)" in shown
+
+
+@pytest.mark.req("FR-PRF-005", "FR-ONB-006")
+@pytest.mark.acceptance("AT-AVL-001")
+def test_a_day_without_availability_is_not_plannable_and_raises_data_incomplete(
+    cli: Cli,
+) -> None:
+    ok(cli, "profile", "timezone", "America/Argentina/Buenos_Aires")
+    ok(cli, "availability", "set", "--days", "2", "--max-hours", "3", "--window", "thu 07:00-08:30")
+    shown = ok(cli, "availability", "show", "--days", "5")
+    assert "2026-10-26 mon  undefined (UNDEFINED)" in shown  # no window, exception or default
+    assert "2026-10-29 thu  90 min (RECURRING)" in shown
+    runtime = build_runtime(ensure_layout(cli.data_dir), cli.credentials, lambda: cli.now)
+    owner = SqliteIdentityDirectory(SqliteDatabase.open(cli.data_dir / "coach.sqlite3")).owner()
+    assert owner is not None
+    scope = OwnerScope(owner.athlete_id)
+    assert Condition.DATA_INCOMPLETE in runtime.conditions.current(scope).conditions
+    assert "  incomplete (DATA_INCOMPLETE): a day of the coming week has no availability" in ok(
+        cli, "readiness"
+    )
+    ok(cli, "availability", "default", "--minutes", "60")  # every day is plannable again
+    assert Condition.DATA_INCOMPLETE not in runtime.conditions.current(scope).conditions
+    assert "DATA_INCOMPLETE" not in ok(cli, "readiness")
+    actions = [
+        record.document["action"]
+        for record in runtime.audit.events_for(scope)
+        if (record.document["target"] or {}).get("type") == "CONDITION"
+    ]
+    assert actions == ["coaching.condition_activated", "coaching.condition_cleared"]
 
 
 @pytest.mark.req("FR-PRF-006", "SEC-SEC-005", "SAFE-MED-001")

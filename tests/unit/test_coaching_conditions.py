@@ -3,11 +3,12 @@
 from datetime import UTC, datetime
 
 import pytest
+from test_coaching_state import SPEC_TRANSITIONS
 
-from coach.application.coaching import CoachingConditions
+from coach.application.coaching import CoachingConditions, CoachingLifecycle
 from coach.application.events import EventName
 from coach.application.ownership import OwnerScope
-from coach.domain.coaching.state import Actor, CoachingState, Condition, LifecycleState
+from coach.domain.coaching.state import Actor, CoachingState, Condition, LifecycleState, Trigger
 from coach.domain.common.errors import DomainValidationError
 from coach.infrastructure.memory import InMemoryAuditLog, InMemoryRepository, RecordingEventSink
 from samples import ATHLETE
@@ -49,6 +50,35 @@ def test_integration_error_is_activated_and_cleared_with_audit() -> None:
         ("coaching.condition_cleared", "SYSTEM", ["SYNC_SUCCEEDED"]),
     ]
     assert events.names() == [EventName.CONDITION_ACTIVATED, EventName.CONDITION_CLEARED]
+
+
+@pytest.mark.req("FR-ONB-006", "SEC-AUD-001")
+@pytest.mark.acceptance("AT-STM-001")
+@pytest.mark.parametrize(("start", "trigger"), sorted(SPEC_TRANSITIONS))
+def test_every_lifecycle_change_is_audited(start: LifecycleState, trigger: Trigger) -> None:
+    states = InMemoryRepository[CoachingState]()
+    audit, events = InMemoryAuditLog(), RecordingEventSink()
+    states.add(SCOPE, CoachingState(athlete_id=ATHLETE, lifecycle=start, conditions=frozenset()))
+    lifecycle = CoachingLifecycle(states, audit=audit, events=events, clock=lambda: NOW)
+    assert lifecycle.advance(SCOPE, trigger)
+    documents = [record.document for record in audit.events_for(SCOPE)]
+    assert [(item["action"], item["reasonCodes"]) for item in documents] == [
+        ("coaching.state_changed", [trigger.value])
+    ]
+    assert events.names() == [EventName.COACHING_STATE_CHANGED]
+
+
+@pytest.mark.req("FR-ONB-006", "SEC-AUD-001")
+@pytest.mark.acceptance("AT-STM-001")
+def test_every_condition_change_is_audited() -> None:
+    conditions, _states, audit, _events = service()
+    for condition in Condition:
+        conditions.activate(SCOPE, condition, reason="TEST", actor=Actor.ATHLETE)
+        conditions.clear(SCOPE, condition, reason="TEST", actor=Actor.ATHLETE)
+    actions = [record.document["action"] for record in audit.events_for(SCOPE)]
+    assert actions == ["coaching.condition_activated", "coaching.condition_cleared"] * len(
+        Condition
+    )
 
 
 @pytest.mark.req("FR-ONB-006")

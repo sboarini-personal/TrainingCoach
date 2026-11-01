@@ -46,6 +46,7 @@ def test_new_athlete_starts_as_new_user_without_conditions() -> None:
 
 
 @pytest.mark.req("FR-ONB-006")
+@pytest.mark.acceptance("AT-STM-001")
 @pytest.mark.parametrize(("start", "trigger"), sorted(SPEC_TRANSITIONS))
 def test_specified_transitions(start: LifecycleState, trigger: Trigger) -> None:
     expected = SPEC_TRANSITIONS[start, trigger]
@@ -56,6 +57,7 @@ def test_specified_transitions(start: LifecycleState, trigger: Trigger) -> None:
 
 
 @pytest.mark.req("FR-ONB-006")
+@pytest.mark.acceptance("AT-STM-001")
 def test_every_unspecified_transition_is_rejected() -> None:
     for lifecycle in LifecycleState:
         for trigger in Trigger:
@@ -63,6 +65,18 @@ def test_every_unspecified_transition_is_rejected() -> None:
                 continue
             with pytest.raises(InvalidTransitionError):
                 state(lifecycle).apply(trigger, actor=Actor.SYSTEM, at=NOW)
+
+
+@pytest.mark.req("FR-ONB-006")
+@pytest.mark.acceptance("AT-STM-001")
+@pytest.mark.parametrize("lifecycle", list(LifecycleState))
+def test_every_condition_can_be_active_with_any_lifecycle_state(lifecycle: LifecycleState) -> None:
+    current = state(lifecycle)
+    for condition in Condition:
+        current, event = current.activate(condition, actor=Actor.SYSTEM, at=NOW, reason="TEST")
+        assert event is not None
+        assert event.activated
+    assert (current.lifecycle, current.conditions) == (lifecycle, frozenset(Condition))
 
 
 @pytest.mark.req("FR-ONB-006")

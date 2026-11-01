@@ -423,6 +423,7 @@ def build_runtime(
         today=recovery.today,
         clock=clock,
         ids=new_id,
+        conditions=conditions,
     )
 
     def done_today(scope: OwnerScope, day: date) -> frozenset[UUID]:

@@ -180,3 +180,17 @@ recorded in ADR-021).
 | RECOVERY_BLOCK | active REST or ACTIVE_RECOVERY prescription | planned intensity suspended until `reevaluateAfter` | re-evaluation |
 
 Every transition and condition change is audited (SEC-AUD-001).
+
+DATA_INCOMPLETE (precision, review of 2026-10-31; `coach.application.athlete_inputs`):
+
+- **Reasons.** It is active for either of two reasons:
+  - `AVAILABILITY_UNDEFINED`: once availability is declared, a day of the coming 7 days that
+    no exception, recurring availability or default makes plannable (profile spec 4);
+  - `REQUIRED_INPUT_MISSING`: once onboarding is over, a REQUIRED input that is missing or
+    stale (section 2). During onboarding a missing input is expected, not "becomes
+    missing".
+- **Evaluation.** The reasons are evaluated after every change of the athlete's inputs and
+  whenever readiness is assessed. The condition clears with reason `INPUT_PROVIDED` when
+  neither holds.
+- **Effect.** A generated plan is provisional and says why (generator, planning spec 5.1),
+  and `coach readiness` shows the reasons.

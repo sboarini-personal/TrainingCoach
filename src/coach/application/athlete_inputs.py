@@ -7,17 +7,24 @@ screened for disclosed secrets before it is stored (SEC-SEC-005). A constraint n
 regions only by the exact names of the strength spec (section 2), never by interpretation.
 At most one ACTIVE priority-A goal exists (A-19). Readiness is the Definition of Ready; asking
 for it also brings the coaching lifecycle forward where the onboarding transitions allow.
+
+The DATA_INCOMPLETE condition (onboarding spec 4.2, profile spec 4) is evaluated after every
+change of these inputs and whenever readiness is assessed: a day of the coming week that no
+exception, recurring availability or default makes plannable, or a REQUIRED input missing or
+stale once onboarding is over. It clears when neither holds (INPUT_PROVIDED).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from enum import StrEnum
 from functools import partial
+from typing import Final
 from uuid import UUID
 
-from coach.application.coaching import CoachingLifecycle
+from coach.application.coaching import CoachingConditions, CoachingLifecycle
 from coach.application.consent import ConsentService
 from coach.application.errors import NotFoundError
 from coach.application.ownership import OwnerScope
@@ -45,7 +52,7 @@ from coach.domain.availability.availability import (
     DayDefaults,
     WeeklyAvailability,
 )
-from coach.domain.coaching.state import LifecycleState, Trigger
+from coach.domain.coaching.state import Condition, LifecycleState, Trigger
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.provenance import FieldValue
 from coach.domain.common.sport import Sport
@@ -86,11 +93,23 @@ class ConstraintAnswers:
     professional_advice: bool = False
 
 
+class Incomplete(StrEnum):
+    """Why DATA_INCOMPLETE holds (onboarding spec 4.2, profile spec 4)."""
+
+    AVAILABILITY_UNDEFINED = "AVAILABILITY_UNDEFINED"  # a day of the coming week
+    REQUIRED_INPUT_MISSING = "REQUIRED_INPUT_MISSING"  # missing or stale after onboarding
+
+
+INCOMPLETE_DAYS: Final = 7  # the coming week, today included
+_ONBOARDING: Final = frozenset({LifecycleState.NEW_USER, LifecycleState.ONBOARDING})
+
+
 @dataclass(frozen=True, slots=True)
 class ReadinessReport:
     readiness: Readiness
     sufficiency: HistorySufficiency | None  # None without a primary goal
     lifecycle: LifecycleState
+    incomplete: tuple[Incomplete, ...] = ()  # DATA_INCOMPLETE and why
 
 
 class AthleteInputsService:
@@ -108,7 +127,9 @@ class AthleteInputsService:
         today: Callable[[OwnerScope], date],
         clock: Clock,
         ids: IdFactory,
+        conditions: CoachingConditions | None = None,
     ) -> None:
+        self._conditions = conditions
         self._profiles = profiles
         self._availability = availability
         self._goals = goals
@@ -133,8 +154,13 @@ class AthleteInputsService:
         try:
             stored = self._profiles.get(scope, scope.athlete_id)
         except NotFoundError:
-            return self._profiles.add(scope, AthleteProfile.new(scope.athlete_id).apply(update))
-        return self._profiles.update(scope, stored.apply(update), expected_version=stored.version)
+            saved = self._profiles.add(scope, AthleteProfile.new(scope.athlete_id).apply(update))
+        else:
+            saved = self._profiles.update(
+                scope, stored.apply(update), expected_version=stored.version
+            )
+        self._sync_incomplete(scope)
+        return saved
 
     def _text(self, text: str | None, notices: list[str]) -> str | None:
         if text is None:
@@ -264,8 +290,13 @@ class AthleteInputsService:
     ) -> Availability:
         stored = self.availability(scope)
         if stored is None:
-            return self._availability.add(scope, change(Availability.new(scope.athlete_id)))
-        return self._availability.update(scope, change(stored), expected_version=stored.version)
+            saved = self._availability.add(scope, change(Availability.new(scope.athlete_id)))
+        else:
+            saved = self._availability.update(
+                scope, change(stored), expected_version=stored.version
+            )
+        self._sync_incomplete(scope)
+        return saved
 
     def set_weekly(
         self, scope: OwnerScope, weekly: WeeklyAvailability
@@ -362,7 +393,9 @@ class AthleteInputsService:
         stored = self._goals.get(scope, goal_id)
         changed = stored.transition(status)
         ensure_single_active_primary(self._goals.list_all(scope), changed)
-        return self._goals.update(scope, changed, expected_version=stored.version)
+        saved = self._goals.update(scope, changed, expected_version=stored.version)
+        self._sync_incomplete(scope)
+        return saved
 
     def primary_goal(self, scope: OwnerScope) -> Goal | None:
         return self._snapshot(scope).primary_goal
@@ -386,12 +419,46 @@ class AthleteInputsService:
             goals=tuple(self._goals.list_all(scope)),
         )
 
-    def readiness(self, scope: OwnerScope) -> ReadinessReport:
-        """The Definition of Ready now, bringing the onboarding lifecycle forward."""
+    def _assessed(self, scope: OwnerScope) -> tuple[OnboardingSnapshot, HistoryFacts, Readiness]:
         snapshot = self._snapshot(scope)
         goal = snapshot.primary_goal
         facts = self._history(scope, None if goal is None else goal.sport)
-        readiness = assess_readiness(snapshot, facts, now=self._clock())
+        return snapshot, facts, assess_readiness(snapshot, facts, now=self._clock())
+
+    def _incomplete(self, scope: OwnerScope, readiness: Readiness) -> tuple[Incomplete, ...]:
+        found: list[Incomplete] = []
+        availability = self.availability(scope)
+        zone = self.profile(scope).timezone  # the athlete's today needs a known timezone
+        if availability is not None and zone is not None and zone.value is not None:
+            today = self._today(scope)
+            if any(
+                not availability.resolve(today + timedelta(days=offset)).plannable
+                for offset in range(INCOMPLETE_DAYS)
+            ):
+                found.append(Incomplete.AVAILABILITY_UNDEFINED)
+        past_onboarding = self._lifecycle.current(scope).lifecycle not in _ONBOARDING
+        if past_onboarding and readiness.missing_required:
+            found.append(Incomplete.REQUIRED_INPUT_MISSING)
+        return tuple(found)
+
+    def _sync_incomplete(
+        self, scope: OwnerScope, readiness: Readiness | None = None
+    ) -> tuple[Incomplete, ...]:
+        """Activate or clear DATA_INCOMPLETE (audited by the conditions service)."""
+        if readiness is None:
+            readiness = self._assessed(scope)[2]
+        found = self._incomplete(scope, readiness)
+        if self._conditions is not None:
+            if found:
+                self._conditions.activate(scope, Condition.DATA_INCOMPLETE, reason=found[0].value)
+            else:
+                self._conditions.clear(scope, Condition.DATA_INCOMPLETE, reason="INPUT_PROVIDED")
+        return found
+
+    def readiness(self, scope: OwnerScope) -> ReadinessReport:
+        """The Definition of Ready now, bringing the onboarding lifecycle forward."""
+        snapshot, facts, readiness = self._assessed(scope)
+        goal = snapshot.primary_goal
         sufficiency = None
         if goal is not None:
             sufficiency = history_sufficiency(
@@ -408,7 +475,10 @@ class AthleteInputsService:
                 self._lifecycle.advance(scope, Trigger.BASELINE_COMPLETED)
             else:
                 self._lifecycle.advance(scope, Trigger.REQUIRED_INPUTS_WITHOUT_HISTORY)
-        return ReadinessReport(readiness, sufficiency, self._lifecycle.current(scope).lifecycle)
+        incomplete = self._sync_incomplete(scope, readiness)
+        return ReadinessReport(
+            readiness, sufficiency, self._lifecycle.current(scope).lifecycle, incomplete
+        )
 
 
 def _baseline(current: CurrentState | None, now: datetime) -> GoalBaseline:

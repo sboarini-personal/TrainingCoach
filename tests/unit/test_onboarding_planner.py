@@ -124,6 +124,7 @@ def test_consent_step_comes_first() -> None:
 
 
 @pytest.mark.req("FR-ONB-001")
+@pytest.mark.acceptance("AT-ONB-001")
 def test_groups_are_small_related_and_required_first() -> None:
     batch = next_questions(snapshot(), now=NOW)
     assert batch is not None
@@ -134,6 +135,7 @@ def test_groups_are_small_related_and_required_first() -> None:
 
 
 @pytest.mark.req("FR-ONB-001", "FR-ONB-002")
+@pytest.mark.acceptance("AT-ONB-001")
 def test_answered_group_is_not_asked_again() -> None:
     batch = next_questions(snapshot(IDENTITY), now=NOW)
     assert batch is not None
@@ -142,6 +144,7 @@ def test_answered_group_is_not_asked_again() -> None:
 
 
 @pytest.mark.req("FR-ONB-001")
+@pytest.mark.acceptance("AT-ONB-001")
 def test_groups_follow_the_specified_order() -> None:
     seen: list[QuestionGroup] = []
     batch = next_questions(snapshot(IDENTITY), now=NOW)
@@ -188,6 +191,7 @@ def test_onboarding_is_complete_when_nothing_is_pending() -> None:
 
 
 @pytest.mark.req("FR-ONB-002")
+@pytest.mark.acceptance("AT-ONB-001")
 def test_unknown_answer_is_not_reasked_within_its_freshness_window() -> None:
     recent = snapshot(ProfileUpdate(weight_kg=FieldValue.unknown(at=NOW - timedelta(days=10))))
     assert field_state(recent, F.WEIGHT, now=NOW) is FieldState.SATISFIED

@@ -17,11 +17,14 @@ from coach.application.contracts import (
     SPORT_EVENT_CODEC,
     DocumentCodec,
 )
+from coach.application.errors import ConcurrencyConflictError
 from coach.application.ownership import OwnerScope
+from coach.domain.athlete.profile import ProfileUpdate
 from coach.infrastructure.sqlite.aggregates import SqliteAggregateRepository
 from coach.infrastructure.sqlite.database import SqliteDatabase
 from samples import (
     ATHLETE,
+    declared,
     full_profile,
     sample_availability,
     sample_coaching_state,
@@ -83,6 +86,33 @@ def test_kinds_sharing_an_id_are_kept_apart(database: SqliteDatabase) -> None:
     states.add(SCOPE, sample_coaching_state())
     assert profiles.get(SCOPE, ATHLETE).athlete_id == states.get(SCOPE, ATHLETE).athlete_id
     assert len(profiles.list_all(SCOPE)) == len(states.list_all(SCOPE)) == 1
+
+
+@pytest.mark.req("NFR-REL-003", "FR-PRF-001")
+@pytest.mark.acceptance("AT-CONC-001")
+def test_a_concurrent_profile_update_is_rejected(database: SqliteDatabase) -> None:
+    profiles = SqliteAggregateRepository(database, PROFILE_CODEC)
+    stored = profiles.add(SCOPE, full_profile())
+    for name in ("Second", "Third"):  # the profile reaches version 3
+        renamed = stored.apply(ProfileUpdate(display_name=declared(name)))
+        stored = profiles.update(SCOPE, renamed, expected_version=stored.version)
+    assert stored.version == 3
+    first_client = profiles.get(SCOPE, ATHLETE)
+    second_client = profiles.get(SCOPE, ATHLETE)  # both read version 3
+    saved = profiles.update(
+        SCOPE,
+        first_client.apply(ProfileUpdate(display_name=declared("First client"))),
+        expected_version=3,
+    )
+    assert saved.version == 4
+    with pytest.raises(ConcurrencyConflictError):
+        profiles.update(
+            SCOPE,
+            second_client.apply(ProfileUpdate(display_name=declared("Second client"))),
+            expected_version=3,
+        )
+    current = profiles.get(SCOPE, ATHLETE)  # the second update changed nothing
+    assert (current.version, current.display_name.value) == (4, "First client")  # type: ignore[union-attr]
 
 
 @pytest.mark.req("SEC-INJ-003")

@@ -12,7 +12,7 @@ from datetime import date, time, timedelta
 from typing import Final, TextIO
 from uuid import UUID
 
-from coach.application.athlete_inputs import ConstraintAnswers
+from coach.application.athlete_inputs import ConstraintAnswers, Incomplete
 from coach.application.errors import NotFoundError
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import TIMEZONE_HINT, CommandError
@@ -51,6 +51,13 @@ from coach.domain.onboarding.readiness import LABELS
 
 WEEKDAYS: Final = {day.name[:3].lower(): day for day in Weekday}
 SPORTS: Final = {sport.value.lower(): sport for sport in Sport if sport is not Sport.OTHER}
+INCOMPLETE: Final = {
+    Incomplete.AVAILABILITY_UNDEFINED: (
+        "a day of the coming week has no availability: give it windows (coach availability "
+        "set --window) or set a default day (coach availability default)"
+    ),
+    Incomplete.REQUIRED_INPUT_MISSING: "a required input is missing or stale (listed above)",
+}
 _CLOCK: Final = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})$")
 _WINDOW: Final = re.compile(r"^([a-z]{3}) (\d{1,2}:\d{2})-(\d{1,2}:\d{2})$")
 _RACE: Final = re.compile(r"^(5k|10k|half|marathon)=([0-9:]+)@(\d{4}-\d{2}-\d{2})$")
@@ -671,6 +678,8 @@ def readiness(runtime: Runtime, scope: OwnerScope, out: TextIO) -> int:
         print(f"  missing (required): {LABELS[item]}", file=out)
     for item in found.missing_preferred:
         print(f"  missing (preferred): {LABELS[item]}", file=out)
+    for reason in report.incomplete:
+        print(f"  incomplete (DATA_INCOMPLETE): {INCOMPLETE[reason]}", file=out)
     if report.sufficiency is not None:
         if report.sufficiency.sufficient:
             print("history for the goal sport: sufficient", file=out)

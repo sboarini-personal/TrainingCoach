@@ -146,6 +146,24 @@ def test_registry_ids_are_unique_and_unknown_ids_fail() -> None:
         MetricRegistry(()).get("any.missing")
 
 
+@pytest.mark.req("FR-MET-003", "FR-MET-007")
+@pytest.mark.acceptance("AT-MET-002")
+def test_a_metric_origin_is_never_mislabelled() -> None:
+    """The application's load and a provider's training effect keep their origins, and two
+    providers' metrics with the same provider-side name are never merged."""
+    assert SRPE_LOAD.origin in (MetricOrigin.STANDARD_CALCULATION, MetricOrigin.APPLICATION_DERIVED)
+    assert SRPE_LOAD.provider is None
+    effect = provider_metric()
+    assert (effect.origin, effect.provider) == (MetricOrigin.PROVIDER_DERIVED, "garmin")
+    polar = provider_metric(metric_id="polar.training_effect_aerobic", provider="polar")
+    assert polar.provider_metric_name == effect.provider_metric_name  # the same name
+    registry = MetricRegistry((effect, polar))
+    assert registry.get("garmin.training_effect_aerobic") is effect
+    assert registry.get("polar.training_effect_aerobic") is polar
+    with pytest.raises(DomainValidationError):  # one ID cannot hold both providers' values
+        provider_metric(metric_id="garmin.training_effect_aerobic", provider="polar")
+
+
 # ------------------------------------------------------------------ shipped catalogue
 
 

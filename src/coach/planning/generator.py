@@ -196,6 +196,7 @@ class GenerationInputs:
     recovery_block: bool = False
     recovery_block_until: date | None = None  # with the block on, unknown: every day blocked
     pain: PainRestriction = field(default_factory=PainRestriction)  # recent pain (P12)
+    data_incomplete: bool = False  # DATA_INCOMPLETE: provisional only (onboarding spec 4.2)
     catalogue: ExerciseCatalogue = CATALOGUE
 
 
@@ -1077,6 +1078,11 @@ def _assumptions(inputs: GenerationInputs, notes: set[str], *, truncated: bool) 
         found.append(
             "Garmin is not connected: completed workouts are known only from the files you import."
         )
+    if inputs.data_incomplete:
+        found.append(
+            "Some of what planning needs is incomplete (see coach readiness): this plan is "
+            "provisional, and a day without availability stays unplanned until you define it."
+        )
     if truncated:
         found.append(
             f"Your goal is more than {MAX_WEEKS} weeks away: this version covers the first "
@@ -1166,7 +1172,7 @@ def generate(inputs: GenerationInputs) -> PlanContent:
         resources is not None and (resources.bicycle is True or resources.smart_trainer is True)
     ):
         raise DomainValidationError("a cycling plan needs a bicycle or a smart trainer")
-    provisional = bool(inputs.missing_preferred) or inputs.baseline
+    provisional = bool(inputs.missing_preferred) or inputs.baseline or inputs.data_incomplete
     plan = progression(inputs, provisional=provisional)
     truncated = False
     excluded: set[date] = set()

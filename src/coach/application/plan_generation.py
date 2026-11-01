@@ -128,6 +128,7 @@ class PlanGenerationService:
                 recovery_block=Condition.RECOVERY_BLOCK in conditions,
                 recovery_block_until=context.recovery_block_until,
                 pain=context.pain,
+                data_incomplete=Condition.DATA_INCOMPLETE in conditions,
             )
         )
         generator = replace(GENERATOR, decision_id=decision_id)
