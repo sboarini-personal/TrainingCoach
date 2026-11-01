@@ -24,6 +24,7 @@ from coach.domain.agent import (
     ToolCallRecord,
     ToolOutcome,
 )
+from coach.domain.consent.ledger import ConsentType
 
 
 def agent_decision_to_contract(decision: AgentDecision) -> Json:
@@ -85,6 +86,7 @@ def conversation_to_contract(conversation: Conversation) -> Json:
         "promptVersion": conversation.prompt_version,
         "toolsVersion": conversation.tools_version,
         "modelId": conversation.model_id,
+        "consents": sorted(item.value for item in conversation.consents),
         "turns": [
             {"role": turn.role.value, "at": instant(turn.at), "content": list(turn.content)}
             for turn in conversation.turns
@@ -101,6 +103,7 @@ def conversation_from_contract(document: Document) -> Conversation:
         prompt_version=document["promptVersion"],
         tools_version=document["toolsVersion"],
         model_id=document["modelId"],
+        consents=frozenset(ConsentType(item) for item in document["consents"]),
         turns=tuple(
             ConversationTurn(
                 role=Role(item["role"]),

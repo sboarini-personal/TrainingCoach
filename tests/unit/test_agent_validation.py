@@ -10,7 +10,7 @@ from uuid import UUID
 import pytest
 
 from coach.agent.tools.base import clock, quantity
-from coach.agent.validation import numbers_in, readings, untraced_numbers
+from coach.agent.validation import json_sources, numbers_in, readings, untraced_numbers
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 
 REF = EvidenceRef(EvidenceKind.ACTIVITY, UUID(int=1))
@@ -55,3 +55,21 @@ def test_written_numbers_are_read_both_ways() -> None:
     assert list(numbers_in("1. Hola 4:30 y 2026-10-25")) == ["4", "30", "2026", "10", "25"]
     assert clock(2700) == "45:00"
     assert clock(3725) == "1:02:05"
+
+
+@pytest.mark.req("FR-AGT-004")
+def test_identifiers_instants_and_commands_are_not_sources() -> None:
+    payload = {
+        "activityId": "01a19859-0000-7000-8000-000000000072",
+        "importedAt": "2026-10-25T10:59:00+00:00",
+        "evidence": [{"kind": "ACTIVITY", "id": "01a19859-0000-7000-8000-000000000088"}],
+        "activateWith": "coach plan activate 01a19859-0000-7000-8000-000000000001 2 --revision 3",
+        "distance": quantity(5000.0, "m", REF),
+    }
+    sources = list(json_sources(payload))
+    assert untraced_numbers("Corriste 5 km.", sources) == ()
+    assert untraced_numbers("Tu FC en reposo es 59 y tu VO2 72.", sources) == ("59", "72")
+    command = (
+        "Activalo con `coach plan activate 01a19859-0000-7000-8000-000000000001 2 --revision 3`."
+    )
+    assert untraced_numbers(command, sources) == ()

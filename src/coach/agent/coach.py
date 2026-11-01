@@ -31,8 +31,8 @@ from uuid import UUID
 from coach import SPEC_VERSION
 from coach.agent.prompts import Prompt
 from coach.agent.services import AgentServices
-from coach.agent.tools.base import TOOLS_VERSION, Toolbox, ToolContext
-from coach.agent.validation import untraced_numbers
+from coach.agent.tools.base import MAX_RESULT_BYTES, TOOLS_VERSION, Toolbox, ToolContext
+from coach.agent.validation import json_sources, untraced_numbers
 from coach.application.errors import TimezoneRequiredError
 from coach.application.events import EventName
 from coach.application.identity import Principal
@@ -61,8 +61,15 @@ from coach.domain.recovery.warning_phrases import detect
 MAX_TOOL_ROUNDS: Final = 8
 MAX_MESSAGE_LENGTH: Final = 8000
 # Room an exchange may need: the athlete's turn, tool rounds, a correction and the answers.
-EXCHANGE_TURNS: Final = 2 * (MAX_TOOL_ROUNDS + 1) + 4
-EXCHANGE_BYTES: Final = 768 * 1024
+EXCHANGE_TURNS: Final = 2 * MAX_TOOL_ROUNDS + 8
+EXCHANGE_BYTES: Final = 1024 * 1024
+NO_ANSWER: Final = "[no answer]"  # stored for an empty refusal: a turn has content
+_TRUNCATED: Final = json.dumps(
+    {"ok": False, "error": {"code": "VALIDATION_ERROR", "reason": "OUTPUT_TRUNCATED"}}
+)
+_TOO_LARGE: Final = json.dumps(
+    {"ok": False, "error": {"code": "VALIDATION_ERROR", "reason": "EXCHANGE_TOO_LARGE"}}
+)
 MAX_DECISION_EVIDENCE: Final = 200
 UNEXPLAINED: Final = (
     "The AI coach became unavailable before it could explain this; the action was "
@@ -106,7 +113,7 @@ class ReplyOutcome(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CoachReply:
-    conversation_id: UUID
+    conversation_id: UUID | None  # None: nothing stored (red flags without AI consent)
     text: str  # what the athlete is shown, notices excluded
     outcome: ReplyOutcome
     notices: tuple[str, ...] = ()  # fixed texts written in code, shown first
@@ -135,6 +142,10 @@ class _Exchange:
     records: list[ToolCallRecord]
     evidence: list[EvidenceRef]
     context: ToolContext
+    rounds: int = 0  # tool rounds of the whole message, the correction pass included
+
+    def size(self) -> int:
+        return sum(turn.size() for turn in self.turns)
 
 
 class Coach:
@@ -178,8 +189,14 @@ class Coach:
         return max(found, key=lambda item: item.started_at, default=None)
 
     def _continued(
-        self, scope: OwnerScope, conversation_id: UUID | None, new: bool
+        self,
+        scope: OwnerScope,
+        conversation_id: UUID | None,
+        new: bool,
+        granted: frozenset[ConsentType],
     ) -> Conversation | None:
+        """The conversation a message continues: the same prompt, tools and model, every
+        consent its history was built with still granted, and room for one more exchange."""
         if new:
             return None
         if conversation_id is None:
@@ -188,7 +205,9 @@ class Coach:
             found = self._conversations.get(scope, conversation_id)
             if not found.bound_to(self._prompt.version, TOOLS_VERSION, self._llm.model_id):
                 found = None
-        if found is None or not found.has_room(turns=EXCHANGE_TURNS, size=EXCHANGE_BYTES):
+        if found is None or not found.continues_with(granted):
+            return None
+        if not found.has_room(turns=EXCHANGE_TURNS, size=EXCHANGE_BYTES):
             return None
         return found
 
@@ -197,10 +216,13 @@ class Coach:
         scope: OwnerScope,
         conversation: Conversation | None,
         turns: Sequence[ConversationTurn],
+        granted: frozenset[ConsentType],
     ) -> Conversation:
         if conversation is not None:
             return self._conversations.update(
-                scope, conversation.appended(turns), expected_version=conversation.version
+                scope,
+                conversation.appended(turns, granted),
+                expected_version=conversation.version,
             )
         started = Conversation(
             conversation_id=self._ids(),
@@ -210,6 +232,7 @@ class Coach:
             tools_version=TOOLS_VERSION,
             model_id=self._llm.model_id,
             turns=tuple(turns),
+            consents=granted,
         )
         return self._conversations.add(scope, started)
 
@@ -225,27 +248,36 @@ class Coach:
         principal: Principal | None = None,
     ) -> CoachReply:
         services = self._services
-        services.consents.require(scope, ConsentType.AI_PROCESSING)
-        if len(message) > MAX_MESSAGE_LENGTH:
-            raise MessageTooLongError
         language = services.inputs.profile(scope).effective_language
         screened = self._screen.screen(message, language=language, source="chat")
         notices = (screened.notice,) if screened.notice is not None else ()
         text = screened.text.strip()
         if not text:
             raise DomainValidationError("an empty message")
-        conversation = self._continued(scope, conversation_id, new)
+        granted = services.consents.granted(scope)
         flags = detect(text)
-        if flags:
-            return self._safety(scope, conversation, text, flags, language, notices)
+        if flags:  # safety first, before consent and length: nothing leaves the machine
+            storable = ConsentType.AI_PROCESSING in granted and len(message) <= MAX_MESSAGE_LENGTH
+            conversation = (
+                self._continued(scope, conversation_id, new, granted) if storable else None
+            )
+            return self._safety(
+                scope, conversation, text, flags, language, notices, granted, storable
+            )
+        services.consents.require(scope, ConsentType.AI_PROCESSING)
+        if len(message) > MAX_MESSAGE_LENGTH:
+            raise MessageTooLongError
+        conversation = self._continued(scope, conversation_id, new, granted)
         today = self._today(scope)
-        context = self._context(scope, language, today)
+        context, facts = self._context(scope, language, today)
         user = ConversationTurn(
             Role.USER,
             ({"type": "text", "text": context}, {"type": "text", "text": text}),
             self._clock(),
         )
-        exchange = _Exchange([user], [context, text], [], [], ToolContext(scope, today, principal))
+        exchange = _Exchange(
+            [user], [*json_sources(facts), text], [], [], ToolContext(scope, today, principal)
+        )
         history = [] if conversation is None else conversation.messages()
         texts = texts_for(language)
         try:
@@ -262,22 +294,20 @@ class Coach:
                 untraced = untraced_numbers(answer, exchange.sources)
                 if untraced and outcome is ReplyOutcome.ANSWERED:
                     outcome = ReplyOutcome.NOT_VERIFIED
-        except LLMUnavailableError:
-            # Tools may have acted before the model failed: their decisions stay audited.
+            if outcome not in {ReplyOutcome.NOT_VERIFIED, ReplyOutcome.INCOMPLETE}:
+                untraced = ()
+            if untraced:  # an incomplete answer is checked too
+                answer = f"{answer}\n\n{texts['unverified'].format(numbers=', '.join(untraced))}"
+            stored = self._store(scope, conversation, exchange.turns, granted)
+        except Exception as error:
+            # Tools may have acted before the failure: their decisions stay audited, and a
+            # red flag reported through a tool still reaches the athlete.
             self._record(scope, exchange, UNEXPLAINED, None, self._llm.model_id)
+            if isinstance(error, LLMUnavailableError):
+                error.notices = (*notices, *self._hold_notices(exchange, language))
             raise
-        if outcome is ReplyOutcome.NOT_VERIFIED:
-            answer = f"{answer}\n\n{texts['unverified'].format(numbers=', '.join(untraced))}"
-        stored = self._store(scope, conversation, exchange.turns)
         recorded = self._record(scope, exchange, answer, stored.conversation_id, final.model)
-        reported = [
-            RedFlag(reason)
-            for pending in exchange.context.decisions
-            if pending.kind is DecisionKind.SAFETY_RESPONSE
-            for reason in pending.reasons
-        ]
-        if reported:  # a red flag reported through a tool: the fixed notice, as in step 3
-            notices = (*notices, hold_notice(dict.fromkeys(reported), language))
+        notices = (*notices, *self._hold_notices(exchange, language))
         self._events.emit(
             EventName.AGENT_REPLIED,
             {
@@ -291,12 +321,23 @@ class Coach:
             text=answer,
             outcome=outcome,
             notices=notices,
-            untraced=untraced if outcome is ReplyOutcome.NOT_VERIFIED else (),
+            untraced=untraced,
             tool_calls=tuple(exchange.records),
             decision_id=recorded[0] if recorded else None,
             model=final.model,
             decisions=recorded,
         )
+
+    @staticmethod
+    def _hold_notices(exchange: _Exchange, language: str) -> tuple[str, ...]:
+        """The fixed safety notice for red flags reported through a tool (as in step 3)."""
+        reported = [
+            RedFlag(reason)
+            for pending in exchange.context.decisions
+            if pending.kind is DecisionKind.SAFETY_RESPONSE
+            for reason in pending.reasons
+        ]
+        return (hold_notice(dict.fromkeys(reported), language),) if reported else ()
 
     def _record(
         self,
@@ -339,56 +380,67 @@ class Coach:
         except TimezoneRequiredError:
             return None
 
-    def _context(self, scope: OwnerScope, language: str, today: date | None) -> str:
+    def _context(
+        self, scope: OwnerScope, language: str, today: date | None
+    ) -> tuple[str, dict[str, Any]]:
         """Written by the application; volatile, so it travels with the message and the
         system prompt stays the same (and cached) for the whole conversation."""
         state = self._services.conditions.current(scope)
-        data = {
+        data: dict[str, Any] = {
             "today": None if today is None else today.isoformat(),
             "timezoneSet": today is not None,
             "language": language,
             "lifecycle": state.lifecycle.value,
             "conditions": sorted(item.value for item in state.conditions),
         }
-        return "<context>" + json.dumps(data, ensure_ascii=False) + "</context>"
+        return "<context>" + json.dumps(data, ensure_ascii=False) + "</context>", data
 
     def _answer(self, history: list[dict[str, Any]], exchange: _Exchange) -> LLMReply:
-        """Ask the model until it answers without tools; every tool use gets its result,
-        so the stored conversation is always well formed."""
-        for round_number in range(MAX_TOOL_ROUNDS + 2):
+        """Ask the model until it answers without tools. Every tool use gets its result, so
+        the stored conversation is always well formed; the tool budget is the message's."""
+        while True:
             messages = (*history, *(_message(turn) for turn in exchange.turns))
             request = LLMRequest(self._prompt.text, self._specs, tuple(messages))
             reply = self._llm.reply(request)
-            exchange.turns.append(ConversationTurn(Role.ASSISTANT, reply.content, self._clock()))
+            content = reply.content or ({"type": "text", "text": NO_ANSWER},)
+            exchange.turns.append(ConversationTurn(Role.ASSISTANT, content, self._clock()))
             uses = reply.tool_uses()
-            if reply.stop_reason != "tool_use" or not uses:
+            if not uses:
                 return reply
-            exhausted = round_number >= MAX_TOOL_ROUNDS
+            if reply.stop_reason != "tool_use" or exchange.rounds > MAX_TOOL_ROUNDS:
+                # Cut off inside a tool call (output limit, refusal), or still asking after
+                # it was told the budget is spent: close the exchange in code.
+                closing = _TRUNCATED if reply.stop_reason != "tool_use" else _EXHAUSTED
+                results = [_closed(block, closing) for block in uses]
+                exchange.turns.append(ConversationTurn(Role.USER, tuple(results), self._clock()))
+                stop = "max_tokens" if reply.stop_reason != "tool_use" else "tool_budget"
+                code = "OUTPUT_TRUNCATED" if stop == "max_tokens" else "TOOL_BUDGET_EXHAUSTED"
+                end = {"type": "text", "text": code}
+                exchange.turns.append(ConversationTurn(Role.ASSISTANT, (end,), self._clock()))
+                if reply.stop_reason == "refusal":
+                    return reply
+                return LLMReply(content=(end,), stop_reason=stop, model=reply.model)
+            exhausted = exchange.rounds >= MAX_TOOL_ROUNDS
             results = [self._result(block, exchange, exhausted=exhausted) for block in uses]
+            exchange.rounds += 1
             exchange.turns.append(ConversationTurn(Role.USER, tuple(results), self._clock()))
-        # The model kept asking for tools after its budget: close the exchange in code.
-        closing = {"type": "text", "text": "TOOL_BUDGET_EXHAUSTED"}
-        exchange.turns.append(ConversationTurn(Role.ASSISTANT, (closing,), self._clock()))
-        return LLMReply(content=(closing,), stop_reason="tool_budget", model=self._llm.model_id)
 
     def _result(
         self, block: Mapping[str, Any], exchange: _Exchange, *, exhausted: bool
     ) -> dict[str, Any]:
-        tool_use_id = str(block.get("id", ""))
         if exhausted:
-            return {
-                "type": "tool_result",
-                "tool_use_id": tool_use_id,
-                "content": _EXHAUSTED,
-                "is_error": True,
-            }
+            return _closed(block, _EXHAUSTED)
+        if exchange.size() + MAX_RESULT_BYTES > EXCHANGE_BYTES:
+            return _closed(block, _TOO_LARGE)
         name = str(block.get("name", ""))
         if self._on_tool is not None:
             self._on_tool(name)
-        output = self._toolbox.run(tool_use_id, name, block.get("input"), exchange.context)
+        output = self._toolbox.run(
+            str(block.get("id", "")), name, block.get("input"), exchange.context
+        )
         exchange.records.append(output.record)
         exchange.evidence.extend(output.evidence)
-        exchange.sources.append(str(output.block["content"]))
+        exchange.sources.extend(json_sources(output.payload))
         return dict(output.block)
 
     @staticmethod
@@ -413,17 +465,23 @@ class Coach:
         flags: Sequence[RedFlag],
         language: str,
         notices: tuple[str, ...],
+        granted: frozenset[ConsentType],
+        storable: bool,
     ) -> CoachReply:
         """Red flags in the message: SAFETY_HOLD first, the fixed notice as the answer, and
-        no model call (SAFE-MED-002: the coach neither diagnoses nor speculates)."""
+        no model call (SAFE-MED-002: the coach neither diagnoses nor speculates). Without the
+        AI consent the hold and the decision still happen; the chat is not stored."""
         self._services.conditions.activate(scope, Condition.SAFETY_HOLD, reason=flags[0].value)
         notice = hold_notice(flags, language)
         now = self._clock()
-        turns = [
-            ConversationTurn(Role.USER, ({"type": "text", "text": text},), now),
-            ConversationTurn(Role.ASSISTANT, ({"type": "text", "text": notice},), now),
-        ]
-        stored = self._store(scope, conversation, turns)
+        stored = None
+        if storable:
+            turns = [
+                ConversationTurn(Role.USER, ({"type": "text", "text": text},), now),
+                ConversationTurn(Role.ASSISTANT, ({"type": "text", "text": notice},), now),
+            ]
+            stored = self._store(scope, conversation, turns, granted)
+        conversation_id = None if stored is None else stored.conversation_id
         decision = self._decisions.add(
             scope,
             AgentDecision(
@@ -440,7 +498,7 @@ class Coach:
                 policy_verdict=PolicyVerdict.NOT_APPLICABLE,
                 explanation=notice,
                 policy_reasons=tuple(flag.value for flag in flags),
-                conversation_id=stored.conversation_id,
+                conversation_id=conversation_id,
             ),
         )
         self._events.emit(EventName.AGENT_DECISION_RECORDED, {"kind": decision.kind.value})
@@ -449,12 +507,22 @@ class Coach:
             {"outcome": ReplyOutcome.SAFETY_HOLD.value, "tool_calls": "0", "untraced": "0"},
         )
         return CoachReply(
-            conversation_id=stored.conversation_id,
+            conversation_id=conversation_id,
             text=notice,
             outcome=ReplyOutcome.SAFETY_HOLD,
             notices=notices,
             decision_id=decision.decision_id,
         )
+
+
+def _closed(block: Mapping[str, Any], content: str) -> dict[str, Any]:
+    """A tool use answered in code, without running the tool."""
+    return {
+        "type": "tool_result",
+        "tool_use_id": str(block.get("id", "")),
+        "content": content,
+        "is_error": True,
+    }
 
 
 def _message(turn: ConversationTurn) -> dict[str, Any]:

@@ -39,8 +39,17 @@ are added per tool in the implementing phase (P13) and covered by contract tests
 - **Minimisation.** The profile sends an age, never the birth date; activity details never
   send streams (GPS positions above all), only which streams exist; provider record IDs and
   file hashes are not sent.
-- **Reads change nothing.** A READ tool never writes (the readiness read does not advance the
-  onboarding lifecycle).
+- **Reads change nothing.** A READ tool never changes domain state (the readiness read does
+  not advance the onboarding lifecycle); report and strength reads may store the derived
+  metric values they compute, as the same CLI reads do.
+- **Periods.** `from` alone in the future reads from that day for the tool's default length;
+  otherwise the period ends today.
+- **Clean output (review of P13.4).** A non-finite number is unknown (`null`); untrusted text
+  also loses invisible format characters (bidirectional overrides, zero-width); display forms
+  follow the unit (a ratio such as monotony has none; a share of what was planned shows as a
+  percentage; elevation and altitude stay in meters).
+- **Withheld data.** A recovery assessment read from wearable data whose consent is no longer
+  granted is sent only as `withheld: CONSENT_MISSING` with the missing consents.
 - Tool kinds:
 
   | Kind | Meaning | Confirmation |
@@ -99,7 +108,14 @@ safety response) is recorded by the pipeline as an `AgentDecision` with the turn
 calls, its evidence and the answer the athlete saw; if the model fails after the tool
 acted, the decision is still recorded, with a fixed explanation. A red flag reported
 through `recordSubjectiveFeedback` or `flagSafetyConcern` adds the fixed safety notice to
-the reply. EXECUTE_EXTERNAL tools stop before any effect.
+the reply. EXECUTE_EXTERNAL tools stop before any effect. A refused ADAPT proposal is not
+an error: the adaptation decision is recorded and answered with `proposal: REFUSED`
+(`PROPOSED` or `NONE` otherwise), and its pending decision is DENIED.
+`proposeGarminWorkout` always answers `publishable: false` in V1. The coach's
+WRITE_INTERNAL changes are audited with the AGENT actor (`agent.feedback_recorded`,
+`agent.profile_updated`, `agent.goal_saved`). In `recordSubjectiveFeedback` the check-in
+is recorded first, so its red flags hold training even when the activity part fails; a
+check-in that cannot be recorded still holds training (`CHECKIN_NOT_RECORDED`).
 
 ## 4. Prohibited tools
 

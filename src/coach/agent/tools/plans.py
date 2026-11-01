@@ -190,8 +190,12 @@ def execution(item: WorkoutExecution) -> dict[str, Any]:
         "manualLink": item.manual,
         "sessionRpe": quantity(item.session_rpe, "RPE 0-10", *refs),
         "compliance": {
-            "durationRatio": quantity(compliance.duration_ratio, "ratio", *refs, digits=2),
-            "distanceRatio": quantity(compliance.distance_ratio, "ratio", *refs, digits=2),
+            "durationRatio": quantity(
+                compliance.duration_ratio, "share of planned", *refs, digits=2
+            ),
+            "distanceRatio": quantity(
+                compliance.distance_ratio, "share of planned", *refs, digits=2
+            ),
             "intensityShare": quantity(compliance.intensity_share, "share 0-1", *refs, digits=2),
             "structureShare": quantity(compliance.structure_share, "share 0-1", *refs, digits=2),
             "withinBand": compliance.within_band,

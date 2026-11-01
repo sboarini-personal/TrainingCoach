@@ -38,6 +38,7 @@ from coach.domain.agent import ToolOutcome
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
 from coach.domain.consent.ledger import ConsentType
+from coach.domain.plans.workout import IntensityTarget, PaceTarget, PaceUnit, RpeRange
 from coach.infrastructure.memory import RecordingEventSink
 
 SCOPE = OwnerScope(UUID(int=7))
@@ -197,3 +198,28 @@ def test_tool_names_are_unique() -> None:
     tool = Tool("probe", ToolKind.READ, "A probe.", schema(), _raising(NotFoundError()))
     with pytest.raises(ValueError, match="unique"):
         Toolbox([tool, tool], events=RecordingEventSink())
+
+
+@pytest.mark.req("FR-AGT-001", "SEC-INJ-001")
+def test_non_finite_numbers_and_invisible_characters_never_reach_the_coach() -> None:
+    assert quantity(float("inf"), "s/week", REF)["value"] is None
+    assert "display" not in quantity(float("nan"), "s", REF)
+    assert untrusted("Run\u202e\u200b fast") == {"untrusted_text": "Run fast"}
+
+
+@pytest.mark.req("FR-AGT-001")
+def test_display_forms_follow_the_unit_not_the_digits() -> None:
+    assert "display" not in quantity(1.85, "ratio", REF)  # a monotony is not a percentage
+    assert quantity(0.93, "share of planned", REF, digits=2)["display"] == "93%"
+    assert "display" not in quantity(1200.0, "m", REF, display=False)  # an elevation
+    target = IntensityTarget(
+        rpe=RpeRange(3, 4), pace=PaceTarget(PaceUnit.SECONDS_PER_KM, 300.0, 330.0)
+    )
+    shown = to_json(target, REF, name="target", trusted=True)
+    assert shown["rpe"]["low"]["unit"] == "RPE 0-10"
+    assert shown["pace"]["low"] == {
+        "value": 300,
+        "unit": "s/km",
+        "evidence": [{"kind": "ACTIVITY", "id": str(UUID(int=9)), "field": "distance.meters"}],
+        "display": "5:00/km",
+    }

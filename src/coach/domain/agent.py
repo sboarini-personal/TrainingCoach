@@ -28,6 +28,7 @@ from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceRef
 from coach.domain.common.text import clean_optional_text, clean_text
 from coach.domain.common.time import ensure_utc
+from coach.domain.consent.ledger import ConsentType
 
 MAX_EXPLANATION: Final = 4000
 MAX_TURNS: Final = 400  # a longer chat starts a new conversation
@@ -167,6 +168,9 @@ class Conversation:
     model_id: str
     turns: tuple[ConversationTurn, ...] = field(default_factory=tuple)
     version: int = 0
+    # The consents granted while its turns were added: their data may be in the history, so
+    # it continues only while all of them are still granted (privacy spec 1).
+    consents: frozenset[ConsentType] = frozenset()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "started_at", ensure_utc(self.started_at))
@@ -189,9 +193,17 @@ class Conversation:
     def with_version(self, version: int) -> Self:
         return replace(self, version=version)
 
-    def appended(self, turns: Sequence[ConversationTurn]) -> Conversation:
-        """The conversation with more turns at its end: earlier turns never change."""
-        return replace(self, turns=(*self.turns, *turns))
+    def appended(
+        self, turns: Sequence[ConversationTurn], consents: frozenset[ConsentType] = frozenset()
+    ) -> Conversation:
+        """The conversation with more turns at its end: earlier turns never change; the
+        consents granted now join those of the earlier turns."""
+        return replace(self, turns=(*self.turns, *turns), consents=self.consents | consents)
+
+    def continues_with(self, granted: frozenset[ConsentType]) -> bool:
+        """Whether a new message may continue it: every consent its history was built with
+        is still granted (a revocation starts a new conversation)."""
+        return self.consents <= granted
 
     def fits(self, turns: Sequence[ConversationTurn]) -> bool:
         """Whether these turns can still be appended (else a new conversation starts)."""

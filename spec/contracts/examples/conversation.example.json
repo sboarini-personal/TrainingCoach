@@ -6,6 +6,7 @@
   "promptVersion": "1.0.0",
   "toolsVersion": "1.0.0",
   "modelId": "claude-opus-5-5",
+  "consents": ["ACTIVITIES", "AI_PROCESSING"],
   "turns": [
     {
       "role": "user",

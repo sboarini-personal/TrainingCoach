@@ -74,6 +74,7 @@ def agent_services(runtime: Runtime) -> AgentServices:
         sync=runtime.sync,
         recovery_sync=runtime.recovery_sync,
         clock=runtime.clock,
+        audit=runtime.audit,
     )
 
 
@@ -180,6 +181,8 @@ def chat(
                 return 2
             raise
         except LLMUnavailableError as error:
+            for notice in error.notices:  # a red flag reported before the failure
+                print(notice, file=out)
             print(f"error: {ai_unavailable(error)}", file=out)
             return 1
         except MessageTooLongError as error:

@@ -19,7 +19,7 @@ from coach.application.executions import ExecutionService
 from coach.application.insights import InsightService
 from coach.application.plan_generation import PlanGenerationService
 from coach.application.plans import PlanService
-from coach.application.ports import Clock, OwnedRepository
+from coach.application.ports import AuditLog, Clock, OwnedRepository
 from coach.application.recovery import RecoveryService
 from coach.application.recovery_assessment import RecoveryAssessmentService
 from coach.application.recovery_sync import RecoverySyncService
@@ -49,3 +49,4 @@ class AgentServices:
     sync: SyncService
     recovery_sync: RecoverySyncService
     clock: Clock
+    audit: AuditLog

@@ -92,6 +92,16 @@ _CADENCE: Final = {
     CadenceUnit.RPM: "rpm",
     CadenceUnit.STROKES_PER_MIN: "strokes/min",
 }
+# Meters that are not a distance: never shown in km.
+NOT_DISTANCES: Final = frozenset(
+    {
+        "elevation.gainMeters",
+        "elevation.lossMeters",
+        "environment.altitudeMeters",
+        "environment.poolLengthMeters",
+        "performance.runningDynamics.strideLengthMeters",
+    }
+)
 SUMMARY_FIELDS: Final = (
     "classification.subtype",
     "metadata.name",
@@ -114,7 +124,8 @@ def field_value(path: str, value: object, ref: EvidenceRef) -> Any:
         case bool():
             return value
         case int() | float() if kind in {FieldKind.NUMBER, FieldKind.INTEGER}:
-            return quantity(float(value), FIELD_UNITS.get(path, UNITLESS), ref)
+            unit = FIELD_UNITS.get(path, UNITLESS)
+            return quantity(float(value), unit, ref, display=path not in NOT_DISTANCES)
         case str() if kind is FieldKind.TEXT:
             return untrusted(value)
         case str():  # a subtype, an IANA timezone or a UTC offset, validated on input

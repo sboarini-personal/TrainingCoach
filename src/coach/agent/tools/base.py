@@ -20,8 +20,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
+import math
 import re
 import time
+import unicodedata
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -52,11 +55,14 @@ from coach.application.sync import CapabilityUnavailableError
 from coach.domain.agent import DecisionKind, PolicyVerdict, ToolCallRecord, ToolOutcome
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.common.evidence import EvidenceKind, EvidenceRef
+from coach.domain.plans.workout import PaceTarget, PaceUnit
 
 TOOLS_VERSION: Final = "1.0.0"
 UNTRUSTED_LIMIT: Final = 500
 TRUNCATED: Final = " [truncated]"
 MAX_DAYS: Final = 92  # the longest period a tool reads at once
+MAX_RESULT_BYTES: Final = 128 * 1024  # a larger result asks for a shorter period
+_LOG: Final = logging.getLogger("coach.agent")
 FORBIDDEN_PARAMETERS: Final = frozenset(
     {
         "athleteId",
@@ -161,7 +167,9 @@ def untrusted(text: str | None) -> dict[str, str] | None:
     """External text as data, never instructions (SEC-INJ-001)."""
     if text is None:
         return None
-    cleaned = text.translate(_CONTROL).strip()
+    cleaned = "".join(
+        char for char in text.translate(_CONTROL) if unicodedata.category(char) != "Cf"
+    ).strip()
     if len(cleaned) > UNTRUSTED_LIMIT:
         cleaned = cleaned[:UNTRUSTED_LIMIT] + TRUNCATED
     return {"untrusted_text": cleaned}
@@ -177,20 +185,29 @@ def evidence(*refs: EvidenceRef) -> list[dict[str, str]]:
     return found
 
 
-def quantity(value: float | None, unit: str, *refs: EvidenceRef, digits: int = 1) -> dict[str, Any]:
-    """A number with its unit and evidence; ``None`` stays unknown. Durations, distances,
-    paces, speeds and shares also get the form people read (computed here, so the coach
-    never converts a unit)."""
+def quantity(
+    value: float | None,
+    unit: str,
+    *refs: EvidenceRef,
+    digits: int = 1,
+    display: bool = True,
+) -> dict[str, Any]:
+    """A number with its unit and evidence; ``None`` (and a non-finite value) stays
+    unknown. Durations, distances, paces, speeds and shares also get the form people read
+    (computed here, so the coach never converts a unit); ``display=False`` for meters that
+    are not a distance (elevation, altitude)."""
+    if value is not None and not math.isfinite(value):
+        value = None
     shown: float | None = value
     if isinstance(value, float):
         shown = round(value, digits)
         if shown == int(shown):
             shown = int(shown)
     found: dict[str, Any] = {"value": shown, "unit": unit, "evidence": evidence(*refs)}
-    if value is not None:
-        display = _display(float(value), unit)
-        if display is not None:
-            found["display"] = display
+    if value is not None and display:
+        form = _display(float(value), unit)
+        if form is not None:
+            found["display"] = form
     return found
 
 
@@ -214,7 +231,7 @@ def _display(value: float, unit: str) -> str | None:
             return f"{clock(value)}/100m"
         case "m/s":
             return f"{value * 3.6:.1f} km/h"
-        case "share 0-1" | "ratio":
+        case "share 0-1" | "share of planned":
             return f"{value * 100:.0f}%"
     return None
 
@@ -273,7 +290,11 @@ _UNITS: Final = (
     ("sets", "sets"),
     ("_bpm", "bpm"),
     ("_days", "days"),
+    ("rpe.low", "RPE 0-10"),
+    ("rpe.high", "RPE 0-10"),
+    ("count", "repeats"),
 )
+_PACE_UNITS: Final = {PaceUnit.SECONDS_PER_KM: "s/km", PaceUnit.SECONDS_PER_100M: "s/100m"}
 UNITLESS: Final = "1"
 
 
@@ -301,6 +322,9 @@ def to_json(
     def again(item: object, field: str = name) -> Any:
         return to_json(item, ref, name=field, plain=plain, trusted=trusted)
 
+    if isinstance(value, PaceTarget):
+        unit = _PACE_UNITS[value.unit]
+        return {"low": quantity(value.low, unit, ref), "high": quantity(value.high, unit, ref)}
     match value:
         case None | bool():
             return value
@@ -309,7 +333,8 @@ def to_json(
         case Enum():
             return code(value)
         case str():
-            return value if trusted or name in plain else untrusted(value)
+            last = name.rsplit(".", 1)[-1]
+            return value if trusted or last in plain else untrusted(value)
         case datetime():
             return value.isoformat()
         case date():
@@ -333,7 +358,9 @@ def to_json(
             }
         case _ if dataclasses.is_dataclass(value) and not isinstance(value, type):
             return {
-                camel(item.name): again(getattr(value, item.name), item.name)
+                camel(item.name): again(
+                    getattr(value, item.name), f"{name}.{item.name}" if name else item.name
+                )
                 for item in dataclasses.fields(value)
             }
     raise TypeError(f"no tool form for {type(value).__name__}")
@@ -362,7 +389,12 @@ def period(
 ) -> tuple[date, date]:
     """The ``from``/``to`` days of an input (default: the last ``default_days`` days to
     today), at most ``MAX_DAYS`` long."""
-    end = date.fromisoformat(arguments["to"]) if "to" in arguments else context.day()
+    if "to" in arguments:
+        end = date.fromisoformat(arguments["to"])
+    elif "from" in arguments and date.fromisoformat(arguments["from"]) > context.day():
+        end = date.fromordinal(date.fromisoformat(arguments["from"]).toordinal() + default_days - 1)
+    else:
+        end = context.day()
     start = (
         date.fromisoformat(arguments["from"])
         if "from" in arguments
@@ -408,6 +440,11 @@ class Toolbox:
         tool = self._tools.get(name)
         recorded = name if tool is not None else "unknownTool"
         outcome, payload = self._call(tool, arguments, context)
+        content = json.dumps(payload, ensure_ascii=False, sort_keys=True, allow_nan=False)
+        if len(content.encode("utf-8")) > MAX_RESULT_BYTES:
+            outcome = ToolOutcome.VALIDATION_ERROR
+            payload = _error(outcome, {"reason": "RESULT_TOO_LARGE", "maxBytes": MAX_RESULT_BYTES})
+            content = json.dumps(payload, sort_keys=True)
         self._events.emit(
             EventName.AGENT_TOOL_CALLED,
             {
@@ -416,7 +453,6 @@ class Toolbox:
                 "duration_ms": str(round((time.perf_counter() - started) * 1000)),
             },
         )
-        content = json.dumps(payload, ensure_ascii=False, sort_keys=True, allow_nan=False)
         block: dict[str, Any] = {
             "type": "tool_result",
             "tool_use_id": tool_use_id,
@@ -479,6 +515,12 @@ class Toolbox:
         except (DomainValidationError, InvalidOperationError, ValueError):
             return ToolOutcome.VALIDATION_ERROR, _error(
                 ToolOutcome.VALIDATION_ERROR, {"reason": "INVALID_REQUEST"}
+            )
+        except Exception as error:
+            # The exception's message may hold data: only its type is logged.
+            _LOG.error("tool %s failed: %s", tool.name if tool else "?", type(error).__name__)
+            return ToolOutcome.VALIDATION_ERROR, _error(
+                ToolOutcome.VALIDATION_ERROR, {"reason": "TOOL_FAILED"}
             )
         return ToolOutcome.OK, {"ok": True, "data": dict(data)}
 

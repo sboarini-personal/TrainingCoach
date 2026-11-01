@@ -13,7 +13,7 @@ markers at the start of a line ("1." or "2)") and digits joined to letters on th
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
@@ -24,6 +24,26 @@ _NUMBER: Final = re.compile(r"\d+(?:[.,]\d+)*")
 _ANSWER_NUMBER: Final = re.compile(r"(?<![^\W\d_])\d+(?:[.,]\d+)*")
 _LIST_MARKER: Final = re.compile(r"^(\s*(?:[-*]\s+)?)\d{1,2}[.)](\s)", re.MULTILINE)
 _THOUSANDS: Final = re.compile(r"^\d{1,3}(?:[.,]\d{3})+$")
+_UUID: Final = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
+_COMMAND: Final = re.compile(r"`coach [^`]*`")
+_SKIPPED: Final = frozenset(
+    {
+        "evidence",
+        "version",
+        "rulesVersion",
+        "calculationVersion",
+        "engineVersion",
+        "promptVersion",
+        "modelId",
+        "activateWith",
+        "reviewWith",
+        "subject",
+        "affectedWorkouts",
+    }
+)
+_SKIPPED_ENDINGS: Final = ("Id", "Ids", "At")
 
 
 def _decimal(text: str) -> Decimal | None:
@@ -89,7 +109,29 @@ class Sources:
 
 
 def untraced_numbers(answer: str, sources: Iterable[str]) -> tuple[str, ...]:
-    """The numbers of the answer that no source has, in order, once each."""
+    """The numbers of the answer that no source has, in order, once each. Identifiers and
+    the commands the tools give (`coach plan activate <id> 2 --revision 3`) are not numbers
+    of the answer."""
     known = Sources(sources)
-    missing = [token for token in numbers_in(answer) if not known.traces(token)]
+    text = _UUID.sub(" ", _COMMAND.sub(" ", answer))
+    missing = [token for token in numbers_in(text) if not known.traces(token)]
     return tuple(dict.fromkeys(missing))
+
+
+def json_sources(value: object) -> Iterator[str]:
+    """The texts of a tool result whose numbers an answer may use: values, display forms,
+    dates and data text; identifiers, evidence, instants, versions and commands are left
+    out, so their digits never pass as data."""
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            name = str(key)
+            if name in _SKIPPED or name.endswith(_SKIPPED_ENDINGS):
+                continue
+            yield from json_sources(item)
+    elif isinstance(value, list | tuple):
+        for item in value:
+            yield from json_sources(item)
+    elif isinstance(value, str):
+        yield value
+    elif isinstance(value, int | float) and not isinstance(value, bool):
+        yield str(value)

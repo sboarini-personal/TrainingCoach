@@ -35,9 +35,10 @@ from coach.agent.tools.base import (
     quantity,
     schema,
 )
+from coach.application.audit import ActorKind, AuditEvent, AuditOutcome
 from coach.application.consent import ConsentRequiredError
 from coach.application.policy_gate import PolicyDeniedError
-from coach.application.recovery import CheckInAnswers
+from coach.application.recovery import CheckInAnswers, CheckInRefusedError
 from coach.application.sync import SyncOutcome
 from coach.domain.agent import DecisionKind, PolicyVerdict, ToolOutcome
 from coach.domain.athlete.profile import ProfileUpdate
@@ -55,6 +56,13 @@ CHECKIN_SCALES: Final = ("sleepQuality", "fatigue", "soreness", "stress", "motiv
 PROFILE_FIELDS: Final = ("heightCm", "restingHr", "maxHr", "metricUnits", "language")
 LANGUAGES: Final = ("es", "en")
 UNKNOWABLE: Final = ("heightCm", "restingHr", "maxHr")
+_CODES: Final = {
+    "heightCm": "HEIGHT",
+    "restingHr": "RESTING_HR",
+    "maxHr": "MAX_HR",
+    "metricUnits": "UNITS",
+    "language": "LANGUAGE",
+}
 REDUCTIONS: Final = frozenset({Decision.REDUCE, Decision.REST})
 DELETION_SCOPES: Final = ("ALL", "ACTIVITIES", "RECOVERY", "CHECKINS", "PLANS", "CONVERSATIONS")
 _STATED: Final = (
@@ -77,9 +85,15 @@ def _safety(context: ToolContext, flags: tuple[RedFlag, ...]) -> None:
 def _feedback(
     services: AgentServices, context: ToolContext, arguments: Mapping[str, Any]
 ) -> Mapping[str, Any]:
-    found: dict[str, Any] = {}
     if ("activityId" in arguments) != ("activityRpe" in arguments):
         raise ToolError(ToolOutcome.VALIDATION_ERROR, reason="ACTIVITY_ID_AND_RPE_TOGETHER")
+    found: dict[str, Any] = {}
+    # The check-in first: its red flags hold training before anything else can fail.
+    checkin = {
+        key: value for key, value in arguments.items() if key not in {"activityId", "activityRpe"}
+    }
+    if checkin:
+        found["checkin"] = _checkin(services, context, checkin)
     if "activityId" in arguments:
         if context.principal is None:
             raise ToolError(ToolOutcome.VALIDATION_ERROR, reason="NO_SESSION_PRINCIPAL")
@@ -97,36 +111,73 @@ def _feedback(
             "activityId": str(activity_id),
             "rpe": quantity(float(arguments["activityRpe"]), "RPE 0-10", ref),
         }
-    checkin = {
-        key: value for key, value in arguments.items() if key not in {"activityId", "activityRpe"}
-    }
-    if checkin:
-        answers = CheckInAnswers(
-            training_day=date.fromisoformat(checkin["trainingDay"])
-            if "trainingDay" in checkin
-            else None,
-            pain_intensity=checkin.get("pain"),
-            pain_location=checkin.get("painLocation"),
-            pain_onset=PainOnset(checkin["painOnset"]) if "painOnset" in checkin else None,
-            notes=checkin.get("notes"),
-            sleep_quality=checkin.get("sleepQuality"),
-            fatigue=checkin.get("fatigue"),
-            soreness=checkin.get("soreness"),
-            stress=checkin.get("stress"),
-            motivation=checkin.get("motivation"),
-        )
-        result = services.recovery.record_checkin(context.scope, answers)
-        if result.red_flags:
-            _safety(context, result.red_flags)
-        found["checkin"] = {
-            "checkinId": str(result.checkin.checkin_id),
-            "trainingDay": day(result.checkin.training_day),
-            "redFlags": [code(flag) for flag in result.red_flags],
-            "safetyHold": bool(result.red_flags),
-            "secretRemoved": result.secret_notice is not None,
-            "notRecorded": None if result.not_recorded is None else "INVALID_ANSWERS",
-        }
+    _audit(services, context, "agent.feedback_recorded", "ATHLETE", str(context.scope.athlete_id))
     return found
+
+
+def _checkin(
+    services: AgentServices, context: ToolContext, checkin: Mapping[str, Any]
+) -> dict[str, Any]:
+    answers = CheckInAnswers(
+        training_day=date.fromisoformat(checkin["trainingDay"])
+        if "trainingDay" in checkin
+        else None,
+        pain_intensity=checkin.get("pain"),
+        pain_location=checkin.get("painLocation"),
+        pain_onset=PainOnset(checkin["painOnset"]) if "painOnset" in checkin else None,
+        notes=checkin.get("notes"),
+        sleep_quality=checkin.get("sleepQuality"),
+        fatigue=checkin.get("fatigue"),
+        soreness=checkin.get("soreness"),
+        stress=checkin.get("stress"),
+        motivation=checkin.get("motivation"),
+    )
+    try:
+        result = services.recovery.record_checkin(context.scope, answers)
+    except CheckInRefusedError as refused:
+        # Not recorded (no timezone, for example), but its red flags already hold training.
+        _safety(context, refused.red_flags)
+        raise ToolError(
+            ToolOutcome.VALIDATION_ERROR,
+            reason="CHECKIN_NOT_RECORDED",
+            redFlags=[flag.value for flag in refused.red_flags],
+            safetyHold=True,
+        ) from None
+    raised = result.checkin.red_flags_raised()
+    if raised:
+        _safety(context, raised)
+    return {
+        "checkinId": str(result.checkin.checkin_id),
+        "trainingDay": day(result.checkin.training_day),
+        "redFlags": [code(flag) for flag in raised],
+        "safetyHold": bool(raised),
+        "secretRemoved": result.secret_notice is not None,
+        "notRecorded": None if result.not_recorded is None else "INVALID_ANSWERS",
+    }
+
+
+def _audit(
+    services: AgentServices,
+    context: ToolContext,
+    action: str,
+    target_type: str,
+    target_id: str,
+    reasons: tuple[str, ...] = (),
+) -> None:
+    """A change the coach made on the athlete's word, audited as the agent's (tools contract:
+    WRITE_INTERNAL is audited)."""
+    services.audit.append(
+        AuditEvent(
+            occurred_at=services.clock(),
+            actor=ActorKind.AGENT,
+            action=action,
+            outcome=AuditOutcome.SUCCESS,
+            athlete_id=context.scope.athlete_id,
+            target_type=target_type,
+            target_id=target_id,
+            reason_codes=reasons,
+        )
+    )
 
 
 def _flag(
@@ -167,6 +218,10 @@ def _profile(
             max_hr=FieldValue.unknown(at=now) if "maxHr" in unknown else update.max_hr,
         )
     saved = services.inputs.update_profile(context.scope, update)
+    fields = tuple(sorted(_CODES[key] for key in (*changes, *unknown)))
+    _audit(
+        services, context, "agent.profile_updated", "ATHLETE_PROFILE", str(saved.athlete_id), fields
+    )
     return {"version": saved.version, "changed": sorted(changes), "unknown": sorted(unknown)}
 
 
@@ -182,6 +237,7 @@ def _goal(
         target_time_seconds=arguments.get("targetTimeSeconds"),
         event_id=UUID(arguments["eventId"]) if "eventId" in arguments else None,
     )
+    _audit(services, context, "agent.goal_saved", "GOAL", str(goal.goal_id))
     return {
         "goal": goal_json(goal),
         "activateWith": f"coach goal activate {goal.goal_id}",  # the athlete's action
@@ -263,6 +319,10 @@ def _adapt(services: AgentServices, context: ToolContext) -> Mapping[str, Any]:
         "interpretation": decision.interpretation,  # written in code by the rules
         "confidence": code(decision.confidence),
         "proposedVersion": None if proposed is None else proposed.number,
+        # PROPOSED, REFUSED by the policies (the plan stays as it is) or NONE (MAINTAIN)
+        "proposal": "PROPOSED"
+        if proposed is not None
+        else ("REFUSED" if verdict is PolicyVerdict.DENIED else "NONE"),
     }
     if proposed is not None:
         revision = services.plans.plan(context.scope, proposed.plan_id).version
@@ -327,7 +387,7 @@ def _workout_proposal(
         "plannedWorkoutId": str(workout_id),
         "trainingDay": day(workout.training_day),
         "type": code(workout.type),
-        "publishable": value == "SUPPORTED",
+        "publishable": False,  # V1 never publishes, whatever the capability says
         "capability": {"name": Capability.TRAINING_PUBLISH.value, "value": value},
         "stays": "LOCAL",  # V1 never sends workouts to a provider
     }

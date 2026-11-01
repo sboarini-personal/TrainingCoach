@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:coach:schema:conversation:1",
   "title": "Conversation",
-  "description": "A chat with the AI coach, stored for later (decision D-15). Each turn keeps its content blocks exactly as they were sent to or received from the model (the Messages API shape: text, tool_use, tool_result, thinking with its text omitted, ...), appended only: an earlier turn never changes, so the history can be sent again unchanged. The athlete's text is screened for secrets before it becomes a turn. A conversation is bound to the prompt version, tool set version and model it started with. version is the storage revision. Owner spec: spec/functional/agent.spec.md section 9.",
+  "description": "A chat with the AI coach, stored for later (decision D-15). Each turn keeps its content blocks exactly as they were sent to or received from the model (the Messages API shape: text, tool_use, tool_result, thinking with its text omitted, ...), appended only: an earlier turn never changes, so the history can be sent again unchanged. The athlete's text is screened for secrets before it becomes a turn. A conversation is bound to the prompt version, tool set version and model it started with, and to the consents granted while its turns were added (consents): it continues only while all of them are still granted. version is the storage revision. Owner spec: spec/functional/agent.spec.md section 9.",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -12,6 +12,7 @@
     "promptVersion",
     "toolsVersion",
     "modelId",
+    "consents",
     "turns",
     "version"
   ],
@@ -24,6 +25,11 @@
     "promptVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "toolsVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "modelId": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "consents": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "urn:coach:schema:consent:1#/properties/consentType" }
+    },
     "turns": {
       "type": "array",
       "maxItems": 400,

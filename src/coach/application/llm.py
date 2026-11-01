@@ -78,6 +78,7 @@ class LLMUnavailableError(ApplicationError):
     def __init__(self, failure: LLMFailure) -> None:
         super().__init__(f"the AI coach is not available now ({failure.value})")
         self.failure = failure
+        self.notices: tuple[str, ...] = ()  # fixed texts the athlete must still see (safety)
 
 
 class LLMProvider(Protocol):

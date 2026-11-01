@@ -107,7 +107,7 @@ def checkin(item: DailyCheckIn) -> dict[str, Any]:
             "onset": code(pain.onset),
             "possiblyAcute": pain.possibly_acute,
         },
-        "redFlags": [code(flag) for flag in item.red_flags],
+        "redFlags": [code(flag) for flag in item.red_flags_raised()],  # detected too
         "notes": untrusted(item.notes),
     }
 
@@ -167,9 +167,26 @@ def _status(
     found = services.assessments.history(context.scope, until=when, days=1)
     granted = services.consents.granted(context.scope)
     state = services.conditions.current(context.scope)
-    assessment = None
-    if found:
-        item = found[-1]
+    assessment: dict[str, Any] | None = None
+    item = found[-1] if found else None
+    missing = sorted(
+        {
+            METRICS[RecoveryMetric(signal.name)].consent.value
+            for signal in (item.signals if item is not None else ())
+            if signal.wearable
+            and signal.value is not None  # read from data, not only expected
+            and METRICS[RecoveryMetric(signal.name)].consent not in granted
+        }
+    )
+    if item is not None and missing:
+        # Its status and reasons were read from wearable data whose consent is no longer
+        # granted: sending them now would be new processing (privacy spec 1).
+        assessment = {
+            "assessmentId": str(item.assessment_id),
+            "withheld": "CONSENT_MISSING",
+            "consentMissing": missing,
+        }
+    elif item is not None:
         ref = EvidenceRef(EvidenceKind.RECOVERY_ASSESSMENT, item.assessment_id)
         assessment = {
             "assessmentId": str(item.assessment_id),

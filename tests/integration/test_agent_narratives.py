@@ -83,7 +83,9 @@ def run(world: AgentWorld, llm: ScriptedLLM, *argv: str) -> tuple[int, str]:
 def test_a_report_narrative_is_written_from_the_data_part_only(tmp_path: Path) -> None:
     world = ready(tmp_path)
     data = world.runtime.reports.weekly(world.scope, "2026-W43")
-    llm = ScriptedLLM(answer("## Summary\nJugaste un partido de tenis de 1:30:00 con RPE 7."))
+    llm = ScriptedLLM(
+        answer("## Summary\nJugaste un partido de tenis de 1:30:00 con una carga de 630.")
+    )
     narrative = build_narrator(world.runtime, llm).report(world.scope, data)
     assert narrative.outcome is ReplyOutcome.ANSWERED
     assert narrative.text.startswith("## Summary")

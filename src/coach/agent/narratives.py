@@ -22,7 +22,7 @@ from coach.agent.prompts import Prompt
 from coach.agent.services import AgentServices
 from coach.agent.tools.plans import report as report_json
 from coach.agent.tools.recovery import insight_json
-from coach.agent.validation import untraced_numbers
+from coach.agent.validation import json_sources, untraced_numbers
 from coach.application.events import EventName
 from coach.application.llm import LLMProvider, LLMReply, LLMRequest
 from coach.application.ownership import OwnerScope
@@ -97,7 +97,8 @@ class Narrator:
 
     def report(self, scope: OwnerScope, data: ReportData) -> Narrative:
         context, language, _conditions = self._context(scope)
-        payload = json.dumps(report_json(data), ensure_ascii=False, sort_keys=True)
+        document = report_json(data)
+        payload = json.dumps(document, ensure_ascii=False, sort_keys=True)
         sections = [
             section.name
             for section in data.sections
@@ -108,7 +109,7 @@ class Narrator:
             "Write these sections of the narrative, each as a line '## <section name>' followed "
             "by at most five short sentences, and nothing else: " + "; ".join(sections) + "."
         )
-        reply, answer, untraced = self._ask(request, [payload, context])
+        reply, answer, untraced = self._ask(request, [*json_sources(document), context])
         texts = texts_for(language)
         outcome = ReplyOutcome.ANSWERED
         if reply.stop_reason == "refusal":
@@ -130,7 +131,8 @@ class Narrator:
         """The reading of one stored insight, stored with the prompt and model that wrote
         it; ``None`` when the model refused or its numbers did not trace."""
         context, _language, conditions = self._context(scope)
-        payload = json.dumps(insight_json(insight), ensure_ascii=False, sort_keys=True)
+        document = insight_json(insight)
+        payload = json.dumps(document, ensure_ascii=False, sort_keys=True)
         request = (
             f"{context}\n<insight>{payload}</insight>\n"
             'Answer only with a JSON object with three keys: "interpretation" (what the '
@@ -138,7 +140,7 @@ class Narrator:
             'possible explanation, explicitly tentative, or null) and "recommendation" (a '
             "training action to consider, or null)."
         )
-        reply, answer, untraced = self._ask(request, [payload, context])
+        reply, answer, untraced = self._ask(request, [*json_sources(document), context])
         reading = _reading(answer) if reply.stop_reason == "end_turn" else None
         if reading is None or untraced:
             outcome = ReplyOutcome.NOT_VERIFIED if untraced else ReplyOutcome.REFUSED
