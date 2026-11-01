@@ -103,8 +103,9 @@ objects live in `tests/samples.py`.
 
 ## Current phase
 
-P0 to P12 are done. Next: P13 (AI coach: tools, prompts, LLM adapter, agent evaluations). See
-`docs/architecture.md` section 8.
+P0 to P13 are done. P14 (Garmin workout publication) is deferred until a tier offers
+`trainingPublish`; next: P15 (hardening, deletion workflow, observability, end-to-end
+verification). See `docs/architecture.md` section 8.
 
 Security building blocks to reuse (P4): obtain an `OwnerScope` only through
 `AuthorizationService`; check processing with `PolicyGate`; record security-relevant actions
@@ -226,3 +227,19 @@ Plans and the adaptive loop (P12, ADR-034):
   `onboarded(tmp_path, *goal)` in `tests/integration/test_cli_plans.py`. Strength set files
   use the sets template (`coach.integrations.files.strength_csv`).
 
+AI coach (P13, ADR-036): the agent reaches data only through `coach.agent.tools` (a `Tool`
+with a closed JSON Schema, run by `Toolbox` in the session's `ToolContext`); tools call the
+use cases in `AgentServices`, emit quantities with `quantity()` (unit, evidence, display form)
+and external text with `untrusted()`, and hand significant decisions to the pipeline as
+`PendingDecision`s. `Coach.reply` is the message pipeline (red flags in code first, consent,
+the exchange, output validation with `validation.json_sources`, decisions, append-only
+conversations bound to their consents); `Narrator` writes report narratives and insight
+readings without tools. Prompts are versioned files in `coach.agent.prompts`; changing a
+prompt or a tool needs a new version and a new hash in `tests/unit/test_agent_versions.py`.
+Tests never reach a real model: `tests/agent_llm.py` (`ScriptedLLM`, `answer`, `tools`),
+`tests/agent_world.py` (a CLI-onboarded athlete over a real runtime; `world.data`,
+`world.error`, `world.coach`), evaluation scenarios and their judge in
+`tests/eval_scenarios.py` and `tests/eval_checks.py`, run simulated by `tests/agent_evals`;
+`tools/agent_evals_live.py` runs them against the real model only when the athlete asks
+(it prints a token estimate first). A data directory inside the repository is refused, so
+throw-away installations go to the system temporary folder.

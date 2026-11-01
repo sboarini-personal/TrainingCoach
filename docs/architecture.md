@@ -66,6 +66,16 @@ Domain packages (P2): `common` (errors, time, units, quality, provenance, sport,
 untrusted text, finite numbers), `athlete`, `availability`, `goals`, `consent`, `coaching`,
 `onboarding`; `raw` (P3); `activity` (P5); `ingestion` (P6).
 
+P13 additions (ADR-036):
+
+| Package | Content |
+|---|---|
+| `coach.domain` | `agent` (AgentDecision, Conversation bound to prompt, tools, model and consents), `common.untrusted` (instruction phrase rules 1.0.0, SUSPICIOUS_INSTRUCTION_TEXT); evidence kinds GOAL, SPORT_EVENT, AVAILABILITY |
+| `coach.application` | `llm` (LLMProvider port, Messages-shaped JSON), `AthleteInputsService.questions` and `readiness(advance=False)`, `InsightService.interpret`, `TimezoneRequiredError`; codecs for agent decisions and conversations |
+| `coach.agent` | `services` (the use cases the tools may call), `tools` (Toolbox, 18 READ and 9 action tools, tool set 1.0.0), `coach` (message pipeline), `validation` (output validation rules 1.0.0), `narratives` (report narratives, insight readings), `prompts` (system 1.0.0, narrative 1.0.0) |
+| `coach.integrations.llm` | `AnthropicProvider` (Claude Opus 5.5 default, streaming, cached prefix, server-side fallback; the key read from the secret store per reply) |
+| `coach.cli` | `chat` (one question or an interactive session, `--new`), `report ... --narrative`, `insights interpret` |
+
 P12 additions:
 
 | Package | Content |
@@ -353,7 +363,7 @@ Provider questions G-1 to G-8 and their status: `spec/integration/garmin.spec.md
 | P10 | Exercise catalogue 1.0.0 and athlete aliases; FIT strength sets (SETS stream, normalisation rules 1.2.0) and StrengthSession reconciliation; volume load and weekly hard sets per muscle group (MUSCLE dimension); progression rules 1.0.0; strength prescription rules 1.0.0 (workout contract 1.1.0); interference engine rules 1.0.0 (ADR-031); CLI `strength` | Done |
 | P11 | Daily check-in with fail-safe red flags and phrase detection; daily recovery metrics from Garmin by consent with minimised RAW (ADR-032); recovery assessment and prescription rules 1.0.0 with RECOVERY_BLOCK; training monotony and strain; pattern rules 1.0.0 into insights; report data parts (ADR-033); CLI `checkin`, `safety`, `recovery`, `insights`, `report` | Done |
 | P12 | Planning inputs and Definition of Ready (readiness rules 1.0.0); goal feasibility rules 1.0.0; immutable plan versions with content hash and header concurrency; plan policies (policy set 1.2.0, equipment rules 1.0.0); generator rules 1.0.0; execution rules 1.0.0 and manual links; adaptation rules 1.0.0 and AdaptationDecision; pain rules 1.0.0; pattern rules 1.1.0 and report data 1.1.0 plan sections; strength sets CSV template 1.0.0 (ADR-034); CLI `availability`, `event`, `goal`, `readiness`, `plan` | Done |
-| P13 | AI coach: tools, prompts, LLM adapter, agent evaluations, UI | Next |
+| P13 | AI coach (ADR-036): LLM port and Claude adapter; tool set 1.0.0 (18 READ tools, write, propose and external tools); message pipeline with red flags in code, consent-bound append-only conversations and AgentDecisions; output validation rules 1.0.0; system and narrative prompts 1.0.0 with locked versions; report narratives and insight readings; onboarding questions; `coach chat`; agent evaluations simulated (wording rules 1.0.0) and a live runner on request | Done |
 | P14 | Garmin workout publication | Deferred: needs a tier with `trainingPublish` |
 | P15 | Hardening, deletion workflow, observability, end-to-end verification | |
 

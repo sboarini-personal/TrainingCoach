@@ -38,7 +38,7 @@ no athlete data. Backups are created only on request and go where the athlete ch
 | Party | Role | Data | Basis |
 |---|---|---|---|
 | Garmin | data source (pull) | the athlete's own Garmin data | athlete's Garmin account and Personal API terms |
-| LLM provider (default Anthropic) | processor for coaching conversations | minimised context | AI_PROCESSING consent; provider data-retention settings to be reviewed by the athlete |
+| LLM provider (default Anthropic) | processor for coaching conversations, report narratives and insight readings | minimised tool data (P13): quantities with evidence, external text marked untrusted, an age instead of the birth date, no streams or GPS, no provider record IDs or file hashes; recovery metrics only for their granted categories; nothing after a consent is revoked (a conversation built with it is not continued) | AI_PROCESSING consent; the LLM key stays in the OS secret store and reaches only the SDK client; provider data-retention settings to be reviewed by the athlete |
 
 Open question G-5: whether Garmin's Personal API terms allow processing Garmin data with a
 third-party AI. The athlete reviews the terms they accepted when creating the key before

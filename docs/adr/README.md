@@ -40,3 +40,4 @@ change is a new ADR that supersedes the old one (status `Superseded by ADR-NNN`)
 | [ADR-033](ADR-033-recovery-assessment-insights-and-reports.md) | Recovery assessment, pattern detection and report data | Accepted |
 | [ADR-034](ADR-034-plans-policies-and-adaptive-loop.md) | Plans, plan policies, execution and the adaptive loop | Accepted |
 | [ADR-035](ADR-035-data-in-synchronised-folders.md) | Athlete data may live in a synchronised folder by the athlete's choice | Accepted |
+| [ADR-036](ADR-036-ai-coach-pipeline-and-tools.md) | The AI coach: a deterministic pipeline around the model, narrow tools, validated answers | Proposed |

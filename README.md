@@ -138,7 +138,7 @@ Recovery (P11):
   - intensity distribution;
   - sleep and running efficiency, reported as an association, never a cause.
 - **Reports.** `coach report activity|week|month` prints the data part of the reports. Every
-  number has its evidence; what needs plans or the AI coach says so.
+  number has its evidence; add `--narrative` for the AI coach's narrative (P13).
 
 Plans (P12):
 
@@ -181,14 +181,36 @@ Plans (P12):
 
 These are training-load decisions, not medical advice.
 
+The AI coach (P13):
+
+- **Enable it.** `coach consent grant ai-processing` (nothing is sent to the AI provider
+  without it) and `coach secret set llm-api-key` (your Anthropic API key, typed hidden; it
+  stays in the OS secret store). The model is Claude Opus 5.5; `COACH_LLM_MODEL` and
+  `COACH_LLM_EFFORT` change it.
+- **Chat.** `coach chat "¿Cómo vengo esta semana?"` asks one question; `coach chat` opens a
+  session (an empty line or `salir` ends it; `--new` starts a new conversation). The coach
+  reads your data through narrow tools, shows each read as it goes, and shows its answer only
+  after checking that every number comes from your data; a number it cannot verify is named.
+- **What it can do.** Explain your activities, recovery, plan, decisions and goals; record a
+  check-in or an activity RPE you tell it; update a few profile fields; save a goal as a draft;
+  ask the planning rules for a new plan version or an adaptation. You still activate plans,
+  goals and releases yourself; it never sends anything to Garmin or deletes data.
+- **Safety.** Words about chest pain, fainting or other warning signs pause intense training at
+  once and show the safety notice, without asking the AI. Only you lift the pause, after a
+  professional clears you (`coach safety release`).
+- **Narratives.** `coach report week --narrative` adds a narrative written from the report's
+  data; `coach insights interpret` adds the coach's reading to new insights.
+- **Conversations** are kept in your data folder (secrets removed) so a chat can continue
+  another day; revoking a consent starts a new one.
+
 `coach garmin sync` uses the Garmin Personal API key stored with `coach secret set
 garmin-api-key` (create it in Garmin Connect, under Personal API key). It pulls the last 8
 weeks the first time, then what is new; it never writes to Garmin. When Garmin is
 unavailable the command says so, keeps what was already synced and leaves local history and
 file import working.
 
-Data goes to `COACH_DATA_DIR` (default `%LOCALAPPDATA%\CoachDeportivo`); the command refuses
-OneDrive, Dropbox and Google Drive folders. Secrets go to the Windows Credential Manager.
+Data goes to `COACH_DATA_DIR` (default `%LOCALAPPDATA%\CoachDeportivo`); see Data and
+secrets below. Secrets go to the Windows Credential Manager.
 
 ## Data and secrets
 
