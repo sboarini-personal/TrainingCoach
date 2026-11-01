@@ -64,6 +64,12 @@ provider source are FR-PRF-008 (athlete's review of 2026-10-31).
   as JSON plus original files.
 - **Correct:** profile fields through allow-listed updates; activity data through
   DataOverride (FR-ACT-006), keeping the original.
+- **Access is not processing** (precision, athlete's review of 2026-10-31): inspecting and
+  exporting the athlete's own stored data never needs a processing consent. `coach activity
+  list`, `show` and `export`, and `coach strength sets` and `export-sets`, keep working after
+  ACTIVITIES is revoked; they read what is stored and compute nothing. Revocation stops new
+  processing: analytics, recomputation, plans, executions, adaptation, insights, reports, the
+  AI, and changes to the data.
 
 ## 5. Storage location (PRIV-STO-001, PROPOSED)
 

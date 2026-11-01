@@ -334,3 +334,10 @@ def test_sets_are_imported_and_exported_with_the_sets_template(cli: Cli, tmp_pat
     )
     code, output = cli.run("strength", "import-sets", activity, str(bad))
     assert (code, output) == (2, "error: line 3: the same exercise and set as line 2\n")
+    # Without the consent the athlete still sees and exports the sets, but changes nothing
+    # (access is not processing; athlete's review of 2026-10-31).
+    assert cli.run("consent", "revoke", "activities")[0] == 0
+    assert cli.run("strength", "sets", activity)[0] == 0
+    assert cli.run("strength", "export-sets", activity, "--output", str(out))[0] == 0
+    code, output = cli.run("strength", "import-sets", activity, str(out))
+    assert (code, "coach consent grant activities" in output) == (2, True)

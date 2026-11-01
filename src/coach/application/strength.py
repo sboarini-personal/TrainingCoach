@@ -109,7 +109,9 @@ class StrengthService:
     # ------------------------------------------------------------------ reads
 
     def sets(self, scope: OwnerScope, activity_id: UUID) -> SessionSets:
-        self._consents.require(scope, ConsentType.ACTIVITIES)
+        """The executed sets of one of the athlete's activities, to inspect or export: the
+        right of access (privacy spec 4) needs no processing consent; changes still do
+        (athlete's review, 2026-10-31)."""
         return self.of_view(scope, self._activities.effective(scope, activity_id).activity)
 
     def of_view(self, scope: OwnerScope, view: Activity) -> SessionSets:

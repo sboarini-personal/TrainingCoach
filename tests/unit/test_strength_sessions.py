@@ -287,7 +287,7 @@ def test_an_unreadable_sets_stream_leaves_only_the_athletes_sets() -> None:
 
 
 @pytest.mark.req("FR-STR-005", "SEC-AUTHZ-001", "PRIV-CON-002")
-def test_sessions_are_owner_scoped_and_need_the_activities_consent() -> None:
+def test_sessions_are_owner_scoped_and_changes_need_the_activities_consent() -> None:
     world = World()
     activity_id = strength_activity(world, sets=watch())
     world.strength.record(SCOPE, activity_id, entry(number=1, actual_rpe=7.0))
@@ -295,8 +295,11 @@ def test_sessions_are_owner_scoped_and_need_the_activities_consent() -> None:
     with pytest.raises(NotFoundError):
         world.strength.sets(OwnerScope(OTHER_ATHLETE), activity_id)
     world.consents.revoke(SCOPE, ConsentType.ACTIVITIES)
+    # Access is not processing (privacy spec 4, athlete's review of 2026-10-31): the athlete
+    # still inspects the sets; changing them needs the consent.
+    assert world.strength.sets(SCOPE, activity_id).sets
     with pytest.raises(ConsentRequiredError):
-        world.strength.sets(SCOPE, activity_id)
+        world.strength.record(SCOPE, activity_id, entry(number=2, actual_rpe=6.0))
 
 
 def watch_before_squats() -> WatchSets:

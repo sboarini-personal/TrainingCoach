@@ -308,13 +308,10 @@ def _group_text(group: TrendGroup, unit: str) -> str:
 def show_activity(
     runtime: Runtime, scope: OwnerScope, args: argparse.Namespace, out: TextIO
 ) -> int:
-    try:  # metrics first: their read checks the consent before anything is read
-        values = runtime.analytics.activity_metrics(scope, args.activity_id)
-        view = runtime.activities.effective(scope, args.activity_id).activity
+    try:  # the athlete's access: what is stored, whatever the consents (privacy spec 4)
+        view, values = runtime.analytics.stored_activity(scope, args.activity_id)
     except NotFoundError:
         raise CommandError("activity not found") from None
-    except ConsentRequiredError:
-        raise CommandError(CONSENT_HINT) from None
     subtype = view.values.get("classification.subtype") or "-"
     print(f"activity {view.activity_id}", file=out)
     print(

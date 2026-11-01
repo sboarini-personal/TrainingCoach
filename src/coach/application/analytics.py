@@ -828,8 +828,16 @@ class AnalyticsService:
     def activity_metrics(self, scope: OwnerScope, activity_id: UUID) -> list[DerivedMetricValue]:
         """Current per-activity values that apply to the activity as it is now."""
         self._consents.require(scope, ConsentType.ACTIVITIES)
+        return self.stored_activity(scope, activity_id)[1]
+
+    def stored_activity(
+        self, scope: OwnerScope, activity_id: UUID
+    ) -> tuple[Activity, list[DerivedMetricValue]]:
+        """The athlete's own activity and its stored values, for inspection: the right of
+        access (privacy spec 4) needs no processing consent. Nothing is computed; a revoked
+        ACTIVITIES consent stops new processing, not access (athlete's review, 2026-10-31)."""
         view = self._activities.effective(scope, activity_id).activity
-        return self._activities.engine.current(scope, view)
+        return view, self._activities.engine.current(scope, view)
 
     def recompute(self, scope: OwnerScope) -> int:
         """Recompute the per-activity metrics of every live activity; returns their number."""

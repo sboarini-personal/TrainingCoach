@@ -114,7 +114,12 @@ def test_bad_input_and_missing_consent_are_reported(cli: Cli, tmp_path: Path) ->
     code, output = cli.run("load", "week")
     assert code == 2
     assert "coach consent grant activities" in output
+    # Access is not processing (privacy spec 4, athlete's review of 2026-10-31): the athlete
+    # still sees the activity and its stored values; nothing new is computed.
     code, output = cli.run("activity", "show", str(activity_id))
+    assert code == 0, output
+    assert output.startswith(f"activity {activity_id}\n")
+    code, output = cli.run("metrics", "recompute")
     assert (code, "coach consent grant activities" in output) == (2, True)
 
 
