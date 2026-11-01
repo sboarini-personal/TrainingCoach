@@ -14,11 +14,11 @@ from uuid import UUID
 
 from coach.application.consent import ConsentRequiredError
 from coach.application.contracts.reports import report_to_contract
-from coach.application.errors import NotFoundError
+from coach.application.errors import NotFoundError, TimezoneRequiredError
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
 from coach.cli.analytics import amount, week_argument
-from coach.cli.runtime import Runtime, TimezoneRequiredError
+from coach.cli.runtime import Runtime
 from coach.domain.common.errors import DomainValidationError
 from coach.domain.reports import ReportData, ReportItem
 

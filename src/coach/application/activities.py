@@ -73,6 +73,11 @@ from coach.domain.activity.overrides import (
 )
 from coach.domain.activity.resolution import RESOLUTION_RULES_VERSION, resolve
 from coach.domain.common.errors import DomainValidationError
+from coach.domain.common.quality import Anomaly
+from coach.domain.common.untrusted import (
+    SUSPICIOUS_INSTRUCTION_TEXT,
+    looks_like_instructions,
+)
 from coach.domain.consent.ledger import ConsentType
 from coach.domain.raw.source import RawSource
 from coach.domain.strength.session import StrengthSession, session_id_of
@@ -196,6 +201,14 @@ def _atomic[**P, R](
     command.__name__, command.__qualname__ = method.__name__, method.__qualname__
     command.__doc__ = method.__doc__
     return command
+
+
+# Text that could carry instructions to the AI coach (instruction phrase rules 1.0.0).
+INSTRUCTION_TEXT_FIELDS: Final = (
+    "metadata.name",
+    "metadata.description",
+    "subjective.comments",
+)
 
 
 class ActivityService:
@@ -685,6 +698,13 @@ class ActivityService:
             if view.is_live
             else {}
         )
+        if view.is_live:  # visibility only, never a quality anomaly (SEC-INJ-002)
+            for path in INSTRUCTION_TEXT_FIELDS:
+                value = view.values.get(path)
+                if isinstance(value, str) and looks_like_instructions(value):
+                    detected[(SUSPICIOUS_INSTRUCTION_TEXT, path)] = Anomaly(
+                        SUSPICIOUS_INSTRUCTION_TEXT, path
+                    )
         anomaly_issues = [
             issue
             for issue in self._issues_of(scope, view.activity_id)

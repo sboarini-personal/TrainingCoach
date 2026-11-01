@@ -10,13 +10,13 @@ from typing import TextIO
 from uuid import UUID
 
 from coach.application.consent import ConsentRequiredError
-from coach.application.errors import ConcurrencyConflictError, NotFoundError
+from coach.application.errors import ConcurrencyConflictError, NotFoundError, TimezoneRequiredError
 from coach.application.ownership import OwnerScope
 from coach.application.plans import PlanNotReadyError
 from coach.application.policy_gate import PolicyDeniedError
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
 from coach.cli.asking import Apply, Ask, ask_for, missing_message
-from coach.cli.runtime import Runtime, TimezoneRequiredError
+from coach.cli.runtime import Runtime
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.common.time import DateRange
 from coach.domain.plans.adaptation import AdaptationDecision, AdaptationTrigger

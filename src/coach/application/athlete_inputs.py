@@ -462,8 +462,9 @@ class AthleteInputsService:
                 self._conditions.clear(scope, Condition.DATA_INCOMPLETE, reason="INPUT_PROVIDED")
         return found
 
-    def readiness(self, scope: OwnerScope) -> ReadinessReport:
-        """The Definition of Ready now, bringing the onboarding lifecycle forward."""
+    def readiness(self, scope: OwnerScope, *, advance: bool = True) -> ReadinessReport:
+        """The Definition of Ready now, bringing the onboarding lifecycle forward; with
+        ``advance=False`` (the AI coach's read) nothing is changed."""
         snapshot, facts, readiness = self._assessed(scope)
         goal = snapshot.primary_goal
         sufficiency = None
@@ -473,6 +474,13 @@ class AthleteInputsService:
                 goal.sport,
                 recent_activities=facts.goal_sport_recent,
                 today=self._today(scope),
+            )
+        if not advance:
+            return ReadinessReport(
+                readiness,
+                sufficiency,
+                self._lifecycle.current(scope).lifecycle,
+                self._incomplete(scope, readiness),
             )
         if snapshot.consents.has_decision(ConsentType.AI_PROCESSING):
             self._lifecycle.advance(scope, Trigger.CONSENT_DECISIONS_RECORDED)

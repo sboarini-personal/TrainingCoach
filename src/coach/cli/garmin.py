@@ -12,11 +12,12 @@ from typing import Final, TextIO
 
 from coach.application.consent import ConsentRequiredError
 from coach.application.credentials import CredentialKind, CredentialStatus, ExpiryState
+from coach.application.errors import TimezoneRequiredError
 from coach.application.ownership import OwnerScope
 from coach.application.recovery_sync import MetricOutcome
 from coach.application.sync import CapabilityUnavailableError, SyncOutcome, SyncReport
 from coach.cli.activities import CONSENT_HINT, CONSENT_TYPES, TIMEZONE_HINT, CommandError
-from coach.cli.runtime import Runtime, TimezoneRequiredError, athlete_timezone
+from coach.cli.runtime import Runtime, athlete_timezone
 from coach.domain.coaching.state import Condition
 from coach.domain.integration.status import IntegrationStatus
 from coach.domain.recovery.daily import METRICS

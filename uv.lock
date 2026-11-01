@@ -1158,6 +1158,7 @@ dependencies = [
     { name = "anthropic" },
     { name = "defusedxml" },
     { name = "garmin-fit-sdk" },
+    { name = "jsonschema" },
     { name = "keyring" },
     { name = "tzdata" },
 ]
@@ -1167,7 +1168,6 @@ dev = [
     { name = "detect-secrets" },
     { name = "hypothesis" },
     { name = "import-linter" },
-    { name = "jsonschema" },
     { name = "mypy" },
     { name = "pip-audit" },
     { name = "pre-commit" },
@@ -1181,6 +1181,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=1.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "garmin-fit-sdk", specifier = ">=21.158" },
+    { name = "jsonschema", specifier = ">=4.23" },
     { name = "keyring", specifier = ">=25.5" },
     { name = "tzdata", specifier = ">=2025.2" },
 ]
@@ -1190,7 +1191,6 @@ dev = [
     { name = "detect-secrets", specifier = ">=1.5" },
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "import-linter", specifier = ">=2.1" },
-    { name = "jsonschema", specifier = ">=4.23" },
     { name = "mypy", specifier = ">=1.13" },
     { name = "pip-audit", specifier = ">=2.7" },
     { name = "pre-commit", specifier = ">=4.0" },

@@ -52,7 +52,7 @@ from coach.application.contracts import (
 )
 from coach.application.credentials import CredentialKind, CredentialService
 from coach.application.derived_metrics import DerivedMetricService
-from coach.application.errors import ApplicationError, NotFoundError
+from coach.application.errors import NotFoundError, TimezoneRequiredError
 from coach.application.executions import ExecutionService
 from coach.application.ids import new_id
 from coach.application.ingestion import IngestionService
@@ -120,13 +120,6 @@ from coach.integrations.garmin.transport import HttpTransport, UrllibTransport
 from coach.metrics.catalog import CATALOG
 
 PRIVACY_POLICY_VERSION: Final = "1.0"
-
-
-class TimezoneRequiredError(ApplicationError):
-    """The athlete's timezone is needed to estimate training days and is not set."""
-
-    def __init__(self) -> None:
-        super().__init__("athlete timezone not set")
 
 
 def analysis_settings(

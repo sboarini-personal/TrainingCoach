@@ -22,6 +22,9 @@ class EvidenceKind(StrEnum):
     PLAN_VERSION = "PLAN_VERSION"
     HR_ZONE_MODEL = "HR_ZONE_MODEL"
     ATHLETE_PROFILE = "ATHLETE_PROFILE"  # a profile field, for example the FTP (P9)
+    GOAL = "GOAL"  # a declared goal (P13: the AI coach's tools)
+    SPORT_EVENT = "SPORT_EVENT"  # a declared event (P13)
+    AVAILABILITY = "AVAILABILITY"  # the declared availability (P13)
 
 
 @dataclass(frozen=True, slots=True)

@@ -13,10 +13,10 @@ from typing import Final, TextIO
 from uuid import UUID
 
 from coach.application.athlete_inputs import ConstraintAnswers, Incomplete
-from coach.application.errors import NotFoundError
+from coach.application.errors import NotFoundError, TimezoneRequiredError
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import TIMEZONE_HINT, CommandError
-from coach.cli.runtime import Runtime, TimezoneRequiredError
+from coach.cli.runtime import Runtime
 from coach.domain.athlete.experience import (
     CyclingExperience,
     RaceResult,

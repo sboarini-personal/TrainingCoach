@@ -8,11 +8,12 @@ from dataclasses import replace
 from datetime import date, timedelta
 from typing import Final, TextIO
 
+from coach.application.errors import TimezoneRequiredError
 from coach.application.ownership import OwnerScope
 from coach.application.recovery import CheckInAnswers, CheckInRefusedError
 from coach.application.recovery_assessment import AssessmentResult
 from coach.cli.activities import CONSENT_TYPES, CommandError
-from coach.cli.runtime import Runtime, TimezoneRequiredError
+from coach.cli.runtime import Runtime
 from coach.domain.coaching.state import Actor, Condition
 from coach.domain.common.errors import DomainValidationError, InvalidTransitionError
 from coach.domain.recovery.assessment import Reason, Signal, SignalState

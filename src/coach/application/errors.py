@@ -24,6 +24,13 @@ class OwnershipError(ApplicationError):
     """An entity's owner does not match the authenticated owner scope."""
 
 
+class TimezoneRequiredError(ApplicationError):
+    """The athlete's timezone is needed to estimate training days and is not set."""
+
+    def __init__(self) -> None:
+        super().__init__("athlete timezone not set")
+
+
 class RateLimitedError(ApplicationError):
     """Too many requests or failed authentications; retry later (SEC-AUTH-003)."""
 

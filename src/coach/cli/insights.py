@@ -10,9 +10,10 @@ from __future__ import annotations
 import argparse
 from typing import TextIO
 
+from coach.application.errors import TimezoneRequiredError
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import TIMEZONE_HINT, CommandError
-from coach.cli.runtime import Runtime, TimezoneRequiredError
+from coach.cli.runtime import Runtime
 from coach.domain.insights import Insight
 
 

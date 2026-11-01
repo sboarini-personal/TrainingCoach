@@ -21,11 +21,11 @@ from coach.application.analytics import (
     WeekMonotony,
 )
 from coach.application.consent import ConsentRequiredError
-from coach.application.errors import NotFoundError
+from coach.application.errors import NotFoundError, TimezoneRequiredError
 from coach.application.ids import new_id
 from coach.application.ownership import OwnerScope
 from coach.cli.activities import CONSENT_HINT, TIMEZONE_HINT, CommandError
-from coach.cli.runtime import Runtime, TimezoneRequiredError, athlete_timezone
+from coach.cli.runtime import Runtime, athlete_timezone
 from coach.domain.activity.fields import StrokeType
 from coach.domain.athlete.experience import CyclingExperience, FtpValue
 from coach.domain.athlete.physiology import (

@@ -8,6 +8,7 @@ dependencies = [
     "anthropic>=1.0",
     "defusedxml>=0.7.1",
     "garmin-fit-sdk>=21.158",
+    "jsonschema>=4.23",
     "keyring>=25.5",
     "tzdata>=2025.2",
 ]
@@ -18,7 +19,6 @@ coach = "coach.cli.main:main"
 [dependency-groups]
 dev = [
   "pytest>=8.3",
-  "jsonschema>=4.23",
   "ruff>=0.8",
   "mypy>=1.13",
   "import-linter>=2.1",

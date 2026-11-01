@@ -12,14 +12,13 @@ from typing import Final, TextIO
 
 from coach.application.consent import ConsentRequiredError
 from coach.application.csv_export import export_activities
-from coach.application.errors import InvalidOperationError, NotFoundError
+from coach.application.errors import InvalidOperationError, NotFoundError, TimezoneRequiredError
 from coach.application.identity import Principal
 from coach.application.ingestion import ImportResult
 from coach.application.ownership import OwnerScope
 from coach.cli.runtime import (
     PRIVACY_POLICY_VERSION,
     Runtime,
-    TimezoneRequiredError,
     athlete_timezone,
 )
 from coach.domain.activity.activity import Activity

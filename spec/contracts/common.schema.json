@@ -117,7 +117,10 @@
             "INSIGHT",
             "PLAN_VERSION",
             "HR_ZONE_MODEL",
-            "ATHLETE_PROFILE"
+            "ATHLETE_PROFILE",
+            "GOAL",
+            "SPORT_EVENT",
+            "AVAILABILITY"
           ]
         },
         "id": { "$ref": "#/$defs/id" },
